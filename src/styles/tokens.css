@@ -1,0 +1,57 @@
+:root {
+  /* Palette de marque Cytinside — Calibrée haute fidélité sur les maquettes */
+  --color-primary: #122c25;
+  --color-primary-light: #1e453b;
+  --color-primary-dark: #0b1d18;
+  
+  /* Vert Sauge Signature des Maquettes Cytinside */
+  --color-accent: #97b99d;
+  --color-accent-hover: #86ab8c;
+  --color-accent-active: #749c7b;
+  --color-accent-light: #ebf3ec;
+  --color-accent-subtle: #f4f8f4;
+  
+  /* Surfaces & Fonds */
+  --color-bg-app: #f7f9f7;
+  --color-bg-card: #ffffff;
+  --color-bg-sidebar: #ffffff;
+  --color-bg-input: #1a352e;
+  
+  /* Textes & Contraste */
+  --color-text-main: #12251f;
+  --color-text-muted: #647a70;
+  --color-text-subtle: #93a69d;
+  --color-text-inverse: #ffffff;
+  
+  /* Bordures fines */
+  --color-border: #e3ebe1;
+  --color-border-subtle: #edf3ec;
+  --color-border-active: #97b99d;
+
+  /* Statuts */
+  --color-success: #297a51;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
+  
+  /* Typographie */
+  --font-family-heading: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-family-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  
+  /* Rayons de courbure arrondis conformes aux maquettes */
+  --radius-xs: 8px;
+  --radius-sm: 12px;
+  --radius-md: 18px;
+  --radius-lg: 24px;
+  --radius-full: 9999px;
+  
+  /* Ombres douces & diffuses */
+  --shadow-subtle: 0 2px 8px rgba(18, 44, 37, 0.03);
+  --shadow-card: 0 4px 18px rgba(18, 44, 37, 0.05), 0 1px 3px rgba(18, 44, 37, 0.03);
+  --shadow-hover: 0 8px 26px rgba(18, 44, 37, 0.08), 0 2px 6px rgba(18, 44, 37, 0.04);
+  --shadow-cta: 0 6px 20px rgba(151, 185, 157, 0.45);
+  
+  /* Ergonomie Tablette */
+  --touch-target-min: 44px;
+  --transition-fast: all 0.15s ease;
+  --transition-smooth: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}

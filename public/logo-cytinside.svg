@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <linearGradient id="gradLeft" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#193832"/>
+      <stop offset="100%" stop-color="#245148"/>
+    </linearGradient>
+    <linearGradient id="gradCenter" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8EA885"/>
+      <stop offset="100%" stop-color="#76936D"/>
+    </linearGradient>
+    <linearGradient id="gradRight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E443C"/>
+      <stop offset="100%" stop-color="#122A25"/>
+    </linearGradient>
+  </defs>
+  <!-- Outer Diamond Contour -->
+  <path d="M50 8 L88 30 L88 70 L50 92 L12 70 L12 30 Z" stroke="#193832" stroke-width="4" stroke-linejoin="round" fill="none"/>
+  <!-- Left Building Pillar -->
+  <path d="M26 42 L38 35 L38 72 L26 65 Z" fill="url(#gradLeft)"/>
+  <!-- Center Tall Building Pillar -->
+  <path d="M44 26 L56 20 L56 78 L44 72 Z" fill="url(#gradCenter)"/>
+  <!-- Right Building Pillar -->
+  <path d="M62 38 L74 44 L74 68 L62 62 Z" fill="url(#gradRight)"/>
+</svg>
