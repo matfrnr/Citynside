@@ -1,55 +1,74 @@
 :root {
-  /* Palette de marque Cytinside — Calibrée haute fidélité sur les maquettes */
-  --color-primary: #122c25;
-  --color-primary-light: #1e453b;
-  --color-primary-dark: #0b1d18;
-  
-  /* Vert Sauge Signature des Maquettes Cytinside */
-  --color-accent: #97b99d;
-  --color-accent-hover: #86ab8c;
-  --color-accent-active: #749c7b;
-  --color-accent-light: #ebf3ec;
-  --color-accent-subtle: #f4f8f4;
-  
+  /* ===================================================
+     PALETTE CITYNSIDE V1 — Charte graphique officielle
+     =================================================== */
+
+  /* Couleur principale — Bleu-vert foncé (fiabilité & structure) */
+  --color-primary: #153a3d;
+  --color-primary-light: #1e4e52;
+  --color-primary-dark: #0d2628;
+  --color-primary-37: rgba(21, 58, 61, 0.37); /* opacité 37% pour fonds */
+
+  /* Vert signature (dynamisme & équilibre) */
+  --color-green: #9dc599;
+  --color-green-hover: #8ab887;
+  --color-green-active: #78ab76;
+  --color-green-light: #eef6ed;
+  --color-green-subtle: #f5faf4;
+
+  /* Jaune accent (capter l'attention, CTAs & highlights) */
+  --color-yellow: #f1e850;
+  --color-yellow-hover: #ede33a;
+  --color-yellow-light: rgba(241, 232, 80, 0.18);
+
   /* Surfaces & Fonds */
-  --color-bg-app: #f7f9f7;
+  --color-bg-app: #f6f9f6;
   --color-bg-card: #ffffff;
   --color-bg-sidebar: #ffffff;
-  --color-bg-input: #1a352e;
-  
+  --color-bg-dark: #153a3d;    /* pour barres de recherche, etc. */
+
   /* Textes & Contraste */
-  --color-text-main: #12251f;
-  --color-text-muted: #647a70;
-  --color-text-subtle: #93a69d;
+  --color-text-main: #0e2325;
+  --color-text-muted: #5a7275;
+  --color-text-subtle: #8fa5a8;
   --color-text-inverse: #ffffff;
-  
+  --color-text-on-yellow: #0e2325;  /* texte foncé sur fond jaune */
+  --color-text-on-green: #0e2325;   /* texte foncé sur fond vert */
+
   /* Bordures fines */
-  --color-border: #e3ebe1;
-  --color-border-subtle: #edf3ec;
-  --color-border-active: #97b99d;
+  --color-border: #dce8e0;
+  --color-border-subtle: #eaf2ea;
+  --color-border-active: #9dc599;
 
   /* Statuts */
-  --color-success: #297a51;
+  --color-success: #2a7a52;
   --color-warning: #d97706;
   --color-danger: #dc2626;
-  
-  /* Typographie */
-  --font-family-heading: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-family-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  
-  /* Rayons de courbure arrondis conformes aux maquettes */
+
+  /* ===================================================
+     TYPOGRAPHIES — Charte Citynside V1
+     Fira Sans  : titres, sous-titres
+     Poppins    : textes courants (Regular)
+     =================================================== */
+  --font-family-heading: 'Fira Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-family-body: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* Rayons de courbure */
   --radius-xs: 8px;
   --radius-sm: 12px;
   --radius-md: 18px;
   --radius-lg: 24px;
   --radius-full: 9999px;
-  
-  /* Ombres douces & diffuses */
-  --shadow-subtle: 0 2px 8px rgba(18, 44, 37, 0.03);
-  --shadow-card: 0 4px 18px rgba(18, 44, 37, 0.05), 0 1px 3px rgba(18, 44, 37, 0.03);
-  --shadow-hover: 0 8px 26px rgba(18, 44, 37, 0.08), 0 2px 6px rgba(18, 44, 37, 0.04);
-  --shadow-cta: 0 6px 20px rgba(151, 185, 157, 0.45);
-  
+
+  /* Ombres douces */
+  --shadow-subtle: 0 2px 8px rgba(21, 58, 61, 0.04);
+  --shadow-card: 0 4px 18px rgba(21, 58, 61, 0.06), 0 1px 3px rgba(21, 58, 61, 0.03);
+  --shadow-hover: 0 8px 28px rgba(21, 58, 61, 0.10), 0 2px 6px rgba(21, 58, 61, 0.05);
+  --shadow-cta-yellow: 0 6px 22px rgba(241, 232, 80, 0.40);
+  --shadow-cta-green: 0 6px 20px rgba(157, 197, 153, 0.40);
+  --shadow-md: 0 6px 24px rgba(21, 58, 61, 0.08);
+  --shadow-lg: 0 12px 40px rgba(21, 58, 61, 0.14);
+
   /* Ergonomie Tablette */
   --touch-target-min: 44px;
   --transition-fast: all 0.15s ease;

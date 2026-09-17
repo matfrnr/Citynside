@@ -210,6 +210,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
       </div>
 
       <style>{`
+        /* ReportView — Charte Citynside V1 */
         .report-view-wrapper {
           max-width: 860px;
           margin: 0 auto;
@@ -230,11 +231,11 @@ export const ReportView: React.FC<ReportViewProps> = ({
           font-size: 0.94rem;
         }
 
-        /* A4 Printable Sheet */
+        /* Feuille A4 imprimable */
         .printable-report-sheet {
           background: #ffffff;
           border-radius: var(--radius-md);
-          border: 1px solid #dce5da;
+          border: 1px solid var(--color-border);
           box-shadow: var(--shadow-md);
           padding: 36px 40px;
           display: flex;
@@ -247,7 +248,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
           align-items: center;
           justify-content: space-between;
           padding-bottom: 18px;
-          border-bottom: 2px solid #eef3ed;
+          border-bottom: 2px solid var(--color-border-subtle);
         }
 
         .header-brand-block {
@@ -257,8 +258,8 @@ export const ReportView: React.FC<ReportViewProps> = ({
         }
 
         .sheet-logo-wrap {
-          width: 44px;
-          height: 44px;
+          width: 42px;
+          height: 42px;
         }
 
         .sheet-logo {
@@ -266,17 +267,20 @@ export const ReportView: React.FC<ReportViewProps> = ({
           height: 100%;
         }
 
+        /* Nom de la marque en Fira Sans — Charte V1 */
         .sheet-brand-name {
-          font-size: 1.5rem;
-          font-weight: 800;
-          color: #173830;
-          letter-spacing: -0.03em;
+          font-family: var(--font-family-heading);
+          font-size: 1.45rem;
+          font-weight: 700;
+          color: var(--color-primary);
+          letter-spacing: -0.02em;
         }
 
         .sheet-brand-tagline {
-          font-size: 0.78rem;
-          color: #697c74;
-          font-weight: 500;
+          font-family: var(--font-family-body);
+          font-size: 0.74rem;
+          color: var(--color-text-muted);
+          font-weight: 400;
         }
 
         .header-agent-badge {
@@ -287,46 +291,52 @@ export const ReportView: React.FC<ReportViewProps> = ({
         }
 
         .agent-agency {
-          font-size: 0.85rem;
-          font-weight: 800;
-          color: #173830;
+          font-family: var(--font-family-body);
+          font-size: 0.82rem;
+          font-weight: 700;
+          color: var(--color-primary);
           letter-spacing: 0.04em;
         }
 
         .agent-rep {
-          font-size: 0.75rem;
-          color: #8ea885;
-          font-weight: 700;
+          font-family: var(--font-family-body);
+          font-size: 0.73rem;
+          color: var(--color-green-hover);
+          font-weight: 600;
         }
 
         .agent-date {
-          font-size: 0.72rem;
-          color: #8c9e96;
+          font-family: var(--font-family-body);
+          font-size: 0.70rem;
+          color: var(--color-text-subtle);
           margin-top: 2px;
         }
 
-        /* Property Banner */
+        /* Bannière propriété */
         .property-summary-banner {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          background: #f4f8f3;
+          background: var(--color-green-light);
           padding: 20px 24px;
           border-radius: var(--radius-sm);
-          border: 1px solid #e1ebe0;
+          border: 1px solid #cde3ca;
         }
 
         .prop-type-tag {
-          font-size: 0.68rem;
-          font-weight: 800;
-          letter-spacing: 0.08em;
-          color: #275246;
+          font-family: var(--font-family-body);
+          font-size: 0.66rem;
+          font-weight: 700;
+          letter-spacing: 0.09em;
+          color: var(--color-primary);
+          text-transform: uppercase;
         }
 
         .prop-address {
-          font-size: 1.4rem;
-          font-weight: 800;
-          color: #173830;
+          font-family: var(--font-family-heading);
+          font-size: 1.35rem;
+          font-weight: 700;
+          color: var(--color-primary);
           display: flex;
           align-items: center;
           gap: 6px;
@@ -334,14 +344,16 @@ export const ReportView: React.FC<ReportViewProps> = ({
         }
 
         .pin-icon {
-          color: #8ea885;
+          color: var(--color-green-hover);
         }
 
         .prop-city {
-          font-size: 0.88rem;
-          color: #5e736a;
+          font-family: var(--font-family-body);
+          font-size: 0.86rem;
+          color: var(--color-text-muted);
         }
 
+        /* Widget score global */
         .global-score-widget {
           display: flex;
           align-items: center;
@@ -349,8 +361,8 @@ export const ReportView: React.FC<ReportViewProps> = ({
           background: #ffffff;
           padding: 10px 18px;
           border-radius: var(--radius-sm);
-          box-shadow: 0 4px 10px rgba(0, 0, 0, 0.04);
-          border: 1px solid #e5eee3;
+          box-shadow: var(--shadow-subtle);
+          border: 1px solid var(--color-border);
         }
 
         .score-circle-display {
@@ -359,15 +371,17 @@ export const ReportView: React.FC<ReportViewProps> = ({
         }
 
         .score-big {
+          font-family: var(--font-family-heading);
           font-size: 2.2rem;
-          font-weight: 800;
-          color: #173830;
+          font-weight: 700;
+          color: var(--color-primary);
         }
 
         .score-unit {
-          font-size: 0.95rem;
-          font-weight: 600;
-          color: #798d84;
+          font-family: var(--font-family-body);
+          font-size: 0.92rem;
+          font-weight: 500;
+          color: var(--color-text-muted);
         }
 
         .score-verdict {
@@ -376,17 +390,19 @@ export const ReportView: React.FC<ReportViewProps> = ({
         }
 
         .verdict-grade {
-          font-size: 1.25rem;
-          font-weight: 800;
+          font-family: var(--font-family-heading);
+          font-size: 1.2rem;
+          font-weight: 700;
           line-height: 1;
         }
 
         .verdict-label {
-          font-size: 0.76rem;
-          font-weight: 700;
+          font-family: var(--font-family-body);
+          font-size: 0.74rem;
+          font-weight: 600;
         }
 
-        /* Content Grid */
+        /* Grille contenu */
         .sheet-grid-content {
           display: grid;
           grid-template-columns: 1.15fr 0.85fr;
@@ -394,12 +410,13 @@ export const ReportView: React.FC<ReportViewProps> = ({
         }
 
         .section-title {
-          font-size: 0.95rem;
-          font-weight: 800;
-          color: #173830;
+          font-family: var(--font-family-heading);
+          font-size: 0.82rem;
+          font-weight: 700;
+          color: var(--color-primary);
           margin-bottom: 12px;
           text-transform: uppercase;
-          letter-spacing: 0.03em;
+          letter-spacing: 0.04em;
         }
 
         .report-categories-list {
@@ -413,8 +430,8 @@ export const ReportView: React.FC<ReportViewProps> = ({
           align-items: center;
           justify-content: space-between;
           padding: 10px 14px;
-          background: #fafcfa;
-          border: 1px solid #e6ede4;
+          background: var(--color-bg-app);
+          border: 1px solid var(--color-border);
           border-radius: var(--radius-xs);
         }
 
@@ -424,28 +441,33 @@ export const ReportView: React.FC<ReportViewProps> = ({
         }
 
         .cat-title-text {
-          font-size: 0.88rem;
-          font-weight: 700;
-          color: #173830;
+          font-family: var(--font-family-body);
+          font-size: 0.86rem;
+          font-weight: 600;
+          color: var(--color-primary);
         }
 
         .cat-highlight {
-          font-size: 0.74rem;
-          color: #63776e;
+          font-family: var(--font-family-body);
+          font-size: 0.72rem;
+          color: var(--color-text-muted);
         }
 
+        /* Pill score en vert */
         .cat-score-pill {
-          font-size: 0.86rem;
-          color: #173830;
-          background: #eef5ec;
+          font-family: var(--font-family-body);
+          font-size: 0.84rem;
+          color: var(--color-primary);
+          background: var(--color-green-light);
           padding: 4px 10px;
           border-radius: 99px;
+          font-weight: 600;
         }
 
         .methodology-box {
           margin-top: 14px;
-          background: #f7faf7;
-          border: 1px dashed #cedccb;
+          background: var(--color-bg-app);
+          border: 1px dashed var(--color-border);
           border-radius: var(--radius-xs);
           padding: 12px;
           display: flex;
@@ -457,14 +479,16 @@ export const ReportView: React.FC<ReportViewProps> = ({
           display: flex;
           align-items: center;
           gap: 6px;
-          font-size: 0.78rem;
+          font-family: var(--font-family-body);
+          font-size: 0.76rem;
           font-weight: 700;
-          color: #1e453b;
+          color: var(--color-primary);
         }
 
         .meth-text {
-          font-size: 0.72rem;
-          color: #61736b;
+          font-family: var(--font-family-body);
+          font-size: 0.71rem;
+          color: var(--color-text-muted);
           line-height: 1.35;
         }
 
@@ -476,21 +500,22 @@ export const ReportView: React.FC<ReportViewProps> = ({
         }
 
         .sources-tags-cloud span {
-          font-size: 0.66rem;
-          background: #e8f0e6;
-          color: #1b453b;
+          font-family: var(--font-family-body);
+          font-size: 0.64rem;
+          background: var(--color-green-light);
+          color: var(--color-primary);
           padding: 2px 6px;
           border-radius: 4px;
           font-weight: 600;
         }
 
-        /* Impressions Column */
+        /* Colonne impressions */
         .impressions-report-card {
           display: flex;
           flex-direction: column;
           gap: 14px;
-          background: #fafcfa;
-          border: 1px solid #e6ede4;
+          background: var(--color-bg-app);
+          border: 1px solid var(--color-border);
           border-radius: var(--radius-xs);
           padding: 16px;
         }
@@ -502,28 +527,32 @@ export const ReportView: React.FC<ReportViewProps> = ({
         }
 
         .imp-label {
-          font-size: 0.75rem;
-          font-weight: 800;
-          color: #173830;
+          font-family: var(--font-family-body);
+          font-size: 0.70rem;
+          font-weight: 700;
+          color: var(--color-primary);
           text-transform: uppercase;
-          letter-spacing: 0.04em;
+          letter-spacing: 0.05em;
         }
 
         .imp-text {
-          font-size: 0.82rem;
-          color: #274138;
+          font-family: var(--font-family-body);
+          font-size: 0.81rem;
+          color: var(--color-text-main);
         }
 
         .imp-sub {
-          font-size: 0.78rem;
-          color: #556c62;
+          font-family: var(--font-family-body);
+          font-size: 0.76rem;
+          color: var(--color-text-muted);
         }
 
         .imp-subquote {
-          font-size: 0.76rem;
+          font-family: var(--font-family-body);
+          font-size: 0.75rem;
           font-style: italic;
-          color: #4b685d;
-          background: #f1f7ef;
+          color: var(--color-text-muted);
+          background: var(--color-green-subtle);
           padding: 6px 10px;
           border-radius: 4px;
           margin-top: 2px;
@@ -537,57 +566,63 @@ export const ReportView: React.FC<ReportViewProps> = ({
         }
 
         .pill-tag {
-          font-size: 0.72rem;
+          font-family: var(--font-family-body);
+          font-size: 0.70rem;
           font-weight: 600;
           padding: 3px 8px;
           border-radius: 99px;
-          background: #e6efe4;
-          color: #194639;
+          background: var(--color-green-light);
+          color: var(--color-primary);
         }
 
         .pill-tag.active {
-          background: #9cbca4;
-          color: #122a23;
+          background: var(--color-green);
+          color: var(--color-primary-dark);
         }
 
+        /* Badge garantie */
         .guarantee-badge {
           margin-top: 14px;
           display: flex;
           align-items: center;
           gap: 12px;
-          background: #eef6ed;
-          border: 1px solid #d4e3d1;
+          background: var(--color-yellow-light);
+          border: 1px solid rgba(241, 232, 80, 0.35);
           padding: 12px 14px;
           border-radius: var(--radius-xs);
         }
 
         .award-icon {
-          color: #3b7454;
+          color: var(--color-primary);
           flex-shrink: 0;
         }
 
         .g-title {
-          font-size: 0.82rem;
-          color: #173830;
+          font-family: var(--font-family-body);
+          font-size: 0.80rem;
+          color: var(--color-primary);
+          font-weight: 700;
           display: block;
         }
 
         .g-desc {
-          font-size: 0.7rem;
-          color: #5a7066;
+          font-family: var(--font-family-body);
+          font-size: 0.68rem;
+          color: var(--color-text-muted);
         }
 
         .sheet-footer {
           margin-top: auto;
           padding-top: 14px;
-          border-top: 1px solid #eef3ed;
+          border-top: 1px solid var(--color-border-subtle);
           display: flex;
           justify-content: space-between;
-          font-size: 0.7rem;
-          color: #8c9e96;
+          font-family: var(--font-family-body);
+          font-size: 0.68rem;
+          color: var(--color-text-subtle);
         }
 
-        /* PRINT STYLES FOR HIGH QUALITY A4 PDF */
+        /* STYLES IMPRESSION PDF A4 */
         @media print {
           body {
             background: #ffffff !important;

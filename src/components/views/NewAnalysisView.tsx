@@ -149,6 +149,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
       </div>
 
       <style>{`
+        /* NewAnalysisView — Charte Citynside V1 */
         .new-analysis-container {
           max-width: 1280px;
           margin: 0 auto;
@@ -164,17 +165,18 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
         }
 
         .header-main-title {
-          font-size: 2.35rem;
-          font-weight: 800;
-          color: #122c25;
-          letter-spacing: -0.03em;
+          font-size: 2.3rem;
+          font-weight: 700;
+          color: var(--color-primary);
+          letter-spacing: -0.025em;
         }
 
         .header-main-subtitle {
-          font-size: 1rem;
-          color: #647a70;
+          font-family: var(--font-family-body);
+          font-size: 0.97rem;
+          color: var(--color-text-muted);
           margin-top: 6px;
-          font-weight: 500;
+          font-weight: 400;
         }
 
         .search-bar-row {
@@ -183,7 +185,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
           justify-content: center;
         }
 
-        /* Dual Column Split Layout */
+        /* Disposition en deux colonnes */
         .analysis-split-content {
           display: grid;
           grid-template-columns: 1.05fr 0.95fr;
@@ -203,12 +205,12 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
         }
 
         .map-card-wrapper {
-          border-radius: 22px;
+          border-radius: 20px;
           overflow: hidden;
           background: #ffffff;
-          padding: 8px;
-          border: 1px solid #e0ebe0;
-          box-shadow: 0 6px 24px rgba(18, 44, 37, 0.05);
+          padding: 7px;
+          border: 1px solid var(--color-border);
+          box-shadow: var(--shadow-card);
         }
 
         .map-caption-bar {
@@ -217,9 +219,10 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
         }
 
         .map-caption-text {
-          font-size: 0.74rem;
-          color: #789085;
-          font-weight: 600;
+          font-family: var(--font-family-body);
+          font-size: 0.72rem;
+          color: var(--color-text-subtle);
+          font-weight: 500;
         }
 
         .split-col-scores {
@@ -228,7 +231,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
           gap: 14px;
         }
 
-        /* Bottom CTA */
+        /* CTA en bas — Jaune #f1e850 */
         .analysis-bottom-cta-wrap {
           display: flex;
           justify-content: center;
@@ -238,18 +241,24 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
         .cta-impressions-btn {
           width: 100%;
           max-width: 640px;
-          background-color: #9cbca4;
-          color: #102b23;
+          background-color: var(--color-yellow);
+          color: var(--color-text-on-yellow);
           font-weight: 700;
-          font-size: 1.08rem;
+          font-size: 1.05rem;
           padding: 16px 32px;
           border-radius: var(--radius-full);
-          box-shadow: 0 6px 20px rgba(156, 188, 164, 0.45);
+          box-shadow: var(--shadow-cta-yellow);
+          transition: var(--transition-smooth);
         }
 
         .cta-impressions-btn:hover {
-          background-color: #add0b6;
-          box-shadow: 0 8px 24px rgba(156, 188, 164, 0.6);
+          background-color: var(--color-yellow-hover);
+          transform: translateY(-2px);
+          box-shadow: 0 10px 30px rgba(241, 232, 80, 0.52);
+        }
+
+        .cta-impressions-btn:active {
+          transform: translateY(0);
         }
       `}</style>
     </div>

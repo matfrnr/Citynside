@@ -215,6 +215,7 @@ export const ScoresList: React.FC<ScoresListProps> = ({
       )}
 
       <style>{`
+        /* ScoresList — Charte Citynside V1 */
         .scores-list-container {
           display: flex;
           flex-direction: column;
@@ -233,28 +234,35 @@ export const ScoresList: React.FC<ScoresListProps> = ({
           gap: 8px;
         }
 
+        /* Badge adresse en vert de la charte */
         .address-live-badge {
-          background: #eef5ec;
-          color: #173830;
-          font-size: 0.76rem;
-          font-weight: 700;
+          background: var(--color-green-light);
+          color: var(--color-primary);
+          font-family: var(--font-family-body);
+          font-size: 0.73rem;
+          font-weight: 600;
           padding: 3px 10px;
           border-radius: var(--radius-full);
-          border: 1px solid #c9d8c4;
+          border: 1px solid #c5dcc2;
           white-space: nowrap;
         }
 
         .scores-title {
-          font-size: 1.15rem;
+          font-family: var(--font-family-heading);
+          font-size: 1.1rem;
           color: var(--color-primary);
+          font-weight: 700;
         }
 
         .scores-subtitle {
-          font-size: 0.8rem;
+          font-family: var(--font-family-body);
+          font-size: 0.78rem;
           color: var(--color-text-muted);
           margin-top: 2px;
+          font-weight: 400;
         }
 
+        /* Filtre chips */
         .categories-filter-bar {
           display: flex;
           gap: 8px;
@@ -263,21 +271,24 @@ export const ScoresList: React.FC<ScoresListProps> = ({
         }
 
         .filter-pill {
-          padding: 6px 14px;
+          padding: 5px 12px;
           border-radius: var(--radius-full);
-          font-size: 0.8rem;
-          font-weight: 600;
+          font-family: var(--font-family-body);
+          font-size: 0.78rem;
+          font-weight: 500;
           background: #ffffff;
           border: 1px solid var(--color-border);
           color: var(--color-text-muted);
           white-space: nowrap;
-          transition: var(--transition-default);
+          transition: var(--transition-fast);
         }
 
+        /* Pill actif en vert #9dc599 */
         .filter-pill.active, .filter-pill:hover {
-          background: #9cbca4;
-          color: #15322b;
-          border-color: #9cbca4;
+          background: var(--color-green);
+          color: var(--color-primary-dark);
+          border-color: var(--color-green);
+          font-weight: 700;
         }
 
         .scores-cards-grid {
@@ -305,11 +316,12 @@ export const ScoresList: React.FC<ScoresListProps> = ({
           gap: 10px;
         }
 
+        /* Icône en fond vert clair */
         .cat-icon-badge {
           width: 32px;
           height: 32px;
           border-radius: 8px;
-          background: var(--color-accent-light);
+          background: var(--color-green-light);
           color: var(--color-primary);
           display: flex;
           align-items: center;
@@ -317,8 +329,9 @@ export const ScoresList: React.FC<ScoresListProps> = ({
         }
 
         .cat-label {
-          font-weight: 700;
-          font-size: 0.92rem;
+          font-family: var(--font-family-body);
+          font-weight: 600;
+          font-size: 0.90rem;
           color: var(--color-primary);
         }
 
@@ -332,26 +345,29 @@ export const ScoresList: React.FC<ScoresListProps> = ({
         }
 
         .score-val {
-          font-size: 1.1rem;
-          font-weight: 800;
+          font-family: var(--font-family-heading);
+          font-size: 1.05rem;
+          font-weight: 700;
         }
 
         .score-max {
-          font-size: 0.72rem;
+          font-family: var(--font-family-body);
+          font-size: 0.70rem;
           opacity: 0.7;
           margin-left: 2px;
         }
 
         .highlight-text {
-          font-size: 0.82rem;
-          font-weight: 600;
-          color: #3b5a4f;
+          font-family: var(--font-family-body);
+          font-size: 0.81rem;
+          font-weight: 500;
+          color: var(--color-text-muted);
         }
 
         .progress-track {
           width: 100%;
-          height: 6px;
-          background: #e6ede4;
+          height: 5px;
+          background: #ddeedd;
           border-radius: 99px;
           overflow: hidden;
         }
@@ -373,13 +389,15 @@ export const ScoresList: React.FC<ScoresListProps> = ({
           display: flex;
           align-items: flex-start;
           gap: 6px;
-          font-size: 0.78rem;
+          font-family: var(--font-family-body);
+          font-size: 0.77rem;
           color: var(--color-text-muted);
           line-height: 1.3;
         }
 
+        /* Bullet en vert */
         .bullet {
-          color: var(--color-accent);
+          color: var(--color-green);
           font-size: 1.1rem;
           line-height: 0.8;
         }
@@ -394,25 +412,26 @@ export const ScoresList: React.FC<ScoresListProps> = ({
           display: flex;
           align-items: center;
           gap: 6px;
-          font-size: 0.76rem;
-          font-weight: 600;
-          color: #557267;
+          font-family: var(--font-family-body);
+          font-size: 0.74rem;
+          font-weight: 500;
+          color: var(--color-text-muted);
           padding: 4px 0;
-          transition: var(--transition-default);
+          transition: color 0.15s ease;
         }
 
         .explain-btn:hover {
           color: var(--color-primary);
         }
 
-        /* Modal */
+        /* Modal méthodologie */
         .methodology-modal-overlay {
           position: fixed;
           top: 0;
           left: 0;
           right: 0;
           bottom: 0;
-          background: rgba(18, 42, 36, 0.45);
+          background: rgba(21, 58, 61, 0.5);
           backdrop-filter: blur(4px);
           display: flex;
           align-items: center;
@@ -437,6 +456,7 @@ export const ScoresList: React.FC<ScoresListProps> = ({
           to { opacity: 1; transform: scale(1); }
         }
 
+        /* En-tête modal en bleu-vert #153a3d */
         .modal-header {
           display: flex;
           align-items: center;
@@ -456,7 +476,7 @@ export const ScoresList: React.FC<ScoresListProps> = ({
           width: 36px;
           height: 36px;
           border-radius: 10px;
-          background: var(--color-accent-light);
+          background: var(--color-green-light);
           color: var(--color-primary);
           display: flex;
           align-items: center;
@@ -464,12 +484,15 @@ export const ScoresList: React.FC<ScoresListProps> = ({
         }
 
         .modal-title {
-          font-size: 1.1rem;
+          font-family: var(--font-family-heading);
+          font-size: 1.05rem;
           color: var(--color-primary);
+          font-weight: 700;
         }
 
         .modal-score-sub {
-          font-size: 0.8rem;
+          font-family: var(--font-family-body);
+          font-size: 0.78rem;
           color: var(--color-text-muted);
         }
 
@@ -477,6 +500,7 @@ export const ScoresList: React.FC<ScoresListProps> = ({
           color: var(--color-text-muted);
           padding: 6px;
           border-radius: 50%;
+          transition: background 0.15s ease;
         }
 
         .modal-close-btn:hover {
@@ -499,15 +523,17 @@ export const ScoresList: React.FC<ScoresListProps> = ({
         }
 
         .section-label {
-          font-size: 0.78rem;
+          font-family: var(--font-family-body);
+          font-size: 0.70rem;
           font-weight: 700;
           text-transform: uppercase;
-          letter-spacing: 0.05em;
-          color: var(--color-text-muted);
+          letter-spacing: 0.06em;
+          color: var(--color-text-subtle);
         }
 
         .section-text {
-          font-size: 0.88rem;
+          font-family: var(--font-family-body);
+          font-size: 0.86rem;
           line-height: 1.45;
           color: var(--color-text-main);
           background: var(--color-bg-app);
@@ -526,7 +552,8 @@ export const ScoresList: React.FC<ScoresListProps> = ({
           display: flex;
           align-items: center;
           gap: 10px;
-          font-size: 0.85rem;
+          font-family: var(--font-family-body);
+          font-size: 0.83rem;
         }
 
         .badge-ok {
@@ -545,27 +572,31 @@ export const ScoresList: React.FC<ScoresListProps> = ({
           align-items: center;
           justify-content: space-between;
           padding: 8px 12px;
-          background: #fdfdfd;
+          background: var(--color-bg-app);
           border: 1px solid var(--color-border);
           border-radius: var(--radius-sm);
         }
 
         .src-name {
-          font-size: 0.84rem;
+          font-family: var(--font-family-body);
+          font-size: 0.82rem;
           font-weight: 600;
           color: var(--color-primary);
         }
 
         .src-desc {
-          font-size: 0.75rem;
+          font-family: var(--font-family-body);
+          font-size: 0.73rem;
           color: var(--color-text-muted);
         }
 
+        /* Date badge en vert */
         .src-date {
-          font-size: 0.7rem;
+          font-family: var(--font-family-body);
+          font-size: 0.68rem;
           padding: 2px 6px;
           border-radius: 4px;
-          background: var(--color-accent-light);
+          background: var(--color-green-light);
           color: var(--color-primary);
           font-weight: 600;
         }

@@ -157,28 +157,30 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
       )}
 
       <style>{`
+        /* SearchBar — Charte Citynside V1 */
         .search-bar-container {
           position: relative;
           width: 100%;
-          max-width: 660px;
+          max-width: 680px;
           margin: 0 auto;
         }
 
+        /* Fond #153a3d (couleur principale charte V1) */
         .search-pill-wrapper {
           display: flex;
           align-items: center;
-          background: #1c362f;
+          background: var(--color-primary);
           border-radius: var(--radius-full);
-          padding: 6px 8px 6px 20px;
-          box-shadow: 0 10px 30px rgba(18, 44, 37, 0.2);
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          padding: 6px 6px 6px 22px;
+          box-shadow: 0 10px 32px rgba(21, 58, 61, 0.25);
+          border: 1px solid rgba(157, 197, 153, 0.18);
           transition: var(--transition-fast);
-          min-height: 54px;
+          min-height: 56px;
         }
 
         .search-pill-wrapper:focus-within {
-          box-shadow: 0 12px 34px rgba(18, 44, 37, 0.28);
-          border-color: #9cbca4;
+          box-shadow: 0 12px 36px rgba(21, 58, 61, 0.32);
+          border-color: rgba(157, 197, 153, 0.45);
         }
 
         .search-input-left {
@@ -188,28 +190,30 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
           flex: 1;
         }
 
+        /* Icône loupe en vert de la charte */
         .search-icon {
-          color: #9cbca4;
+          color: var(--color-green);
           flex-shrink: 0;
         }
 
         .search-input {
+          font-family: var(--font-family-body);
           background: transparent;
           border: none;
           color: #ffffff;
-          font-size: 0.98rem;
-          font-weight: 500;
+          font-size: 0.97rem;
+          font-weight: 400;
           width: 100%;
           padding-right: 6px;
         }
 
         .search-input::placeholder {
-          color: #7b948a;
+          color: rgba(255, 255, 255, 0.45);
           font-weight: 400;
         }
 
         .clear-btn {
-          color: #7b948a;
+          color: rgba(255, 255, 255, 0.5);
           padding: 6px;
           display: flex;
           align-items: center;
@@ -222,28 +226,36 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
           background: rgba(255, 255, 255, 0.12);
         }
 
+        /* Bouton Analyser — Jaune #f1e850 (accent fort charte V1) */
         .btn-analyser {
           display: flex;
           align-items: center;
           gap: 8px;
-          background-color: #9cbca4;
-          color: #0f2720;
+          background-color: var(--color-yellow);
+          color: var(--color-text-on-yellow);
+          font-family: var(--font-family-body);
           font-weight: 700;
-          font-size: 0.96rem;
-          padding: 10px 22px;
+          font-size: 0.95rem;
+          padding: 11px 22px;
           border-radius: var(--radius-full);
-          transition: var(--transition-fast);
+          transition: var(--transition-smooth);
           white-space: nowrap;
           flex-shrink: 0;
+          box-shadow: 0 3px 12px rgba(241, 232, 80, 0.35);
         }
 
         .btn-analyser:hover:not(:disabled) {
-          background-color: #add0b6;
+          background-color: var(--color-yellow-hover);
           transform: translateY(-1px);
+          box-shadow: 0 6px 18px rgba(241, 232, 80, 0.48);
+        }
+
+        .btn-analyser:active:not(:disabled) {
+          transform: translateY(0);
         }
 
         .btn-analyser:disabled {
-          opacity: 0.75;
+          opacity: 0.65;
           cursor: not-allowed;
         }
 
@@ -256,7 +268,7 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
           to { transform: rotate(360deg); }
         }
 
-        /* Autocomplete */
+        /* Dropdown autocomplete */
         .autocomplete-dropdown {
           position: absolute;
           top: calc(100% + 10px);
@@ -264,8 +276,8 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
           right: 0;
           background: #ffffff;
           border-radius: var(--radius-md);
-          box-shadow: 0 16px 40px rgba(18, 44, 37, 0.14);
-          border: 1px solid #e0eae0;
+          box-shadow: 0 16px 40px rgba(21, 58, 61, 0.16);
+          border: 1px solid var(--color-border);
           overflow: hidden;
           z-index: 1000;
           animation: dropDown 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -277,14 +289,15 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
         }
 
         .dropdown-header {
-          font-size: 0.72rem;
-          font-weight: 800;
+          font-family: var(--font-family-body);
+          font-size: 0.68rem;
+          font-weight: 700;
           text-transform: uppercase;
-          letter-spacing: 0.06em;
-          color: #7b948a;
+          letter-spacing: 0.08em;
+          color: var(--color-text-subtle);
           padding: 12px 18px 8px;
-          background: #f8faf8;
-          border-bottom: 1px solid #edf3ec;
+          background: var(--color-bg-app);
+          border-bottom: 1px solid var(--color-border-subtle);
         }
 
         .suggestions-list {
@@ -297,9 +310,9 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
           display: flex;
           align-items: center;
           gap: 14px;
-          padding: 14px 18px;
+          padding: 13px 18px;
           cursor: pointer;
-          border-bottom: 1px solid #f2f6f1;
+          border-bottom: 1px solid var(--color-border-subtle);
           transition: background 0.12s ease;
         }
 
@@ -308,15 +321,16 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
         }
 
         .suggestion-item:hover {
-          background-color: #f1f7f0;
+          background-color: var(--color-green-subtle);
         }
 
+        /* Icône pin en vert de la charte */
         .item-pin-wrap {
           width: 32px;
           height: 32px;
           border-radius: 8px;
-          background: #ebf3eb;
-          color: #173830;
+          background: var(--color-green-light);
+          color: var(--color-primary);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -330,14 +344,16 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
         }
 
         .item-title {
-          font-weight: 700;
-          font-size: 0.95rem;
-          color: #122c25;
+          font-family: var(--font-family-body);
+          font-weight: 600;
+          font-size: 0.93rem;
+          color: var(--color-primary);
         }
 
         .item-subtitle {
-          font-size: 0.8rem;
-          color: #6a7f76;
+          font-family: var(--font-family-body);
+          font-size: 0.78rem;
+          color: var(--color-text-muted);
         }
       `}</style>
     </div>

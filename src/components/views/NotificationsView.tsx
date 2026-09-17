@@ -56,6 +56,7 @@ export const NotificationsView: React.FC = () => {
       </div>
 
       <style>{`
+        /* NotificationsView — Charte Citynside V1 */
         .notifications-container {
           max-width: 760px;
           margin: 0 auto;
@@ -70,14 +71,16 @@ export const NotificationsView: React.FC = () => {
 
         .notif-title {
           font-size: 2rem;
-          color: #173830;
-          font-weight: 800;
+          color: var(--color-primary);
+          font-weight: 700;
         }
 
         .notif-subtitle {
-          font-size: 0.92rem;
+          font-family: var(--font-family-body);
+          font-size: 0.9rem;
           color: var(--color-text-muted);
           margin-top: 4px;
+          font-weight: 400;
         }
 
         .notif-list {
@@ -93,11 +96,12 @@ export const NotificationsView: React.FC = () => {
           background: #ffffff;
         }
 
+        /* Icône en fond vert de la charte */
         .notif-icon-wrap {
           width: 40px;
           height: 40px;
           border-radius: 10px;
-          background: var(--color-accent-light);
+          background: var(--color-green-light);
           color: var(--color-primary);
           display: flex;
           align-items: center;
@@ -119,20 +123,24 @@ export const NotificationsView: React.FC = () => {
         }
 
         .notif-item-title {
-          font-size: 0.94rem;
-          font-weight: 700;
-          color: #173830;
+          font-family: var(--font-family-body);
+          font-size: 0.92rem;
+          font-weight: 600;
+          color: var(--color-primary);
         }
 
         .notif-date {
-          font-size: 0.75rem;
-          color: #8fa097;
+          font-family: var(--font-family-body);
+          font-size: 0.73rem;
+          color: var(--color-text-subtle);
         }
 
         .notif-desc {
-          font-size: 0.84rem;
+          font-family: var(--font-family-body);
+          font-size: 0.83rem;
           color: var(--color-text-muted);
           line-height: 1.4;
+          font-weight: 400;
         }
       `}</style>
     </div>

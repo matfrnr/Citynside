@@ -310,6 +310,7 @@ export const ImpressionsView: React.FC<ImpressionsViewProps> = ({
       </div>
 
       <style>{`
+        /* ImpressionsView — Charte Citynside V1 */
         .impressions-view-container {
           max-width: 680px;
           margin: 0 auto;
@@ -324,14 +325,15 @@ export const ImpressionsView: React.FC<ImpressionsViewProps> = ({
           display: flex;
           align-items: center;
           gap: 8px;
-          color: #647a70;
-          font-size: 0.88rem;
-          font-weight: 600;
+          color: var(--color-text-muted);
+          font-family: var(--font-family-body);
+          font-size: 0.86rem;
+          font-weight: 500;
           padding: 6px 0;
           transition: color 0.15s ease;
         }
         .back-link-btn:hover {
-          color: #122c25;
+          color: var(--color-primary);
         }
 
         .impressions-header {
@@ -340,15 +342,18 @@ export const ImpressionsView: React.FC<ImpressionsViewProps> = ({
         }
 
         .impressions-title {
-          font-size: 2.15rem;
-          color: #122c25;
-          letter-spacing: -0.03em;
+          font-size: 2.1rem;
+          color: var(--color-primary);
+          letter-spacing: -0.025em;
+          font-weight: 700;
         }
 
         .impressions-subtitle {
-          font-size: 0.96rem;
-          color: #647a70;
+          font-family: var(--font-family-body);
+          font-size: 0.94rem;
+          color: var(--color-text-muted);
           margin-top: 6px;
+          font-weight: 400;
         }
 
         .impressions-sections-list {
@@ -371,25 +376,26 @@ export const ImpressionsView: React.FC<ImpressionsViewProps> = ({
         }
 
         .sec-icon {
-          color: #122c25;
+          color: var(--color-primary);
         }
 
         .sec-title {
-          font-weight: 800;
-          font-size: 1.15rem;
-          color: #122c25;
+          font-family: var(--font-family-heading);
+          font-weight: 700;
+          font-size: 1.1rem;
+          color: var(--color-primary);
           letter-spacing: -0.01em;
         }
 
         .impression-card {
-          padding: 24px;
+          padding: 22px;
           display: flex;
           flex-direction: column;
           gap: 20px;
           background: #ffffff;
           border-radius: var(--radius-md);
-          border: 1px solid #e3ebe1;
-          box-shadow: 0 4px 18px rgba(18, 44, 37, 0.04);
+          border: 1px solid var(--color-border);
+          box-shadow: var(--shadow-card);
         }
 
         .field-block {
@@ -398,11 +404,13 @@ export const ImpressionsView: React.FC<ImpressionsViewProps> = ({
           gap: 10px;
         }
 
+        /* Labels Poppins uppercase — selon usage charte */
         .field-label {
-          font-size: 0.72rem;
-          font-weight: 800;
-          letter-spacing: 0.07em;
-          color: #122c25;
+          font-family: var(--font-family-body);
+          font-size: 0.70rem;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          color: var(--color-primary);
           text-transform: uppercase;
         }
 
@@ -417,9 +425,10 @@ export const ImpressionsView: React.FC<ImpressionsViewProps> = ({
           display: flex;
           justify-content: space-between;
           align-items: center;
-          font-size: 0.8rem;
-          color: #7b948a;
-          font-weight: 500;
+          font-family: var(--font-family-body);
+          font-size: 0.78rem;
+          color: var(--color-text-muted);
+          font-weight: 400;
         }
 
         .field-row-toggle {
@@ -427,61 +436,65 @@ export const ImpressionsView: React.FC<ImpressionsViewProps> = ({
           align-items: center;
           justify-content: space-between;
           padding: 12px 0;
-          border-top: 1px solid #edf3ec;
-          border-bottom: 1px solid #edf3ec;
+          border-top: 1px solid var(--color-border-subtle);
+          border-bottom: 1px solid var(--color-border-subtle);
         }
 
         .toggle-title {
-          font-weight: 700;
-          font-size: 0.92rem;
-          color: #122c25;
+          font-family: var(--font-family-body);
+          font-weight: 600;
+          font-size: 0.9rem;
+          color: var(--color-primary);
         }
 
         .toggle-help {
-          font-size: 0.78rem;
-          color: #7b948a;
+          font-family: var(--font-family-body);
+          font-size: 0.76rem;
+          color: var(--color-text-muted);
           margin-top: 2px;
         }
 
         .segmented-switch {
           display: flex;
-          background: #ebf2ea;
+          background: var(--color-green-subtle);
           padding: 3px;
           border-radius: var(--radius-full);
-          border: 1px solid #dbe6d9;
+          border: 1px solid var(--color-border);
         }
 
         .switch-option {
           padding: 6px 18px;
           border-radius: var(--radius-full);
+          font-family: var(--font-family-body);
           font-size: 0.82rem;
-          font-weight: 700;
-          color: #647a70;
+          font-weight: 600;
+          color: var(--color-text-muted);
           transition: var(--transition-fast);
         }
 
         .switch-option.active {
           background: #ffffff;
-          color: #122c25;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+          color: var(--color-primary);
+          box-shadow: 0 2px 8px rgba(21, 58, 61, 0.12);
         }
 
         .impression-textarea {
+          font-family: var(--font-family-body);
           width: 100%;
           padding: 12px 16px;
-          border: 1px solid #e0ebe0;
+          border: 1px solid var(--color-border);
           border-radius: var(--radius-sm);
           font-size: 0.88rem;
-          color: #12251f;
-          background: #fafcfa;
+          color: var(--color-text-main);
+          background: var(--color-bg-app);
           resize: vertical;
           transition: border-color 0.15s ease, background 0.15s ease;
         }
 
         .impression-textarea:focus {
-          border-color: #9cbca4;
+          border-color: var(--color-green);
           background: #ffffff;
-          box-shadow: 0 0 0 3px rgba(156, 188, 164, 0.2);
+          box-shadow: 0 0 0 3px rgba(157, 197, 153, 0.22);
         }
 
         .chips-list {
@@ -494,31 +507,34 @@ export const ImpressionsView: React.FC<ImpressionsViewProps> = ({
           display: inline-flex;
           align-items: center;
           gap: 8px;
-          padding: 8px 18px;
+          padding: 8px 16px;
           border-radius: var(--radius-full);
-          border: 1px solid #dce6db;
+          border: 1px solid var(--color-border);
           background: #ffffff;
-          font-size: 0.88rem;
-          font-weight: 600;
-          color: #4b665c;
+          font-family: var(--font-family-body);
+          font-size: 0.86rem;
+          font-weight: 500;
+          color: var(--color-text-muted);
           transition: var(--transition-fast);
         }
 
         .tag-chip:hover {
-          border-color: #9cbca4;
-          background: #f4f8f4;
+          border-color: var(--color-green);
+          background: var(--color-green-subtle);
+          color: var(--color-primary);
         }
 
+        /* Chip sélectionné — vert #9dc599 */
         .tag-chip.selected {
-          background: #9cbca4;
-          color: #0f2720;
-          border-color: #9cbca4;
+          background: var(--color-green);
+          color: var(--color-primary-dark);
+          border-color: var(--color-green);
           font-weight: 700;
-          box-shadow: 0 2px 8px rgba(156, 188, 164, 0.3);
+          box-shadow: 0 2px 8px rgba(157, 197, 153, 0.35);
         }
 
         .check-chip {
-          color: #0f2720;
+          color: var(--color-primary-dark);
         }
 
         .impressions-footer-action {
@@ -527,11 +543,28 @@ export const ImpressionsView: React.FC<ImpressionsViewProps> = ({
           margin-top: 14px;
         }
 
+        /* Bouton principal — Jaune #f1e850 */
         .btn-save-large {
           width: 100%;
           max-width: 520px;
-          padding: 16px;
+          background-color: var(--color-yellow);
+          color: var(--color-text-on-yellow);
+          font-weight: 700;
           font-size: 1.05rem;
+          padding: 16px;
+          border-radius: var(--radius-full);
+          box-shadow: var(--shadow-cta-yellow);
+          transition: var(--transition-smooth);
+        }
+
+        .btn-save-large:hover {
+          background-color: var(--color-yellow-hover);
+          transform: translateY(-2px);
+          box-shadow: 0 10px 28px rgba(241, 232, 80, 0.52);
+        }
+
+        .btn-save-large:active {
+          transform: translateY(0);
         }
       `}</style>
     </div>

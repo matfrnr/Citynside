@@ -76,40 +76,53 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       <style>{`
+        /* ===================================================
+           SIDEBAR — Charte Citynside V1
+           - Fond blanc, bordure droite subtile
+           - Nav active : fond #153a3d + texte blanc
+           - Brand : Fira Sans
+           =================================================== */
         .cyt-sidebar {
-          width: 250px;
-          min-width: 250px;
+          width: 252px;
+          min-width: 252px;
           height: 100vh;
           background: #ffffff;
-          border-right: 1px solid #e7efe5;
+          border-right: 1px solid #dce8e0;
           display: flex;
           flex-direction: column;
-          padding: 32px 18px 24px;
+          padding: 28px 16px 22px;
           z-index: 50;
-          box-shadow: 2px 0 12px rgba(0, 0, 0, 0.02);
+          box-shadow: 2px 0 16px rgba(21, 58, 61, 0.03);
         }
 
         .sidebar-brand-block {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 10px;
+          gap: 8px;
           cursor: pointer;
-          margin-bottom: 40px;
+          margin-bottom: 36px;
           user-select: none;
+          padding: 8px;
+          border-radius: var(--radius-sm);
+          transition: background 0.15s ease;
+        }
+
+        .sidebar-brand-block:hover {
+          background: var(--color-green-subtle);
         }
 
         .brand-logo-container {
-          width: 54px;
-          height: 54px;
+          width: 50px;
+          height: 50px;
           display: flex;
           align-items: center;
           justify-content: center;
-          transition: transform 0.2s ease;
+          transition: transform 0.22s ease;
         }
 
         .sidebar-brand-block:hover .brand-logo-container {
-          transform: scale(1.05);
+          transform: scale(1.06);
         }
 
         .brand-logo-img {
@@ -118,86 +131,97 @@ export const Sidebar: React.FC<SidebarProps> = ({
           object-fit: contain;
         }
 
+        /* Fira Sans pour le logotype — Charte V1 */
         .brand-title {
           font-family: var(--font-family-heading);
-          font-size: 1.7rem;
-          font-weight: 800;
-          color: #122c25;
-          letter-spacing: -0.03em;
+          font-size: 1.55rem;
+          font-weight: 700;
+          color: var(--color-primary);
+          letter-spacing: -0.02em;
         }
 
         .sidebar-nav {
           display: flex;
           flex-direction: column;
-          gap: 12px;
+          gap: 6px;
           flex: 1;
         }
 
         .sidebar-nav-btn {
           display: flex;
           align-items: center;
-          gap: 14px;
-          padding: 12px 18px;
+          gap: 12px;
+          padding: 11px 16px;
           border-radius: var(--radius-sm);
-          font-size: 0.98rem;
-          font-weight: 600;
-          color: #2b453d;
+          font-family: var(--font-family-body);
+          font-size: 0.93rem;
+          font-weight: 500;
+          color: var(--color-text-muted);
           transition: var(--transition-fast);
           position: relative;
         }
 
         .sidebar-nav-btn:hover {
-          background-color: #f3f7f2;
-          color: #122c25;
+          background-color: var(--color-green-subtle);
+          color: var(--color-primary);
         }
 
+        /* Nav active : fond #153a3d (couleur principale charte V1) */
         .sidebar-nav-btn.active {
-          background-color: #9cbca4;
-          color: #0e241e;
+          background-color: var(--color-primary);
+          color: #ffffff;
           font-weight: 700;
-          box-shadow: 0 4px 12px rgba(156, 188, 164, 0.35);
+          box-shadow: 0 4px 14px rgba(21, 58, 61, 0.30);
         }
 
         .nav-icon {
           flex-shrink: 0;
         }
 
+        /* Badge en vert #9dc599 */
         .nav-badge {
           margin-left: auto;
-          background: #173830;
-          color: white;
-          font-size: 0.72rem;
+          background: var(--color-green);
+          color: var(--color-primary-dark);
+          font-size: 0.70rem;
           padding: 2px 7px;
           border-radius: 99px;
           font-weight: 700;
+          font-family: var(--font-family-body);
+        }
+
+        .sidebar-nav-btn.active .nav-badge {
+          background: var(--color-yellow);
+          color: var(--color-primary-dark);
         }
 
         .sidebar-footer {
           margin-top: auto;
-          padding-top: 20px;
-          border-top: 1px solid #edf3ec;
+          padding-top: 18px;
+          border-top: 1px solid var(--color-border-subtle);
         }
 
         .agent-profile {
           display: flex;
           align-items: center;
-          gap: 12px;
+          gap: 10px;
           cursor: pointer;
-          padding: 8px;
+          padding: 8px 10px;
           border-radius: var(--radius-sm);
           transition: background 0.15s ease;
         }
 
         .agent-profile:hover {
-          background: #f4f8f4;
+          background: var(--color-green-subtle);
         }
 
+        /* Bordure avatar en vert de la charte */
         .avatar-img-wrap {
-          width: 36px;
-          height: 36px;
+          width: 34px;
+          height: 34px;
           border-radius: 50%;
           overflow: hidden;
-          border: 2px solid #9cbca4;
+          border: 2px solid var(--color-green);
           flex-shrink: 0;
         }
 
@@ -208,23 +232,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
         }
 
         .agent-label {
-          font-size: 0.88rem;
-          font-weight: 700;
-          color: #122c25;
+          font-family: var(--font-family-body);
+          font-size: 0.85rem;
+          font-weight: 600;
+          color: var(--color-primary);
         }
 
         @media (max-width: 768px) {
           .cyt-sidebar {
-            width: 76px;
-            min-width: 76px;
-            padding: 20px 8px;
+            width: 68px;
+            min-width: 68px;
+            padding: 18px 8px;
           }
           .brand-title, .nav-label, .agent-label {
             display: none;
           }
           .sidebar-nav-btn {
             justify-content: center;
-            padding: 12px;
+            padding: 11px;
           }
         }
       `}</style>

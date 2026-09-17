@@ -104,6 +104,7 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
       </div>
 
       <style>{`
+        /* EnregistrementsView — Charte Citynside V1 */
         .enregistrements-container {
           max-width: 960px;
           margin: 0 auto;
@@ -119,14 +120,16 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
 
         .enreg-title {
           font-size: 2rem;
-          color: #173830;
-          font-weight: 800;
+          color: var(--color-primary);
+          font-weight: 700;
         }
 
         .enreg-subtitle {
-          font-size: 0.92rem;
+          font-family: var(--font-family-body);
+          font-size: 0.9rem;
           color: var(--color-text-muted);
           margin-top: 4px;
+          font-weight: 400;
         }
 
         .enreg-toolbar {
@@ -137,6 +140,7 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
           flex-wrap: wrap;
         }
 
+        /* Barre de recherche en fond blanc */
         .search-filter-box {
           display: flex;
           align-items: center;
@@ -144,41 +148,51 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
           background: #ffffff;
           border: 1px solid var(--color-border);
           border-radius: var(--radius-full);
-          padding: 8px 16px;
+          padding: 9px 18px;
           flex: 1;
           max-width: 420px;
+          transition: border-color 0.15s ease;
+        }
+
+        .search-filter-box:focus-within {
+          border-color: var(--color-green);
         }
 
         .search-filter-box input {
           border: none;
           background: transparent;
           width: 100%;
-          font-size: 0.88rem;
+          font-family: var(--font-family-body);
+          font-size: 0.87rem;
           color: var(--color-text-main);
         }
 
         .s-icon {
-          color: var(--color-text-muted);
+          color: var(--color-text-subtle);
         }
 
+        /* Bouton filtre Favoris */
         .filter-btn {
           display: flex;
           align-items: center;
           gap: 8px;
-          padding: 8px 18px;
+          padding: 9px 18px;
           border-radius: var(--radius-full);
           border: 1px solid var(--color-border);
           background: #ffffff;
+          font-family: var(--font-family-body);
           font-size: 0.84rem;
-          font-weight: 600;
+          font-weight: 500;
           color: var(--color-text-muted);
-          transition: var(--transition-default);
+          transition: var(--transition-fast);
         }
 
+        /* Filtre actif en vert #9dc599 */
         .filter-btn.active {
-          background: #9cbca4;
-          color: #143027;
-          border-color: #9cbca4;
+          background: var(--color-green);
+          color: var(--color-primary-dark);
+          border-color: var(--color-green);
+          font-weight: 700;
         }
 
         .enreg-grid {
@@ -207,36 +221,45 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
         }
 
         .b-icon {
-          color: #173830;
+          color: var(--color-primary);
           flex-shrink: 0;
           margin-top: 2px;
         }
 
         .card-name {
+          font-family: var(--font-family-heading);
           font-size: 1rem;
-          font-weight: 800;
-          color: #173830;
+          font-weight: 700;
+          color: var(--color-primary);
         }
 
         .card-address {
-          font-size: 0.78rem;
+          font-family: var(--font-family-body);
+          font-size: 0.76rem;
           color: var(--color-text-muted);
+          margin-top: 2px;
         }
 
         .fav-btn {
-          color: #9cb1a5;
+          color: var(--color-border-active);
+          transition: color 0.15s ease;
         }
         .fav-btn.favorited {
-          color: #1b4b3e;
+          color: var(--color-primary);
+        }
+        .fav-btn:hover {
+          color: var(--color-primary-light);
         }
 
+        /* Zone score en fond vert très clair */
         .card-indicators-row {
           display: flex;
           align-items: center;
           gap: 14px;
-          background: #f7faf7;
+          background: var(--color-green-subtle);
           padding: 10px 14px;
           border-radius: var(--radius-xs);
+          border: 1px solid var(--color-border-subtle);
         }
 
         .score-box {
@@ -245,17 +268,20 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
         }
 
         .score-val {
+          font-family: var(--font-family-heading);
           font-size: 1.4rem;
-          font-weight: 800;
-          color: #173830;
+          font-weight: 700;
+          color: var(--color-primary);
           line-height: 1;
         }
 
         .score-label {
-          font-size: 0.65rem;
-          color: var(--color-text-muted);
+          font-family: var(--font-family-body);
+          font-size: 0.62rem;
+          color: var(--color-text-subtle);
           text-transform: uppercase;
-          font-weight: 700;
+          font-weight: 600;
+          letter-spacing: 0.04em;
         }
 
         .categories-mini-pills {
@@ -265,12 +291,13 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
         }
 
         .mini-pill {
-          font-size: 0.72rem;
+          font-family: var(--font-family-body);
+          font-size: 0.70rem;
           background: #ffffff;
           border: 1px solid var(--color-border);
           padding: 3px 8px;
           border-radius: 4px;
-          color: #3b5047;
+          color: var(--color-text-muted);
         }
 
         .card-bottom {
@@ -281,8 +308,9 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
         }
 
         .date-tag {
-          font-size: 0.72rem;
-          color: var(--color-text-muted);
+          font-family: var(--font-family-body);
+          font-size: 0.70rem;
+          color: var(--color-text-subtle);
           display: flex;
           align-items: center;
           gap: 4px;

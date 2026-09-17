@@ -79,6 +79,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       </section>
 
       <style>{`
+        /* HomeView — Charte Citynside V1 */
         .home-view-container {
           max-width: 960px;
           margin: 0 auto;
@@ -93,18 +94,20 @@ export const HomeView: React.FC<HomeViewProps> = ({
           margin-top: 12px;
         }
 
+        /* Fira Sans via la règle globale h1 */
         .hero-title {
-          font-size: 2.35rem;
-          color: #122c25;
-          font-weight: 800;
-          letter-spacing: -0.03em;
+          font-size: 2.3rem;
+          color: var(--color-primary);
+          font-weight: 700;
+          letter-spacing: -0.025em;
         }
 
         .hero-subtitle {
-          font-size: 1rem;
-          color: #647a70;
+          font-family: var(--font-family-body);
+          font-size: 0.98rem;
+          color: var(--color-text-muted);
           margin-top: 10px;
-          font-weight: 500;
+          font-weight: 400;
         }
 
         .recent-analyses-section {
@@ -118,11 +121,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
           align-items: center;
         }
 
+        /* Fira Sans via la règle globale h2 */
         .section-heading {
-          font-size: 1.35rem;
-          font-weight: 800;
-          color: #122c25;
-          letter-spacing: -0.02em;
+          font-size: 1.3rem;
+          font-weight: 700;
+          color: var(--color-primary);
+          letter-spacing: -0.015em;
         }
 
         .analyses-cards-grid {
@@ -144,21 +148,21 @@ export const HomeView: React.FC<HomeViewProps> = ({
         }
 
         .analysis-card {
-          padding: 24px 22px 20px;
+          padding: 22px 20px 18px;
           display: flex;
           flex-direction: column;
-          gap: 20px;
+          gap: 18px;
           background: #ffffff;
           border-radius: var(--radius-md);
-          border: 1px solid #e5ede3;
-          box-shadow: 0 4px 16px rgba(18, 44, 37, 0.04);
+          border: 1px solid var(--color-border);
+          box-shadow: var(--shadow-card);
           transition: var(--transition-smooth);
         }
 
         .analysis-card:hover {
           transform: translateY(-2px);
-          box-shadow: 0 8px 24px rgba(18, 44, 37, 0.08);
-          border-color: #d1e2cf;
+          box-shadow: var(--shadow-hover);
+          border-color: var(--color-green);
         }
 
         .card-top-row {
@@ -167,8 +171,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
           gap: 12px;
         }
 
+        /* Icône bâtiment en couleur primaire */
         .card-building-icon {
-          color: #122c25;
+          width: 36px;
+          height: 36px;
+          border-radius: var(--radius-xs);
+          background: var(--color-green-light);
+          color: var(--color-primary);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -176,9 +185,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
         }
 
         .card-quarter-name {
-          font-size: 1.05rem;
-          font-weight: 800;
-          color: #122c25;
+          font-family: var(--font-family-heading);
+          font-size: 1rem;
+          font-weight: 700;
+          color: var(--color-primary);
           line-height: 1.25;
           letter-spacing: -0.01em;
         }
@@ -187,13 +197,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
           display: flex;
           justify-content: space-between;
           align-items: baseline;
-          padding: 0 4px;
+          padding: 10px 12px;
+          background: var(--color-bg-app);
+          border-radius: var(--radius-xs);
         }
 
         .meta-col {
           display: flex;
           flex-direction: column;
-          gap: 4px;
+          gap: 3px;
         }
 
         .meta-col.text-right {
@@ -201,26 +213,28 @@ export const HomeView: React.FC<HomeViewProps> = ({
         }
 
         .meta-label {
-          font-size: 0.72rem;
-          color: #8c9e96;
-          font-weight: 500;
+          font-size: 0.68rem;
+          color: var(--color-text-subtle);
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
         }
 
         .meta-value {
-          font-size: 0.95rem;
-          font-weight: 700;
-          color: #122c25;
+          font-size: 0.92rem;
+          font-weight: 600;
+          color: var(--color-primary);
         }
 
         .meta-score {
-          font-size: 0.95rem;
-          color: #122c25;
+          font-size: 0.92rem;
+          color: var(--color-primary);
         }
 
         .meta-score b {
           font-size: 1.15rem;
-          font-weight: 800;
-          color: #122c25;
+          font-weight: 700;
+          color: var(--color-primary);
         }
 
         .card-action-wrap {
@@ -228,21 +242,22 @@ export const HomeView: React.FC<HomeViewProps> = ({
           display: flex;
         }
 
+        /* Bouton secondaire sur les cartes — vert */
         .btn-report-pill {
           width: 100%;
-          border-color: #9cbca4;
-          color: #1b453a;
-          font-weight: 700;
-          font-size: 0.88rem;
+          border-color: var(--color-green);
+          color: var(--color-primary);
+          font-weight: 600;
+          font-size: 0.86rem;
           padding: 8px 16px;
           border-radius: var(--radius-full);
           transition: var(--transition-fast);
         }
 
         .btn-report-pill:hover {
-          background: #edf5eb;
-          border-color: #89b392;
-          color: #102d25;
+          background: var(--color-green-light);
+          border-color: var(--color-green-hover);
+          color: var(--color-primary-dark);
         }
 
         .home-cta-wrap {
@@ -251,21 +266,29 @@ export const HomeView: React.FC<HomeViewProps> = ({
           margin-top: 16px;
         }
 
+        /* CTA principal — Jaune #f1e850 (accent charte V1) */
         .home-big-cta {
           width: 100%;
           max-width: 660px;
-          background-color: #9cbca4;
-          color: #102b23;
+          background-color: var(--color-yellow);
+          color: var(--color-text-on-yellow);
           font-weight: 700;
-          font-size: 1.08rem;
+          font-size: 1.05rem;
           padding: 16px 32px;
           border-radius: var(--radius-full);
-          box-shadow: 0 6px 20px rgba(156, 188, 164, 0.45);
+          box-shadow: var(--shadow-cta-yellow);
+          transition: var(--transition-smooth);
         }
 
         .home-big-cta:hover {
-          background-color: #add0b6;
-          box-shadow: 0 8px 24px rgba(156, 188, 164, 0.6);
+          background-color: var(--color-yellow-hover);
+          transform: translateY(-2px);
+          box-shadow: 0 10px 30px rgba(241, 232, 80, 0.52);
+        }
+
+        .home-big-cta:active {
+          transform: translateY(0);
+          box-shadow: var(--shadow-cta-yellow);
         }
       `}</style>
     </div>
