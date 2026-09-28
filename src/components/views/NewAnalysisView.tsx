@@ -1,12 +1,18 @@
-import { useState } from 'react';
-import { ArrowRight, MapPin, Search } from 'lucide-react';
-import { AddressSearchBar } from '../search/AddressSearchBar';
-import { InteractiveMap } from '../map/InteractiveMap';
-import { ScoresList } from '../scores/ScoresList';
-import type { NeighborhoodAnalysis, AddressResult } from '../../types';
-import { fetchPOIsInRadius } from '../../services/osmApi';
-import { calculateCategoryScores } from '../../services/scoringEngine';
-import { reverseGeocode } from '../../services/banApi';
+import { ArrowRight, MapPin, Search } from "lucide-react";
+import { useState } from "react";
+import { fetchAirQuality } from "../../services/airQualityApi";
+import { reverseGeocode } from "../../services/banApi";
+import {
+  fetchEducationPOIsInRadius,
+  mergeEducationPOIs,
+} from "../../services/educationApi";
+import { fetchPOIsInRadius } from "../../services/osmApi";
+import { calculateCategoryScores } from "../../services/scoringEngine";
+import { fetchSNCFStationsInRadius } from "../../services/sncfApi";
+import type { AddressResult, NeighborhoodAnalysis, POI } from "../../types";
+import { InteractiveMap } from "../map/InteractiveMap";
+import { ScoresList } from "../scores/ScoresList";
+import { AddressSearchBar } from "../search/AddressSearchBar";
 
 interface NewAnalysisViewProps {
   currentAnalysis: NeighborhoodAnalysis | null;
@@ -22,15 +28,54 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Fonction résiliente et accélérée d'agrégation multi-API
+  const runParallelAnalysis = async (lat: number, lon: number) => {
+    const [osmRes, eduRes, sncfRes, airRes] = await Promise.allSettled([
+      fetchPOIsInRadius(lat, lon, 850),
+      fetchEducationPOIsInRadius(lat, lon, 850),
+      fetchSNCFStationsInRadius(lat, lon, 1200),
+      fetchAirQuality(lat, lon),
+    ]);
+
+    const osmPOIs: POI[] = osmRes.status === "fulfilled" ? osmRes.value : [];
+    const eduPOIs: POI[] = eduRes.status === "fulfilled" ? eduRes.value : [];
+    const sncfPOIs: POI[] = sncfRes.status === "fulfilled" ? sncfRes.value : [];
+    const airQuality = airRes.status === "fulfilled" ? airRes.value : null;
+
+    // Fusionner et dédupliquer les POIs officiels SNCF + Éducation + OSM
+    const mergedSchools = mergeEducationPOIs(osmPOIs, eduPOIs);
+    const allPOIs = [...mergedSchools];
+
+    // Ajouter les gares SNCF si pas déjà présentes à < 50m
+    for (const sncf of sncfPOIs) {
+      const alreadyHasStation = allPOIs.some(
+        (p) =>
+          p.category === "transports" &&
+          Math.abs(p.lat - sncf.lat) < 0.0006 &&
+          Math.abs(p.lon - sncf.lon) < 0.0006,
+      );
+      if (!alreadyHasStation) {
+        allPOIs.push(sncf);
+      }
+    }
+
+    allPOIs.sort((a, b) => a.distanceMeters - b.distanceMeters);
+    const categories = calculateCategoryScores(allPOIs, airQuality);
+
+    const sum = categories.reduce((acc, curr) => acc + curr.score, 0);
+    const avg = Math.round((sum / categories.length) * 10) / 10;
+
+    return { pois: allPOIs, categories, avg, airQuality };
+  };
+
   // When user selects an address in autocomplete or hits Analyser
   const handleSelectAddress = async (addr: AddressResult) => {
     setIsLoading(true);
     try {
-      const pois = await fetchPOIsInRadius(addr.lat, addr.lon, 900);
-      const categories = calculateCategoryScores(pois);
-
-      const sum = categories.reduce((acc, curr) => acc + curr.score, 0);
-      const avg = Math.round((sum / categories.length) * 10) / 10;
+      const { pois, categories, avg } = await runParallelAnalysis(
+        addr.lat,
+        addr.lon,
+      );
 
       const updated: NeighborhoodAnalysis = {
         id: `analysis_${Date.now()}`,
@@ -38,7 +83,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
         address: addr.name || addr.label,
         city: addr.city,
         postcode: addr.postcode,
-        neighborhoodName: `Quartier ${addr.name.split(' ')[0] || addr.city}`,
+        neighborhoodName: `Quartier ${addr.name.split(" ")[0] || addr.city}`,
         lat: addr.lat,
         lon: addr.lon,
         globalScore: avg,
@@ -49,7 +94,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
 
       onUpdateAnalysis(updated);
     } catch (e) {
-      console.error('Erreur analyse:', e);
+      console.error("Erreur analyse:", e);
     } finally {
       setIsLoading(false);
     }
@@ -57,21 +102,25 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
 
   // When user clicks anywhere on map
   const handleMapLocationSelect = async (lat: number, lon: number) => {
+    setSelectedCategory(null); // Réinitialise le filtre pour afficher tous les équipements du nouvel emplacement
     setIsLoading(true);
     try {
-      const rev = await reverseGeocode(lat, lon);
-      const pois = await fetchPOIsInRadius(lat, lon, 900);
-      const categories = calculateCategoryScores(pois);
-      const sum = categories.reduce((acc, curr) => acc + curr.score, 0);
-      const avg = Math.round((sum / categories.length) * 10) / 10;
+      const [rev, analysisData] = await Promise.all([
+        reverseGeocode(lat, lon),
+        runParallelAnalysis(lat, lon),
+      ]);
+
+      const { pois, categories, avg } = analysisData;
 
       const updated: NeighborhoodAnalysis = {
         id: `analysis_${Date.now()}`,
         createdAt: new Date().toISOString(),
         address: rev ? rev.name : `${lat.toFixed(4)}, ${lon.toFixed(4)}`,
-        city: rev ? rev.city : currentAnalysis?.city ?? '',
-        postcode: rev ? rev.postcode : currentAnalysis?.postcode ?? '',
-        neighborhoodName: rev ? `Quartier ${rev.name}` : currentAnalysis?.neighborhoodName ?? 'Zone sélectionnée',
+        city: rev ? rev.city : (currentAnalysis?.city ?? ""),
+        postcode: rev ? rev.postcode : (currentAnalysis?.postcode ?? ""),
+        neighborhoodName: rev
+          ? `Quartier ${rev.name}`
+          : (currentAnalysis?.neighborhoodName ?? "Zone sélectionnée"),
         lat,
         lon,
         globalScore: avg,
@@ -82,7 +131,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
 
       onUpdateAnalysis(updated);
     } catch (e) {
-      console.error(e);
+      console.error("Erreur lors de la sélection de position:", e);
     } finally {
       setIsLoading(false);
     }
@@ -93,13 +142,19 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
       {/* Header section matching Mockup 2 */}
       <div className="analysis-page-header">
         <h1 className="header-main-title">Nouveau quartier</h1>
-        <p className="header-main-subtitle">Recherchez et définissez une nouvelle zone à analyser</p>
+        <p className="header-main-subtitle">
+          Recherchez et définissez une nouvelle zone à analyser
+        </p>
       </div>
 
       {/* Dark Search Bar matching Mockup 2 */}
       <div className="search-bar-row">
         <AddressSearchBar
-          initialValue={currentAnalysis ? `${currentAnalysis.address}, ${currentAnalysis.city}` : ''}
+          initialValue={
+            currentAnalysis
+              ? `${currentAnalysis.address}, ${currentAnalysis.city}`
+              : ""
+          }
           onSelectAddress={handleSelectAddress}
           onTriggerAnalysis={() => {}}
           isLoading={isLoading}
@@ -116,12 +171,16 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
                 neighborhoodName={currentAnalysis.neighborhoodName}
                 pois={currentAnalysis.pois}
                 selectedCategory={selectedCategory}
+                onSelectCategory={setSelectedCategory}
                 onSelectLocation={handleMapLocationSelect}
                 height="420px"
               />
               <div className="map-caption-bar">
                 <span className="map-caption-text">
-                  <MapPin size={13} style={{ display: 'inline', marginRight: '4px' }} />
+                  <MapPin
+                    size={13}
+                    style={{ display: "inline", marginRight: "4px" }}
+                  />
                   Cliquez n'importe où sur la carte pour déplacer l'analyse
                 </span>
               </div>
@@ -139,21 +198,31 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
         </div>
       ) : (
         <div className="analysis-empty-state" role="status">
-          <span className="empty-search-icon"><Search size={24} /></span>
+          <span className="empty-search-icon">
+            <Search size={24} />
+          </span>
           <div>
             <h2>Commencez par une adresse</h2>
-            <p>La carte et les scores s’affichent après le lancement de l’analyse.</p>
+            <p>
+              La carte et les scores s’affichent après le lancement de
+              l’analyse.
+            </p>
           </div>
         </div>
       )}
 
       {/* Bottom CTA Button matching Mockup 2 */}
-      {currentAnalysis && <div className="analysis-bottom-cta-wrap">
-        <button className="btn-primary cta-impressions-btn" onClick={onGoToImpressions}>
-          <span>Renseigner mes impressions</span>
-          <ArrowRight size={20} strokeWidth={2.4} />
-        </button>
-      </div>}
+      {currentAnalysis && (
+        <div className="analysis-bottom-cta-wrap">
+          <button
+            className="btn-primary cta-impressions-btn"
+            onClick={onGoToImpressions}
+          >
+            <span>Renseigner mes impressions</span>
+            <ArrowRight size={20} strokeWidth={2.4} />
+          </button>
+        </div>
+      )}
 
       <style>{`
         /* NewAnalysisView — Charte Citynside V1 */

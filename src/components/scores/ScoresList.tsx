@@ -1,18 +1,24 @@
-import React, { useState } from 'react';
 import {
+  Accessibility,
+  AlertTriangle,
+  ArrowDownRight,
+  ArrowUpRight,
   Bus,
-  ShoppingBag,
+  Car,
+  CheckCircle2,
+  ChevronRight,
   GraduationCap,
   HeartPulse,
-  TreePine,
-  Car,
-  Volume2,
-  Accessibility,
   Info,
-  ChevronRight,
+  MinusCircle,
+  PlusCircle,
+  ShoppingBag,
+  TreePine,
+  Volume2,
   X,
-} from 'lucide-react';
-import type { CategoryScore } from '../../types';
+} from "lucide-react";
+import React, { useState } from "react";
+import type { CategoryScore } from "../../types";
 
 interface ScoresListProps {
   categories: CategoryScore[];
@@ -27,25 +33,27 @@ export const ScoresList: React.FC<ScoresListProps> = ({
   onSelectCategory,
   addressName,
 }) => {
-  const [modalCategory, setModalCategory] = useState<CategoryScore | null>(null);
+  const [modalCategory, setModalCategory] = useState<CategoryScore | null>(
+    null,
+  );
 
   const getIcon = (iconName: string) => {
     switch (iconName) {
-      case 'Bus':
+      case "Bus":
         return <Bus size={18} />;
-      case 'ShoppingBag':
+      case "ShoppingBag":
         return <ShoppingBag size={18} />;
-      case 'GraduationCap':
+      case "GraduationCap":
         return <GraduationCap size={18} />;
-      case 'HeartPulse':
+      case "HeartPulse":
         return <HeartPulse size={18} />;
-      case 'TreePine':
+      case "TreePine":
         return <TreePine size={18} />;
-      case 'Car':
+      case "Car":
         return <Car size={18} />;
-      case 'Volume2':
+      case "Volume2":
         return <Volume2 size={18} />;
-      case 'Accessibility':
+      case "Accessibility":
         return <Accessibility size={18} />;
       default:
         return <Info size={18} />;
@@ -53,10 +61,10 @@ export const ScoresList: React.FC<ScoresListProps> = ({
   };
 
   const getScoreColor = (score: number) => {
-    if (score >= 8) return '#2e7d32';
-    if (score >= 6.5) return '#437356';
-    if (score >= 5) return '#d97706';
-    return '#dc2626';
+    if (score >= 8) return "#2e7d32";
+    if (score >= 6.5) return "#437356";
+    if (score >= 5) return "#d97706";
+    return "#dc2626";
   };
 
   return (
@@ -65,18 +73,18 @@ export const ScoresList: React.FC<ScoresListProps> = ({
         <div className="scores-header-top">
           <h3 className="scores-title">Scores & Indicateurs d'environnement</h3>
           {addressName && (
-            <span className="address-live-badge">
-              📍 {addressName}
-            </span>
+            <span className="address-live-badge">📍 {addressName}</span>
           )}
         </div>
-        <p className="scores-subtitle">Données calculées en temps réel • Cliquez pour filtrer</p>
+        <p className="scores-subtitle">
+          Données calculées en temps réel • Découvrez précisément ce qui fait gagner ou perdre des points
+        </p>
       </div>
 
       {/* Filter Tabs */}
       <div className="categories-filter-bar">
         <button
-          className={`filter-pill ${selectedCategory === null ? 'active' : ''}`}
+          className={`filter-pill ${selectedCategory === null ? "active" : ""}`}
           onClick={() => onSelectCategory(null)}
         >
           Tous ({categories.length})
@@ -84,8 +92,12 @@ export const ScoresList: React.FC<ScoresListProps> = ({
         {categories.map((c) => (
           <button
             key={c.category}
-            className={`filter-pill ${selectedCategory === c.category ? 'active' : ''}`}
-            onClick={() => onSelectCategory(selectedCategory === c.category ? null : c.category)}
+            className={`filter-pill ${selectedCategory === c.category ? "active" : ""}`}
+            onClick={() =>
+              onSelectCategory(
+                selectedCategory === c.category ? null : c.category,
+              )
+            }
           >
             {c.label}
           </button>
@@ -98,14 +110,27 @@ export const ScoresList: React.FC<ScoresListProps> = ({
           .filter((c) => !selectedCategory || selectedCategory === c.category)
           .map((cat) => {
             const scoreColor = getScoreColor(cat.score);
+            const totalPos = (cat.positiveFactors || []).reduce(
+              (acc, f) => acc + f.points,
+              0,
+            );
+            const totalNeg = Math.abs(
+              (cat.negativeFactors || []).reduce((acc, f) => acc + f.points, 0),
+            );
+
             return (
               <div key={cat.category} className="score-card-item cyt-card">
                 <div className="card-top-row">
                   <div className="card-icon-title">
-                    <span className="cat-icon-badge">{getIcon(cat.iconName)}</span>
+                    <span className="cat-icon-badge">
+                      {getIcon(cat.iconName)}
+                    </span>
                     <span className="cat-label">{cat.label}</span>
                   </div>
-                  <div className="score-badge" style={{ color: scoreColor, borderColor: scoreColor }}>
+                  <div
+                    className="score-badge"
+                    style={{ color: scoreColor, borderColor: scoreColor }}
+                  >
                     <span className="score-val">{cat.score.toFixed(1)}</span>
                     <span className="score-max">/10</span>
                   </div>
@@ -124,15 +149,39 @@ export const ScoresList: React.FC<ScoresListProps> = ({
                   />
                 </div>
 
-                {/* Key Points - up to 3 details */}
-                <ul className="details-list">
-                  {cat.details.slice(0, 3).map((det, i) => (
-                    <li key={i} className="detail-item">
-                      <span className="bullet">•</span>
-                      <span>{det}</span>
-                    </li>
+                {/* Score balance pills : Ce qui rapporte et ce qui coûte */}
+                <div className="card-score-factors-summary">
+                  {totalPos > 0 && (
+                    <span className="factor-pill pill-pos">
+                      <ArrowUpRight size={13} />
+                      +{totalPos.toFixed(1)} pts gagnés
+                    </span>
+                  )}
+                  {totalNeg > 0 && (
+                    <span className="factor-pill pill-neg">
+                      <ArrowDownRight size={13} />
+                      -{totalNeg.toFixed(1)} pts pénalisés
+                    </span>
+                  )}
+                </div>
+
+                {/* Highlights List: Top Positive & Top Negative */}
+                <div className="factors-preview-list">
+                  {(cat.positiveFactors || []).slice(0, 2).map((pos, idx) => (
+                    <div key={`pos_${idx}`} className="preview-factor-item pos">
+                      <PlusCircle size={14} className="factor-icon pos" />
+                      <span className="factor-text">{pos.label}</span>
+                      <span className="factor-pts">+{pos.points.toFixed(1)}</span>
+                    </div>
                   ))}
-                </ul>
+                  {(cat.negativeFactors || []).slice(0, 1).map((neg, idx) => (
+                    <div key={`neg_${idx}`} className="preview-factor-item neg">
+                      <MinusCircle size={14} className="factor-icon neg" />
+                      <span className="factor-text">{neg.label}</span>
+                      <span className="factor-pts">{neg.points.toFixed(1)}</span>
+                    </div>
+                  ))}
+                </div>
 
                 {/* Explainability button */}
                 <div className="card-footer-action">
@@ -141,7 +190,7 @@ export const ScoresList: React.FC<ScoresListProps> = ({
                     onClick={() => setModalCategory(cat)}
                   >
                     <Info size={14} />
-                    <span>Comment c'est calculé ? ({cat.sources.length} sources)</span>
+                    <span>Détail complet du calcul & sources</span>
                     <ChevronRight size={14} />
                   </button>
                 </div>
@@ -150,13 +199,21 @@ export const ScoresList: React.FC<ScoresListProps> = ({
           })}
       </div>
 
-      {/* Transparency & Methodology Modal */}
+      {/* Transparency & Detailed Points Breakdown Modal */}
       {modalCategory && (
-        <div className="methodology-modal-overlay" onClick={() => setModalCategory(null)}>
-          <div className="methodology-modal" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="methodology-modal-overlay"
+          onClick={() => setModalCategory(null)}
+        >
+          <div
+            className="methodology-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-header">
               <div className="modal-title-wrap">
-                <span className="modal-cat-icon">{getIcon(modalCategory.iconName)}</span>
+                <span className="modal-cat-icon">
+                  {getIcon(modalCategory.iconName)}
+                </span>
                 <div>
                   <h4 className="modal-title">{modalCategory.label}</h4>
                   <span className="modal-score-sub">
@@ -164,36 +221,133 @@ export const ScoresList: React.FC<ScoresListProps> = ({
                   </span>
                 </div>
               </div>
-              <button className="modal-close-btn" onClick={() => setModalCategory(null)}>
+              <button
+                className="modal-close-btn"
+                onClick={() => setModalCategory(null)}
+              >
                 <X size={20} />
               </button>
             </div>
 
             <div className="modal-body">
-              <section className="modal-section">
-                <h5 className="section-label">Méthodologie de calcul</h5>
-                <p className="section-text">{modalCategory.calculationExplanation}</p>
+              {/* Formula & Summary */}
+              <section className="modal-section balance-summary-box">
+                <h5 className="section-label">Barème & Décomposition de la note</h5>
+                <div className="balance-grid">
+                  <div className="balance-col">
+                    <span className="balance-sub">Score de base</span>
+                    <span className="balance-val neutral">
+                      {(modalCategory.baseScore ?? 3.0).toFixed(1)} / 10
+                    </span>
+                  </div>
+                  <div className="balance-col">
+                    <span className="balance-sub">Points Gagnés</span>
+                    <span className="balance-val pos">
+                      +
+                      {(modalCategory.positiveFactors || [])
+                        .reduce((a, b) => a + b.points, 0)
+                        .toFixed(1)}
+                    </span>
+                  </div>
+                  <div className="balance-col">
+                    <span className="balance-sub">Points Perdus</span>
+                    <span className="balance-val neg">
+                      {(modalCategory.negativeFactors || [])
+                        .reduce((a, b) => a + b.points, 0)
+                        .toFixed(1)}
+                    </span>
+                  </div>
+                  <div className="balance-col total">
+                    <span className="balance-sub">Note Finale</span>
+                    <span className="balance-val score">
+                      {modalCategory.score.toFixed(1)} / 10
+                    </span>
+                  </div>
+                </div>
+                <p className="section-text" style={{ marginTop: '8px' }}>
+                  {modalCategory.calculationExplanation}
+                </p>
               </section>
 
-              <section className="modal-section">
-                <h5 className="section-label">Éléments pris en compte</h5>
-                <ul className="modal-details-list">
-                  {modalCategory.details.map((item, idx) => (
-                    <li key={idx} className="modal-detail-item">
-                      <span className="badge-ok">✓</span>
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
+              {/* SECTION 1: Tout ce qui fait GAGNER des points */}
+              <section className="modal-section factors-detail-section">
+                <div className="factors-header pos">
+                  <CheckCircle2 size={17} />
+                  <h5>Ce qui fait GAGNER des points (Atouts & Proximité)</h5>
+                </div>
+                {(modalCategory.positiveFactors || []).length > 0 ? (
+                  <ul className="modal-factor-list">
+                    {(modalCategory.positiveFactors || []).map((factor, idx) => (
+                      <li key={idx} className="modal-factor-card pos">
+                        <div className="factor-main-info">
+                          <span className="factor-badge-score pos">
+                            +{factor.points.toFixed(1)} pt
+                          </span>
+                          <strong className="factor-name">{factor.label}</strong>
+                        </div>
+                        {factor.detail && (
+                          <p className="factor-explanation">{factor.detail}</p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="empty-factors-note">
+                    Aucun bonus significatif identifié sur ce critère dans le rayon d'analyse.
+                  </p>
+                )}
               </section>
 
+              {/* SECTION 2: Tout ce qui fait PERDRE des points */}
+              <section className="modal-section factors-detail-section">
+                <div className="factors-header neg">
+                  <AlertTriangle size={17} />
+                  <h5>Ce qui fait PERDRE des points (Points de vigilance & Manques)</h5>
+                </div>
+                {(modalCategory.negativeFactors || []).length > 0 ? (
+                  <ul className="modal-factor-list">
+                    {(modalCategory.negativeFactors || []).map((factor, idx) => (
+                      <li key={idx} className="modal-factor-card neg">
+                        <div className="factor-main-info">
+                          <span className="factor-badge-score neg">
+                            {factor.points.toFixed(1)} pt
+                          </span>
+                          <strong className="factor-name">{factor.label}</strong>
+                        </div>
+                        {factor.detail && (
+                          <p className="factor-explanation">{factor.detail}</p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="empty-factors-note">
+                    Aucune pénalité majeure relevée pour ce quartier sur ce critère.
+                  </p>
+                )}
+              </section>
+
+              {/* SECTION 3: Sources Officielles */}
               <section className="modal-section">
-                <h5 className="section-label">Sources officielles & Open Data</h5>
+                <h5 className="section-label">
+                  Sources officielles & Open Data ({modalCategory.sources.length})
+                </h5>
                 <div className="sources-list">
                   {modalCategory.sources.map((src, idx) => (
                     <div key={idx} className="source-item">
                       <div>
-                        <span className="src-name">{src.name}</span>
+                        {src.url ? (
+                          <a
+                            className="src-name src-link"
+                            href={src.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {src.name} ↗
+                          </a>
+                        ) : (
+                          <span className="src-name">{src.name}</span>
+                        )}
                         <p className="src-desc">{src.description}</p>
                       </div>
                       {src.lastUpdated && (
@@ -206,7 +360,10 @@ export const ScoresList: React.FC<ScoresListProps> = ({
             </div>
 
             <div className="modal-footer">
-              <button className="btn-primary" onClick={() => setModalCategory(null)}>
+              <button
+                className="btn-primary"
+                onClick={() => setModalCategory(null)}
+              >
                 Fermer
               </button>
             </div>
@@ -216,6 +373,224 @@ export const ScoresList: React.FC<ScoresListProps> = ({
 
       <style>{`
         /* ScoresList — Charte Citynside V1 */
+        .card-score-factors-summary {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-top: 4px;
+          margin-bottom: 8px;
+          flex-wrap: wrap;
+        }
+
+        .factor-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          font-size: 0.72rem;
+          font-weight: 700;
+          padding: 2px 8px;
+          border-radius: 9999px;
+        }
+
+        .factor-pill.pill-pos {
+          background: #eaf6ec;
+          color: #236c3b;
+          border: 1px solid #cbe9cf;
+        }
+
+        .factor-pill.pill-neg {
+          background: #fdf2f2;
+          color: #c53030;
+          border: 1px solid #fad2d2;
+        }
+
+        .factors-preview-list {
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+          margin: 6px 0 10px 0;
+          background: #f8faf8;
+          padding: 8px 10px;
+          border-radius: 10px;
+          border: 1px solid #e8efe8;
+        }
+
+        .preview-factor-item {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 0.76rem;
+          line-height: 1.25;
+        }
+
+        .preview-factor-item.pos .factor-icon {
+          color: #2a7a52;
+          flex-shrink: 0;
+        }
+
+        .preview-factor-item.neg .factor-icon {
+          color: #c53030;
+          flex-shrink: 0;
+        }
+
+        .preview-factor-item .factor-text {
+          flex: 1;
+          color: #2c4244;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .preview-factor-item .factor-pts {
+          font-weight: 700;
+          font-size: 0.72rem;
+        }
+
+        .preview-factor-item.pos .factor-pts {
+          color: #2a7a52;
+        }
+
+        .preview-factor-item.neg .factor-pts {
+          color: #c53030;
+        }
+
+        /* Modal styling enhancements */
+        .balance-summary-box {
+          background: #f4f8f4;
+          border: 1px solid #dce8dd;
+          border-radius: 12px;
+          padding: 12px 14px;
+          margin-bottom: 16px;
+        }
+
+        .balance-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 8px;
+          margin-top: 8px;
+        }
+
+        .balance-col {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+          padding: 8px;
+          background: #ffffff;
+          border-radius: 8px;
+          border: 1px solid #e1ebe2;
+        }
+
+        .balance-col.total {
+          background: #153a3d;
+          border-color: #153a3d;
+        }
+
+        .balance-col.total .balance-sub {
+          color: #a3c2be;
+        }
+
+        .balance-sub {
+          font-size: 0.68rem;
+          font-weight: 600;
+          text-transform: uppercase;
+          color: #6a8284;
+          margin-bottom: 2px;
+        }
+
+        .balance-val {
+          font-size: 1.05rem;
+          font-weight: 800;
+        }
+
+        .balance-val.pos { color: #2e7d32; }
+        .balance-val.neg { color: #dc2626; }
+        .balance-val.neutral { color: #4b6365; }
+        .balance-val.score { color: #ffffff; }
+
+        .factors-detail-section {
+          margin-bottom: 16px;
+        }
+
+        .factors-header {
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          font-weight: 700;
+          font-size: 0.88rem;
+          margin-bottom: 8px;
+        }
+
+        .factors-header.pos { color: #236c3b; }
+        .factors-header.neg { color: #c53030; }
+
+        .modal-factor-list {
+          list-style: none;
+          padding: 0;
+          margin: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 7px;
+        }
+
+        .modal-factor-card {
+          padding: 8px 12px;
+          border-radius: 8px;
+          background: #ffffff;
+          border: 1px solid #e2ece3;
+        }
+
+        .modal-factor-card.pos {
+          border-left: 4px solid #2e7d32;
+        }
+
+        .modal-factor-card.neg {
+          border-left: 4px solid #dc2626;
+        }
+
+        .factor-main-info {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .factor-badge-score {
+          font-size: 0.72rem;
+          font-weight: 800;
+          padding: 2px 7px;
+          border-radius: 6px;
+          flex-shrink: 0;
+        }
+
+        .factor-badge-score.pos {
+          background: #eaf6ec;
+          color: #236c3b;
+        }
+
+        .factor-badge-score.neg {
+          background: #fdf2f2;
+          color: #c53030;
+        }
+
+        .factor-name {
+          font-size: 0.84rem;
+          color: #122c25;
+        }
+
+        .factor-explanation {
+          font-size: 0.75rem;
+          color: #637a7d;
+          margin: 3px 0 0 0;
+          padding-left: 2px;
+        }
+
+        .empty-factors-note {
+          font-size: 0.78rem;
+          font-style: italic;
+          color: #799395;
+          margin: 4px 0 8px;
+        }
+
         .scores-list-container {
           display: flex;
           flex-direction: column;
@@ -582,6 +957,15 @@ export const ScoresList: React.FC<ScoresListProps> = ({
           font-size: 0.82rem;
           font-weight: 600;
           color: var(--color-primary);
+        }
+
+        .src-link {
+          text-decoration: none;
+        }
+
+        .src-link:hover,
+        .src-link:focus-visible {
+          text-decoration: underline;
         }
 
         .src-desc {

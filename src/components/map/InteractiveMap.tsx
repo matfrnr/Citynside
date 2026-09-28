@@ -8,6 +8,7 @@ interface InteractiveMapProps {
   neighborhoodName?: string;
   pois: POI[];
   selectedCategory: string | null;
+  onSelectCategory?: (category: string | null) => void;
   onSelectLocation?: (lat: number, lon: number) => void;
   height?: string;
   zoom?: number;
@@ -19,6 +20,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   neighborhoodName: _neighborhoodName,
   pois,
   selectedCategory,
+  onSelectCategory,
   onSelectLocation,
   height = '100%',
   zoom = 15,
@@ -139,33 +141,95 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       : pois;
 
     const categoryColors: Record<string, string> = {
-      transports: '#2563eb',
+      transports: '#1d4ed8',
       commerces: '#d97706',
       ecoles: '#7c3aed',
       sante: '#dc2626',
-      espaces_verts: '#16a34a',
+      espaces_verts: '#15803d',
       stationnement: '#475569',
     };
 
+    // Helper SVG icons
+    const getMiniSvgIcon = (category: string, subType: string) => {
+      const sub = subType.toLowerCase();
+      if (category === 'transports') {
+        if (sub.includes('vélo')) {
+          return '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="18.5" cy="17.5" r="3"/><circle cx="5.5" cy="17.5" r="3"/><circle cx="15" cy="5" r="1"/><path d="M12 17.5V14l-3-3 4-3 2 3h2"/></svg>';
+        }
+        if (sub.includes('gare') || sub.includes('train') || sub.includes('tram') || sub.includes('métro')) {
+          return '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="5" y="4" rx="2"/><path d="M5 11h14"/><path d="M12 4v7"/><circle cx="8" cy="15" r="1"/><circle cx="16" cy="15" r="1"/></svg>';
+        }
+        return '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="13" x="4" y="5" rx="2"/><path d="M8 5v5"/><path d="M16 5v5"/><path d="M4 12h16"/><path d="M7 18v2"/><path d="M17 18v2"/></svg>';
+      }
+      if (category === 'commerces') {
+        return '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>';
+      }
+      if (category === 'ecoles') {
+        return '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>';
+      }
+      if (category === 'sante') {
+        return '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2a2 2 0 0 0-2 2v5H4a2 2 0 0 0-2 2v2c0 1.1.9 2 2 2h5v5c0 1.1.9 2 2 2h2a2 2 0 0 0 2-2v-5h5a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2h-5V4a2 2 0 0 0-2-2z"/></svg>';
+      }
+      if (category === 'espaces_verts') {
+        return '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19v3"/><path d="M12 2a5 5 0 0 0-5 5c0 .7.1 1.3.4 1.9A4 4 0 0 0 4 13a4 4 0 0 0 4 4h8a4 4 0 0 0 4-4 4 4 0 0 0-3.4-4.1c.3-.6.4-1.2.4-1.9a5 5 0 0 0-5-5Z"/></svg>';
+      }
+      if (category === 'stationnement') {
+        return '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>';
+      }
+      return '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9"/></svg>';
+    };
+
+    // Anti-collision pour les points superposés
+    const seenPositions = new Map<string, number>();
+
     filteredPOIs.forEach((poi) => {
+      const baseKey = `${poi.lat.toFixed(5)}_${poi.lon.toFixed(5)}`;
+      const count = seenPositions.get(baseKey) || 0;
+      seenPositions.set(baseKey, count + 1);
+
+      // Décalage micro-spatial en spirale si plusieurs POIs ont la même coordonnée exacte
+      let finalLat = poi.lat;
+      let finalLon = poi.lon;
+      if (count > 0) {
+        const angle = count * 1.25;
+        const radiusDeg = 0.00008 * Math.sqrt(count); // ~8 mètres
+        finalLat += Math.sin(angle) * radiusDeg;
+        finalLon += Math.cos(angle) * radiusDeg;
+      }
+
       const color = categoryColors[poi.category] || '#059669';
+      const iconSvg = getMiniSvgIcon(poi.category, poi.subType);
+      const walkingMinutes = Math.max(1, Math.round(poi.distanceMeters / 75)); // ~4.5 km/h
 
       const poiIcon = L.divIcon({
-        className: 'cyt-poi-icon',
+        className: 'cyt-custom-poi-marker',
         html: `
-          <div class="poi-bubble" style="background-color: ${color};" title="${poi.name}">
-            <div class="poi-center"></div>
+          <div class="cyt-pin-pin" style="--pin-bg: ${color};" title="${poi.name}">
+            <div class="cyt-pin-head">
+              <span class="cyt-pin-svg">${iconSvg}</span>
+            </div>
+            <div class="cyt-pin-arrow"></div>
           </div>
         `,
-        iconSize: [22, 22],
-        iconAnchor: [11, 11],
+        iconSize: [28, 34],
+        iconAnchor: [14, 34],
+        popupAnchor: [0, -32],
       });
 
-      const marker = L.marker([poi.lat, poi.lon], { icon: poiIcon });
+      const marker = L.marker([finalLat, finalLon], { icon: poiIcon });
+      marker.on('click', (e) => {
+        L.DomEvent.stopPropagation(e);
+      });
       marker.bindPopup(`
-        <div style="font-family: inherit; padding: 4px;">
-          <strong style="color: #122c25; font-size: 13px;">${poi.name}</strong><br/>
-          <span style="font-size: 11px; color: #647a70;">${poi.subType} — <b>${poi.distanceMeters}m</b></span>
+        <div class="cyt-map-popup-card">
+          <div class="popup-badge" style="background-color: ${color}18; color: ${color}; border: 1px solid ${color}40;">
+            ${poi.subType}
+          </div>
+          <h4 class="popup-title">${poi.name}</h4>
+          <div class="popup-meta">
+            <span class="popup-distance">📍 <b>${poi.distanceMeters} m</b></span>
+            <span class="popup-time">🚶 ~${walkingMinutes} min à pied</span>
+          </div>
         </div>
       `);
       markersGroup.addLayer(marker);
@@ -183,6 +247,25 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   return (
     <div className="interactive-map-wrapper" style={{ height }}>
       <div ref={mapContainerRef} className="map-inner-container" />
+
+      {/* Badge indicateur de filtre actif pour transparence totale */}
+      {selectedCategory && (
+        <div className="map-filter-active-pill">
+          <span>Filtre carte : <b>{selectedCategory}</b> ({pois.filter(p => p.category === selectedCategory).length} affichés)</span>
+          {onSelectCategory && (
+            <button
+              className="map-filter-reset-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectCategory(null);
+              }}
+              title="Afficher tous les équipements"
+            >
+              ✕ Tout afficher
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Floating Tactical Tablet Controls (+ / -) matching mockup 2 */}
       <div className="map-tablet-controls">
@@ -246,29 +329,125 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
           50% { transform: scale(1.12); }
         }
 
-        /* POI Markers */
-        .poi-bubble {
-          width: 20px;
-          height: 20px;
+        /* Nouveau Marqueur POI haute précision avec mini-icônes */
+        .cyt-custom-poi-marker {
+          background: transparent;
+          border: none;
+        }
+
+        .cyt-pin-pin {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          cursor: pointer;
+          transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+          filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.28));
+        }
+
+        .cyt-pin-pin:hover {
+          transform: translateY(-4px) scale(1.18);
+          z-index: 9999 !important;
+        }
+
+        .cyt-pin-head {
+          width: 28px;
+          height: 28px;
+          background-color: var(--pin-bg);
           border-radius: 50%;
           border: 2px solid #ffffff;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.25);
           display: flex;
           align-items: center;
           justify-content: center;
+          color: #ffffff;
+        }
+
+        .cyt-pin-svg {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #ffffff;
+        }
+
+        .cyt-pin-arrow {
+          width: 0;
+          height: 0;
+          border-left: 5px solid transparent;
+          border-right: 5px solid transparent;
+          border-top: 6px solid var(--pin-bg);
+          margin-top: -1.5px;
+        }
+
+        /* Popup personnalisée */
+        .cyt-map-popup-card {
+          font-family: var(--font-family-body, system-ui);
+          padding: 4px;
+          min-width: 170px;
+        }
+
+        .popup-badge {
+          display: inline-block;
+          font-size: 0.68rem;
+          font-weight: 700;
+          padding: 2px 7px;
+          border-radius: 6px;
+          margin-bottom: 5px;
+          text-transform: uppercase;
+          letter-spacing: 0.02em;
+        }
+
+        .popup-title {
+          font-size: 0.88rem;
+          font-weight: 700;
+          color: #122c25;
+          margin: 0 0 6px 0;
+          line-height: 1.25;
+        }
+
+        .popup-meta {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-size: 0.74rem;
+          color: #5a7275;
+          border-top: 1px solid #edf2ed;
+          padding-top: 5px;
+          gap: 6px;
+        }
+
+        /* Active filter pill floating on top-left */
+        .map-filter-active-pill {
+          position: absolute;
+          top: 16px;
+          left: 16px;
+          z-index: 500;
+          background: rgba(21, 58, 61, 0.92);
+          backdrop-filter: blur(8px);
+          color: #ffffff;
+          padding: 6px 12px;
+          border-radius: var(--radius-full);
+          font-size: 0.76rem;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          animation: fadeIn 0.2s ease-out;
+        }
+
+        .map-filter-reset-btn {
+          background: rgba(255, 255, 255, 0.2);
+          color: #ffffff;
+          border: none;
+          font-size: 0.72rem;
+          font-weight: 700;
+          padding: 3px 8px;
+          border-radius: 9999px;
           cursor: pointer;
-          transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+          transition: background 0.15s ease;
         }
 
-        .poi-bubble:hover {
-          transform: scale(1.4);
-        }
-
-        .poi-center {
-          width: 5px;
-          height: 5px;
-          background: white;
-          border-radius: 50%;
+        .map-filter-reset-btn:hover {
+          background: rgba(255, 255, 255, 0.35);
         }
 
         /* Tablet Zoom Controls matching Mockup 2 */

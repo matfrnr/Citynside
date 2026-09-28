@@ -30,6 +30,13 @@ export interface POI {
   distanceMeters: number;
 }
 
+export interface ScoreFactor {
+  label: string;
+  points: number; // ex: +2.5 ou -1.5
+  impact: "positive" | "negative";
+  detail?: string;
+}
+
 export interface CategoryScore {
   category: string;
   label: string;
@@ -39,6 +46,9 @@ export interface CategoryScore {
   highlightText: string;
   poisFoundCount: number;
   details: string[];
+  positiveFactors: ScoreFactor[];
+  negativeFactors: ScoreFactor[];
+  baseScore?: number;
   calculationExplanation: string;
   sources: {
     name: string;

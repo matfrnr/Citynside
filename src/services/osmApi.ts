@@ -1,4 +1,4 @@
-import type { POI, POICategory } from '../types';
+import type { POI, POICategory } from "../types";
 
 /**
  * Calcul de la distance haversine en mètres entre deux coordonnées géographiques
@@ -7,7 +7,7 @@ export function calculateDistanceMeters(
   lat1: number,
   lon1: number,
   lat2: number,
-  lon2: number
+  lon2: number,
 ): number {
   const R = 6371e3; // Rayon de la Terre en mètres
   const φ1 = (lat1 * Math.PI) / 180;
@@ -23,85 +23,260 @@ export function calculateDistanceMeters(
   return Math.round(R * c);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Cache multi-niveaux (Mémoire + SessionStorage) pour éliminer les latences
+// Clé = coordonnées arrondies + rayon
+// ─────────────────────────────────────────────────────────────────────────────
+interface CacheEntry {
+  pois: POI[];
+  timestamp: number;
+}
+
+const poisMemoryCache = new Map<string, CacheEntry>();
+const CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes
+
+function getCacheKey(lat: number, lon: number, radius: number): string {
+  // Arrondir à ~20m de précision pour regrouper les requêtes proches
+  const roundedLat = Math.round(lat * 500) / 500;
+  const roundedLon = Math.round(lon * 500) / 500;
+  return `cyt_pois_${roundedLat}_${roundedLon}_${radius}`;
+}
+
+function getCachedPOIs(key: string): POI[] | null {
+  // 1. Vérifier la mémoire
+  const memEntry = poisMemoryCache.get(key);
+  if (memEntry && Date.now() - memEntry.timestamp < CACHE_TTL_MS) {
+    return memEntry.pois;
+  }
+
+  // 2. Vérifier sessionStorage
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (raw) {
+      const parsed: CacheEntry = JSON.parse(raw);
+      if (Date.now() - parsed.timestamp < CACHE_TTL_MS) {
+        poisMemoryCache.set(key, parsed);
+        return parsed.pois;
+      }
+      sessionStorage.removeItem(key);
+    }
+  } catch {
+    // Ignore sessionStorage errors
+  }
+
+  return null;
+}
+
+function setCachedPOIs(key: string, pois: POI[]): void {
+  const entry: CacheEntry = { pois, timestamp: Date.now() };
+  poisMemoryCache.set(key, entry);
+
+  try {
+    sessionStorage.setItem(key, JSON.stringify(entry));
+  } catch {
+    // SessionStorage full or unavailable
+  }
+
+  // Nettoyage si le cache mémoire grandit trop
+  if (poisMemoryCache.size > 80) {
+    const oldestKey = poisMemoryCache.keys().next().value;
+    if (oldestKey) poisMemoryCache.delete(oldestKey);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Miroirs Overpass fiables et performants
+// ─────────────────────────────────────────────────────────────────────────────
+const OVERPASS_MIRRORS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://lz4.overpass-api.de/api/interpreter",
+  "https://z.overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+];
+
 /**
- * Requête Overpass API pour récupérer les équipements et commodités dans un rayon donné (mètres)
+ * Requête Overpass API optimisée pour la vitesse et la robustesse.
+ * - Ciblage des `node` et `way` (sans les relations lourdes qui causent des timeouts)
+ * - Timeout calibré (9s serveur, 7.5s client)
+ * - Bascule rapide sur les miroirs officiels
+ * - Cache persistant en sessionStorage
  */
 export async function fetchPOIsInRadius(
   lat: number,
   lon: number,
-  radiusMeters: number = 800
+  radiusMeters: number = 800,
 ): Promise<POI[]> {
+  const cacheKey = getCacheKey(lat, lon, radiusMeters);
+  const cached = getCachedPOIs(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  // Requête optimisée combinée
   const overpassQuery = `
-    [out:json][timeout:10];
+    [out:json][timeout:9];
     (
-      node["highway"="bus_stop"](around:${radiusMeters},${lat},${lon});
-      node["railway"="tram_stop"](around:${radiusMeters},${lat},${lon});
-      node["railway"="station"](around:${radiusMeters},${lat},${lon});
-      node["amenity"="bicycle_rental"](around:${radiusMeters},${lat},${lon});
-      node["amenity"="parking"](around:${radiusMeters},${lat},${lon});
-      node["shop"~"bakery|supermarket|convenience|butcher"](around:${radiusMeters},${lat},${lon});
-      node["amenity"="pharmacy"](around:${radiusMeters},${lat},${lon});
-      node["amenity"~"school|kindergarten|college"](around:${radiusMeters},${lat},${lon});
-      node["amenity"~"doctors|clinic|hospital"](around:${radiusMeters},${lat},${lon});
-      node["leisure"~"park|garden|playground"](around:${radiusMeters},${lat},${lon});
-      way["leisure"~"park|garden"](around:${radiusMeters},${lat},${lon});
+      node(around:${radiusMeters},${lat},${lon})["highway"="bus_stop"];
+      node(around:${radiusMeters},${lat},${lon})["railway"~"tram_stop|station|halt"];
+      node(around:${radiusMeters},${lat},${lon})["station"="subway"];
+      node(around:${radiusMeters},${lat},${lon})["amenity"="bicycle_rental"];
+      node(around:${radiusMeters},${lat},${lon})["amenity"="parking"];
+      node(around:${radiusMeters},${lat},${lon})["shop"~"bakery|supermarket|convenience|butcher|greengrocer"];
+      node(around:${radiusMeters},${lat},${lon})["amenity"~"pharmacy|doctors|clinic|hospital|dentist"];
+      node(around:${radiusMeters},${lat},${lon})["amenity"~"school|kindergarten|college|university"];
+      node(around:${radiusMeters},${lat},${lon})["leisure"~"park|garden|playground"];
+      way(around:${radiusMeters},${lat},${lon})["amenity"~"parking|pharmacy|hospital|clinic|school|college"];
+      way(around:${radiusMeters},${lat},${lon})["shop"~"bakery|supermarket"];
+      way(around:${radiusMeters},${lat},${lon})["leisure"~"park|garden"];
     );
-    out center 60;
+    out center body 160;
   `;
 
-  try {
-    const response = await fetch('https://overpass-api.de/api/interpreter', {
-      method: 'POST',
-      body: overpassQuery,
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-      },
-    });
+  const pois = await fetchFastFromOverpass(overpassQuery, lat, lon);
 
-    if (!response.ok) {
-      throw new Error(`Overpass response error: ${response.status}`);
+  if (pois.length > 0) {
+    setCachedPOIs(cacheKey, pois);
+  }
+
+  return pois;
+}
+
+/**
+ * Tente la requête Overpass avec bascule rapide sur les miroirs performants
+ */
+async function fetchFastFromOverpass(
+  query: string,
+  centerLat: number,
+  centerLon: number,
+): Promise<POI[]> {
+  for (let i = 0; i < OVERPASS_MIRRORS.length; i++) {
+    const mirrorUrl = OVERPASS_MIRRORS[i];
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 7500); // 7.5s timeout
+
+      const response = await fetch(mirrorUrl, {
+        method: "POST",
+        body: `data=${encodeURIComponent(query)}`,
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        continue;
+      }
+
+      const data = await response.json();
+      const results = parseOverpassResponse(data, centerLat, centerLon);
+      if (results.length > 0) {
+        return results;
+      }
+    } catch {
+      // Passer au miroir suivant
+      continue;
     }
+  }
 
-    const data = await response.json();
-    const pois: POI[] = [];
+  return [];
+}
 
-    if (data && data.elements) {
-      for (const el of data.elements) {
-        const pLat = el.lat ?? el.center?.lat;
-        const pLon = el.lon ?? el.center?.lon;
-        if (!pLat || !pLon) continue;
+/**
+ * Parse la réponse Overpass et extrait les POIs avec leurs coordonnées précises.
+ * Gère correctement les nodes (lat/lon directement) et les ways/relations (via center).
+ * Déduplique les résultats par proximité (même POI cartographié plusieurs fois).
+ */
+function parseOverpassResponse(
+  data: any,
+  centerLat: number,
+  centerLon: number,
+): POI[] {
+  if (!data?.elements?.length) {
+    return [];
+  }
 
-        const tags = el.tags || {};
-        const { category, subType, name } = classifyOSMElement(tags);
+  const rawPois: POI[] = [];
 
-        if (category) {
-          const dist = calculateDistanceMeters(lat, lon, pLat, pLon);
-          pois.push({
-            id: `osm_${el.id}`,
-            name: name || `${subType} (${dist}m)`,
-            category,
-            subType,
-            lat: pLat,
-            lon: pLon,
-            distanceMeters: dist,
-          });
-        }
+  for (const el of data.elements) {
+    // Les nodes ont lat/lon directement ; les ways/relations ont un champ center
+    const pLat = el.type === "node" ? el.lat : el.center?.lat;
+    const pLon = el.type === "node" ? el.lon : el.center?.lon;
+
+    if (pLat == null || pLon == null) continue;
+
+    // Validation basique des coordonnées : elles doivent être dans un rayon raisonnable
+    if (Math.abs(pLat) > 90 || Math.abs(pLon) > 180) continue;
+
+    const tags = el.tags || {};
+    const { category, subType, name } = classifyOSMElement(tags);
+
+    if (!category) continue;
+
+    const dist = calculateDistanceMeters(centerLat, centerLon, pLat, pLon);
+
+    rawPois.push({
+      id: `osm_${el.type}_${el.id}`,
+      name: name || `${subType}`,
+      category,
+      subType,
+      lat: pLat,
+      lon: pLon,
+      distanceMeters: dist,
+    });
+  }
+
+  // Dédupliquer : si deux POIs de la même catégorie et du même sous-type sont à < 30m,
+  // garder celui avec un nom (ou le plus proche)
+  const deduped = deduplicatePOIs(rawPois);
+
+  // Tri par distance croissante
+  deduped.sort((a, b) => a.distanceMeters - b.distanceMeters);
+
+  return deduped;
+}
+
+/**
+ * Déduplique les POIs identiques ou très proches.
+ * Souvent un même équipement est cartographié à la fois comme node ET way dans OSM.
+ */
+function deduplicatePOIs(pois: POI[]): POI[] {
+  const result: POI[] = [];
+
+  for (const poi of pois) {
+    const isDuplicate = result.some(
+      (existing) =>
+        existing.category === poi.category &&
+        existing.subType === poi.subType &&
+        calculateDistanceMeters(existing.lat, existing.lon, poi.lat, poi.lon) <
+          30,
+    );
+
+    if (!isDuplicate) {
+      result.push(poi);
+    } else {
+      // Si le doublon a un nom et pas l'existant, remplacer
+      const existingIndex = result.findIndex(
+        (existing) =>
+          existing.category === poi.category &&
+          existing.subType === poi.subType &&
+          calculateDistanceMeters(
+            existing.lat,
+            existing.lon,
+            poi.lat,
+            poi.lon,
+          ) < 30,
+      );
+      if (existingIndex >= 0 && !result[existingIndex].name && poi.name) {
+        result[existingIndex] = poi;
       }
     }
-
-    // Tri par distance croissante
-    pois.sort((a, b) => a.distanceMeters - b.distanceMeters);
-
-    if (pois.length > 0) {
-      return pois;
-    }
-
-    // Si OSM n'a rien renvoyé (zone non cartographiée ou délai), fallback local
-    return generateRealisticPOIs(lat, lon);
-  } catch (error) {
-    console.warn('Overpass API temporairement indisponible ou trop lente, bascule sur les données locales optimisées:', error);
-    return generateRealisticPOIs(lat, lon);
   }
+
+  return result;
 }
 
 function classifyOSMElement(tags: Record<string, string>): {
@@ -109,173 +284,98 @@ function classifyOSMElement(tags: Record<string, string>): {
   subType: string;
   name: string;
 } {
-  const name = tags.name || '';
+  const name = tags.name || "";
 
-  if (tags.railway === 'tram_stop' || tags.railway === 'station') {
-    return { category: 'transports', subType: 'Tram / Gare', name };
+  // Transports
+  if (tags.station === "subway" || tags.subway === "yes") {
+    return { category: "transports", subType: "Station de métro", name };
   }
-  if (tags.highway === 'bus_stop') {
-    return { category: 'transports', subType: 'Arrêt de bus', name };
+  if (tags.railway === "tram_stop" || tags.tram === "yes") {
+    return { category: "transports", subType: "Arrêt de tramway", name };
   }
-  if (tags.amenity === 'bicycle_rental') {
-    return { category: 'transports', subType: 'Station vélo libre-service', name };
+  if (
+    tags.railway === "station" ||
+    tags.railway === "halt" ||
+    tags.train === "yes"
+  ) {
+    return { category: "transports", subType: "Gare ferroviaire", name };
   }
-  if (tags.amenity === 'parking') {
-    return { category: 'stationnement', subType: 'Parking public', name };
+  if (tags.highway === "bus_stop" || tags.bus === "yes") {
+    return { category: "transports", subType: "Arrêt de bus", name };
   }
-  if (tags.shop === 'bakery') {
-    return { category: 'commerces', subType: 'Boulangerie', name };
-  }
-  if (tags.shop === 'supermarket') {
-    return { category: 'commerces', subType: 'Supermarché', name };
-  }
-  if (tags.shop === 'convenience' || tags.shop === 'butcher') {
-    return { category: 'commerces', subType: 'Commerce de bouche', name };
-  }
-  if (tags.amenity === 'pharmacy') {
-    return { category: 'sante', subType: 'Pharmacie', name };
-  }
-  if (tags.amenity === 'doctors' || tags.amenity === 'clinic' || tags.amenity === 'hospital') {
-    return { category: 'sante', subType: 'Médecin / Santé', name };
-  }
-  if (tags.amenity === 'school' || tags.amenity === 'kindergarten' || tags.amenity === 'college') {
-    return { category: 'ecoles', subType: 'Établissement scolaire', name };
-  }
-  if (tags.leisure === 'park' || tags.leisure === 'garden' || tags.leisure === 'playground') {
-    return { category: 'espaces_verts', subType: 'Parc & Jardin', name };
-  }
-
-  return { category: null, subType: '', name: '' };
-}
-
-/**
- * Générateur de fallback réaliste géodépendant :
- * Calcule les vraies distances géodésiques (haversine) et génère des POI réalistes
- * variant précisément selon les coordonnées de l'adresse saisie.
- */
-export function generateRealisticPOIs(centerLat: number, centerLon: number): POI[] {
-  // Graine déterministe basée sur les coordonnées de l'adresse
-  const seed = Math.abs(Math.sin(centerLat * 12.9898 + centerLon * 78.233) * 43758.5453);
-  const pseudoRand = (offset: number) => {
-    const x = Math.sin(seed + offset) * 10000;
-    return x - Math.floor(x);
-  };
-
-  const templates = [
-    {
-      name: 'Station Tramway / Métro',
-      category: 'transports' as POICategory,
-      subType: 'Transport lourd',
-      angle: 45,
-      radiusKm: 0.12 + pseudoRand(1) * 0.45, // 120m à 570m
-    },
-    {
-      name: 'Ligne de Bus Fréquente',
-      category: 'transports' as POICategory,
-      subType: 'Arrêt de bus',
-      angle: 190,
-      radiusKm: 0.08 + pseudoRand(2) * 0.25, // 80m à 330m
-    },
-    {
-      name: 'Station Vélos en libre-service',
-      category: 'transports' as POICategory,
-      subType: 'Mobilité douce',
-      angle: 310,
-      radiusKm: 0.15 + pseudoRand(3) * 0.3,
-    },
-    {
-      name: 'Boulangerie Traditionnelle',
-      category: 'commerces' as POICategory,
-      subType: 'Boulangerie',
-      angle: 120,
-      radiusKm: 0.09 + pseudoRand(4) * 0.35, // 90m à 440m
-    },
-    {
-      name: 'Supermarché de Proximité',
-      category: 'commerces' as POICategory,
-      subType: 'Supermarché',
-      angle: 260,
-      radiusKm: 0.18 + pseudoRand(5) * 0.45,
-    },
-    {
-      name: 'Commerces & Boucherie de quartier',
-      category: 'commerces' as POICategory,
-      subType: 'Alimentation',
-      angle: 75,
-      radiusKm: 0.22 + pseudoRand(6) * 0.4,
-    },
-    {
-      name: 'École Maternelle & Élémentaire',
-      category: 'ecoles' as POICategory,
-      subType: 'École primaire',
-      angle: 155,
-      radiusKm: 0.25 + pseudoRand(7) * 0.5,
-    },
-    {
-      name: 'Collège Public de Secteur',
-      category: 'ecoles' as POICategory,
-      subType: 'Collège',
-      angle: 330,
-      radiusKm: 0.45 + pseudoRand(8) * 0.55,
-    },
-    {
-      name: 'Pharmacie de Quartier',
-      category: 'sante' as POICategory,
-      subType: 'Pharmacie',
-      angle: 20,
-      radiusKm: 0.11 + pseudoRand(9) * 0.38,
-    },
-    {
-      name: 'Cabinet Médical Généraliste',
-      category: 'sante' as POICategory,
-      subType: 'Médecins',
-      angle: 215,
-      radiusKm: 0.28 + pseudoRand(10) * 0.45,
-    },
-    {
-      name: 'Square arboré & Espace détente',
-      category: 'espaces_verts' as POICategory,
-      subType: 'Parc public',
-      angle: 285,
-      radiusKm: 0.14 + pseudoRand(11) * 0.48,
-    },
-    {
-      name: 'Jardin Public & Jeux Enfants',
-      category: 'espaces_verts' as POICategory,
-      subType: 'Espace vert',
-      angle: 110,
-      radiusKm: 0.35 + pseudoRand(12) * 0.5,
-    },
-    {
-      name: 'Parking Public Aménagé',
-      category: 'stationnement' as POICategory,
-      subType: 'Parking',
-      angle: 170,
-      radiusKm: 0.16 + pseudoRand(13) * 0.45,
-    },
-  ];
-
-  const pois: POI[] = templates.map((t, idx) => {
-    // 1 degré lat approx 111 km, 1 degré lon approx 111 * cos(lat) km
-    const rad = (t.angle * Math.PI) / 180;
-    const dLat = (t.radiusKm / 111) * Math.cos(rad);
-    const dLon = (t.radiusKm / (111 * Math.cos((centerLat * Math.PI) / 180))) * Math.sin(rad);
-
-    const pLat = centerLat + dLat;
-    const pLon = centerLon + dLon;
-    const realDist = calculateDistanceMeters(centerLat, centerLon, pLat, pLon);
-
+  if (tags.amenity === "bicycle_rental") {
     return {
-      id: `poi_geo_${idx}_${Math.round(centerLat * 1000)}`,
-      name: `${t.name}`,
-      category: t.category,
-      subType: t.subType,
-      lat: pLat,
-      lon: pLon,
-      distanceMeters: realDist,
+      category: "transports",
+      subType: "Station vélo libre-service",
+      name,
     };
-  });
+  }
 
-  return pois.sort((a, b) => a.distanceMeters - b.distanceMeters);
+  // Stationnement
+  if (tags.amenity === "parking") {
+    return { category: "stationnement", subType: "Parking public", name };
+  }
+
+  // Commerces
+  if (tags.shop === "bakery") {
+    return { category: "commerces", subType: "Boulangerie", name };
+  }
+  if (tags.shop === "supermarket") {
+    return { category: "commerces", subType: "Supermarché", name };
+  }
+  if (tags.shop === "convenience") {
+    return { category: "commerces", subType: "Épicerie / Supérette", name };
+  }
+  if (tags.shop === "butcher") {
+    return { category: "commerces", subType: "Boucherie", name };
+  }
+  if (tags.shop === "greengrocer") {
+    return { category: "commerces", subType: "Primeur", name };
+  }
+
+  // Santé
+  if (tags.amenity === "pharmacy") {
+    return { category: "sante", subType: "Pharmacie", name };
+  }
+  if (tags.amenity === "hospital") {
+    return { category: "sante", subType: "Hôpital", name };
+  }
+  if (tags.amenity === "clinic") {
+    return { category: "sante", subType: "Clinique", name };
+  }
+  if (tags.amenity === "doctors") {
+    return { category: "sante", subType: "Cabinet médical", name };
+  }
+  if (tags.amenity === "dentist") {
+    return { category: "sante", subType: "Dentiste", name };
+  }
+
+  // Écoles
+  if (tags.amenity === "kindergarten") {
+    return { category: "ecoles", subType: "Maternelle / Crèche", name };
+  }
+  if (tags.amenity === "school") {
+    return { category: "ecoles", subType: "École", name };
+  }
+  if (tags.amenity === "college") {
+    // Attention : dans OSM, "college" = établissement d'enseignement supérieur court,
+    // pas "collège" français. Mais en France c'est souvent utilisé pour les collèges.
+    return { category: "ecoles", subType: "Collège / Lycée", name };
+  }
+  if (tags.amenity === "university") {
+    return { category: "ecoles", subType: "Université", name };
+  }
+
+  // Espaces verts
+  if (tags.leisure === "park" || tags.leisure === "garden") {
+    return { category: "espaces_verts", subType: "Parc / Jardin", name };
+  }
+  if (tags.leisure === "playground") {
+    return { category: "espaces_verts", subType: "Aire de jeux", name };
+  }
+  if (tags.landuse === "recreation_ground") {
+    return { category: "espaces_verts", subType: "Terrain de loisirs", name };
+  }
+
+  return { category: null, subType: "", name: "" };
 }
-
