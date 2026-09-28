@@ -36,9 +36,9 @@ const poisMemoryCache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes
 
 function getCacheKey(lat: number, lon: number, radius: number): string {
-  // Arrondir à ~20m de précision pour regrouper les requêtes proches
-  const roundedLat = Math.round(lat * 500) / 500;
-  const roundedLon = Math.round(lon * 500) / 500;
+  // Arrondir à ~11m de précision (0.0001°) pour éviter de mélanger les résultats de deux adresses proches
+  const roundedLat = Math.round(lat * 10000) / 10000;
+  const roundedLon = Math.round(lon * 10000) / 10000;
   return `cyt_pois_${roundedLat}_${roundedLon}_${radius}`;
 }
 
@@ -88,6 +88,8 @@ function setCachedPOIs(key: string, pois: POI[]): void {
 // Miroirs Overpass fiables et performants
 // ─────────────────────────────────────────────────────────────────────────────
 const OVERPASS_MIRRORS = [
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
   "https://overpass-api.de/api/interpreter",
   "https://lz4.overpass-api.de/api/interpreter",
   "https://z.overpass-api.de/api/interpreter",
@@ -112,9 +114,10 @@ export async function fetchPOIsInRadius(
     return cached;
   }
 
-  // Requête optimisée combinée
+  // Requête optimisée combinée — utilise `out center qt` pour obtenir les coordonnées du centre
+  // des ways (bâtiments) plutôt que d'avoir besoin de résoudre les nœuds constitutifs
   const overpassQuery = `
-    [out:json][timeout:9];
+    [out:json][timeout:12];
     (
       node(around:${radiusMeters},${lat},${lon})["highway"="bus_stop"];
       node(around:${radiusMeters},${lat},${lon})["railway"~"tram_stop|station|halt"];
@@ -125,11 +128,11 @@ export async function fetchPOIsInRadius(
       node(around:${radiusMeters},${lat},${lon})["amenity"~"pharmacy|doctors|clinic|hospital|dentist"];
       node(around:${radiusMeters},${lat},${lon})["amenity"~"school|kindergarten|college|university"];
       node(around:${radiusMeters},${lat},${lon})["leisure"~"park|garden|playground"];
-      way(around:${radiusMeters},${lat},${lon})["amenity"~"parking|pharmacy|hospital|clinic|school|college"];
-      way(around:${radiusMeters},${lat},${lon})["shop"~"bakery|supermarket"];
-      way(around:${radiusMeters},${lat},${lon})["leisure"~"park|garden"];
+      way(around:${radiusMeters},${lat},${lon})["amenity"~"parking|pharmacy|hospital|clinic|school|college|university"];
+      way(around:${radiusMeters},${lat},${lon})["shop"~"bakery|supermarket|convenience"];
+      way(around:${radiusMeters},${lat},${lon})["leisure"~"park|garden|playground"];
     );
-    out center body 160;
+    out center qt 200;
   `;
 
   const pois = await fetchFastFromOverpass(overpassQuery, lat, lon);
@@ -139,48 +142,15 @@ export async function fetchPOIsInRadius(
     return pois;
   }
 
-  // Repli résilient : si Overpass est saturé ou bloqué, générer des équipements réalistes et cohérents géographiquement
-  console.info("Overpass inaccessible, activation du moteur de repli géographique local.");
-  const fallbackPois = generateLocalizedFallbackPOIs(lat, lon);
-  return fallbackPois;
+  // Si Overpass ne retourne rien, on ne génère PAS de faux POIs.
+  // Les résultats des autres APIs (Éducation Nationale, SNCF) complètent le tableau.
+  console.warn("Overpass n'a retourné aucun résultat pour cette zone. Les marqueurs carte seront limités aux données officielles (Éducation Nationale, SNCF).");
+  return [];
 }
 
-/**
- * Générateur de POIs de repli cohérents géographiquement autour d'une coordonnée.
- * Garantit qu'une panne d'Overpass ne laisse JAMAIS une analyse incomplète ou vide.
- */
-function generateLocalizedFallbackPOIs(centerLat: number, centerLon: number): POI[] {
-  // Décalages géographiques réalistes (de 80m à 500m)
-  const templates = [
-    { cat: "transports" as const, sub: "Arrêt de bus", name: "Arrêt de bus de quartier", dLat: 0.0011, dLon: 0.0014 },
-    { cat: "transports" as const, sub: "Arrêt de bus", name: "Arrêt de bus principal", dLat: -0.0018, dLon: 0.0022 },
-    { cat: "transports" as const, sub: "Station de tramway", name: "Station de tramway", dLat: 0.0028, dLon: -0.0025 },
-    { cat: "transports" as const, sub: "Station vélo libre-service", name: "Station vélo", dLat: -0.0012, dLon: -0.0015 },
-    { cat: "commerces" as const, sub: "Boulangerie", name: "Boulangerie artisanale", dLat: 0.0013, dLon: -0.0012 },
-    { cat: "commerces" as const, sub: "Supermarché", name: "Supermarché de proximité", dLat: -0.0021, dLon: 0.0019 },
-    { cat: "commerces" as const, sub: "Épicerie / Supérette", name: "Épicerie fine", dLat: 0.0024, dLon: 0.0018 },
-    { cat: "sante" as const, sub: "Pharmacie", name: "Pharmacie de quartier", dLat: -0.0015, dLon: 0.0016 },
-    { cat: "sante" as const, sub: "Cabinet médical", name: "Cabinet de médecine générale", dLat: 0.0025, dLon: -0.0021 },
-    { cat: "espaces_verts" as const, sub: "Parc / Jardin", name: "Square et jardin public", dLat: 0.0022, dLon: 0.0027 },
-    { cat: "espaces_verts" as const, sub: "Aire de jeux", name: "Aire de jeux arborée", dLat: -0.0025, dLon: -0.0022 },
-    { cat: "stationnement" as const, sub: "Parking public", name: "Parking public aménagé", dLat: 0.0019, dLon: -0.0024 },
-  ];
-
-  return templates.map((t, idx) => {
-    const pLat = centerLat + t.dLat;
-    const pLon = centerLon + t.dLon;
-    const dist = calculateDistanceMeters(centerLat, centerLon, pLat, pLon);
-    return {
-      id: `fallback_${t.cat}_${idx}_${Math.round(dist)}`,
-      name: t.name,
-      category: t.cat,
-      subType: t.sub,
-      lat: pLat,
-      lon: pLon,
-      distanceMeters: dist,
-    };
-  }).sort((a, b) => a.distanceMeters - b.distanceMeters);
-}
+// SUPPRIMÉ : l'ancien générateur de POIs fictifs de repli (generateLocalizedFallbackPOIs)
+// qui créait des lieux inventés avec des coordonnées approximatives.
+// Désormais, seules les données réelles (APIs Overpass, Éducation Nationale, SNCF) sont utilisées.
 
 /**
  * Tente la requête Overpass avec bascule rapide sur les miroirs performants
@@ -195,7 +165,7 @@ async function fetchFastFromOverpass(
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 7500); // 7.5s timeout
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout (Overpass peut être lent)
 
       const response = await fetch(mirrorUrl, {
         method: "POST",
@@ -252,6 +222,10 @@ function parseOverpassResponse(
     // Validation basique des coordonnées : elles doivent être dans un rayon raisonnable
     if (Math.abs(pLat) > 90 || Math.abs(pLon) > 180) continue;
 
+    // Vérifier que le POI est bien dans un rayon raisonnable (2x le rayon demandé, car Overpass peut déborder)
+    const distCheck = calculateDistanceMeters(centerLat, centerLon, pLat, pLon);
+    if (distCheck > 2000) continue; // Ignorer les résultats aberrants à >2km
+
     const tags = el.tags || {};
     const { category, subType, name } = classifyOSMElement(tags);
 
@@ -270,8 +244,9 @@ function parseOverpassResponse(
     });
   }
 
-  // Dédupliquer : si deux POIs de la même catégorie et du même sous-type sont à < 30m,
-  // garder celui avec un nom (ou le plus proche)
+  // Dédupliquer : si deux POIs de la même catégorie et du même sous-type sont à < 20m,
+  // garder celui avec un nom (ou le plus proche). Seuil réduit à 20m pour éviter de fusionner
+  // deux commerces distincts qui sont proches (ex: 2 boulangeries dans la même rue).
   const deduped = deduplicatePOIs(rawPois);
 
   // Tri par distance croissante
@@ -293,7 +268,7 @@ function deduplicatePOIs(pois: POI[]): POI[] {
         existing.category === poi.category &&
         existing.subType === poi.subType &&
         calculateDistanceMeters(existing.lat, existing.lon, poi.lat, poi.lon) <
-          30,
+          20,
     );
 
     if (!isDuplicate) {
@@ -309,7 +284,7 @@ function deduplicatePOIs(pois: POI[]): POI[] {
             existing.lon,
             poi.lat,
             poi.lon,
-          ) < 30,
+          ) < 20,
       );
       if (existingIndex >= 0 && !result[existingIndex].name && poi.name) {
         result[existingIndex] = poi;

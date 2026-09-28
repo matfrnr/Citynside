@@ -29,7 +29,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
-  const boundaryLayerRef = useRef<L.Polygon | null>(null);
+  const boundaryLayerRef = useRef<L.Layer | null>(null);
   const mainPinMarkerRef = useRef<L.Marker | null>(null);
 
   // Mode explicite de repositionnement pour naviguer librement sans fausse manipulation
@@ -113,30 +113,23 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     const mainMarker = L.marker([lat, lon], { icon: customMainPin, zIndexOffset: 1000 }).addTo(map);
     mainPinMarkerRef.current = mainMarker;
 
-    // 3. Neighborhood polygon boundary matching Mockup 2
+    // 3. Cercle de périmètre d'analyse (rayon réel de recherche = 850m)
+    // Remplace l'ancien polygone fictif qui ne correspondait à aucun quartier réel
     if (boundaryLayerRef.current) {
       boundaryLayerRef.current.remove();
     }
 
-    const dLat = 0.0042;
-    const dLon = 0.0052;
-    const polygonCoords: L.LatLngExpression[] = [
-      [lat + dLat * 0.95, lon - dLon * 0.55],
-      [lat + dLat * 1.05, lon + dLon * 0.45],
-      [lat - dLat * 0.35, lon + dLon * 0.85],
-      [lat - dLat * 1.05, lon + dLon * 0.35],
-      [lat - dLat * 0.75, lon - dLon * 0.65],
-    ];
-
-    const poly = L.polygon(polygonCoords, {
+    const analysisCircle = L.circle([lat, lon], {
+      radius: 850, // mètres — correspond au rayon réel de fetchPOIsInRadius
       color: '#6aa382',
-      weight: 3.5,
-      opacity: 0.95,
+      weight: 2.5,
+      opacity: 0.7,
       fillColor: '#8ea885',
-      fillOpacity: 0.09,
+      fillOpacity: 0.06,
+      dashArray: '8, 6',
     }).addTo(map);
 
-    boundaryLayerRef.current = poly;
+    boundaryLayerRef.current = analysisCircle;
   }, [lat, lon, zoom]);
 
   // Update POI markers when POIs or category filter changes
@@ -159,6 +152,14 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       stationnement: '#475569',
     };
 
+    // Couleur spécifique par sous-type (ex: pharmacies = vert croix distinctif)
+    const getPoiColor = (poi: POI): string => {
+      if (poi.category === 'sante' && poi.subType.toLowerCase().includes('pharmacie')) {
+        return '#059669'; // Vert pharmacie (croix verte)
+      }
+      return categoryColors[poi.category] || '#059669';
+    };
+
     // Helper SVG icons
     const getMiniSvgIcon = (category: string, subType: string) => {
       const sub = subType.toLowerCase();
@@ -178,7 +179,12 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         return '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>';
       }
       if (category === 'sante') {
-        return '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2a2 2 0 0 0-2 2v5H4a2 2 0 0 0-2 2v2c0 1.1.9 2 2 2h5v5c0 1.1.9 2 2 2h2a2 2 0 0 0 2-2v-5h5a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2h-5V4a2 2 0 0 0-2-2z"/></svg>';
+        if (sub.includes('pharmacie')) {
+          // Croix de pharmacie
+          return '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" stroke="none"><path d="M10 3h4v7h7v4h-7v7h-4v-7H3v-4h7z"/></svg>';
+        }
+        // Autres soins (hôpital, médecin, clinique, dentiste)
+        return '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>';
       }
       if (category === 'espaces_verts') {
         return '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19v3"/><path d="M12 2a5 5 0 0 0-5 5c0 .7.1 1.3.4 1.9A4 4 0 0 0 4 13a4 4 0 0 0 4 4h8a4 4 0 0 0 4-4 4 4 0 0 0-3.4-4.1c.3-.6.4-1.2.4-1.9a5 5 0 0 0-5-5Z"/></svg>';
@@ -207,7 +213,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         finalLon += Math.cos(angle) * radiusDeg;
       }
 
-      const color = categoryColors[poi.category] || '#059669';
+      const color = getPoiColor(poi);
       const iconSvg = getMiniSvgIcon(poi.category, poi.subType);
       const walkingMinutes = Math.max(1, Math.round(poi.distanceMeters / 75)); // ~4.5 km/h
 

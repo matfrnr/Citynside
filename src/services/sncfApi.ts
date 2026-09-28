@@ -8,13 +8,14 @@ import { calculateDistanceMeters } from "./osmApi";
  */
 
 const SNCF_API_URL =
-  "https://ressources.data.sncf.com/api/explore/v2.1/catalog/datasets/referentiel-gares-voyageurs/records";
+  "https://ressources.data.sncf.com/api/explore/v2.1/catalog/datasets/gares-de-voyageurs/records";
 const REQUEST_TIMEOUT_MS = 4000;
 
 interface SNCFRecord {
-  code_uic?: string;
-  alias_libelle_noncontraint?: string;
+  codes_uic?: string;
+  nom?: string;
   commune?: string;
+  libellecourt?: string;
   position_geographique?: {
     lat: number;
     lon: number;
@@ -26,19 +27,8 @@ export async function fetchSNCFStationsInRadius(
   lon: number,
   radiusMeters: number = 1200,
 ): Promise<POI[]> {
-  const latitudeDelta = radiusMeters / 111_320;
-  const longitudeDelta =
-    latitudeDelta / Math.max(Math.cos((lat * Math.PI) / 180), 0.1);
-
-  const whereClause = [
-    `position_geographique.lat >= ${lat - latitudeDelta}`,
-    `position_geographique.lat <= ${lat + latitudeDelta}`,
-    `position_geographique.lon >= ${lon - longitudeDelta}`,
-    `position_geographique.lon <= ${lon + longitudeDelta}`,
-  ].join(" AND ");
-
   const params = new URLSearchParams({
-    where: whereClause,
+    where: `within_distance(position_geographique, geom'POINT(${lon} ${lat})', ${radiusMeters}m)`,
     limit: "15",
   });
 
@@ -67,8 +57,8 @@ export async function fetchSNCFStationsInRadius(
 
       if (dist <= radiusMeters) {
         pois.push({
-          id: `sncf_${rec.code_uic || `${rLat}_${rLon}`}`,
-          name: rec.alias_libelle_noncontraint || `Gare de ${rec.commune || ""}`,
+          id: `sncf_${rec.codes_uic || `${rLat}_${rLon}`}`,
+          name: rec.nom || `Gare de ${rec.commune || ""}`,
           category: "transports",
           subType: "Gare ferroviaire SNCF",
           lat: rLat,
