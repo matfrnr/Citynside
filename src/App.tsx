@@ -13,6 +13,7 @@ import {
   saveAnalysis,
   toggleFavorite,
 } from "./services/storage";
+import { mapSupabaseUser, supabase } from "./services/supabase";
 import type {
   AppView,
   AuthUser,
@@ -49,15 +50,12 @@ export const App: React.FC = () => {
       };
     }
 
-    fetch("/api/auth/session")
-      .then(async (response) => {
-        if (!response.ok) return null;
-        const data = (await response.json()) as { user: AuthUser };
-        return data.user;
-      })
-      .then((user) => {
+    supabase.auth
+      .getSession()
+      .then(({ data: { session }, error }) => {
         if (cancelled) return;
-        if (user) {
+        if (session?.user && !error) {
+          const user = mapSupabaseUser(session.user);
           setAuthUser(user);
           const loaded = getStoredAnalyses(user.id);
           setAnalyses(loaded);
@@ -68,8 +66,26 @@ export const App: React.FC = () => {
       .catch(() => {
         if (!cancelled) setAuthChecking(false);
       });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (cancelled) return;
+      if (localStorage.getItem(LOCAL_DEMO_SESSION_KEY) === "active") return;
+      if (session?.user) {
+        const user = mapSupabaseUser(session.user);
+        setAuthUser(user);
+        const loaded = getStoredAnalyses(user.id);
+        setAnalyses(loaded);
+        setActiveAnalysis(loaded[0] ?? null);
+      } else {
+        setAuthUser(null);
+      }
+    });
+
     return () => {
       cancelled = true;
+      subscription.unsubscribe();
     };
   }, []);
 
@@ -89,9 +105,9 @@ export const App: React.FC = () => {
       localStorage.removeItem(LOCAL_DEMO_SESSION_KEY);
     } else {
       try {
-        await fetch("/api/auth/logout", { method: "POST" });
+        await supabase.auth.signOut();
       } catch {
-        // La session locale est fermée même si l’API est indisponible.
+        // La session locale est fermée même si Supabase est indisponible.
       }
     }
     setAuthUser(null);

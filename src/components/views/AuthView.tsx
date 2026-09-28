@@ -1,18 +1,15 @@
-import { ArrowRight, KeyRound, LockKeyhole } from "lucide-react";
+import { ArrowRight, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { mapSupabaseUser, supabase } from "../../services/supabase";
 import type { AuthUser } from "../../types";
 
 interface AuthViewProps {
   onAuthenticated: (user: AuthUser) => void;
 }
 
-type AuthMode = "login" | "register";
-
 interface AuthFields {
-  name: string;
   email: string;
   password: string;
-  invitation: string;
 }
 
 const LOCAL_DEMO_USER: AuthUser = {
@@ -22,12 +19,9 @@ const LOCAL_DEMO_USER: AuthUser = {
 };
 
 export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
-  const [mode, setMode] = useState<AuthMode>("login");
   const [fields, setFields] = useState<AuthFields>({
-    name: "",
     email: "",
     password: "",
-    invitation: "",
   });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -41,28 +35,42 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
     event.preventDefault();
     setError("");
     setBusy(true);
+
     try {
-      const response = await fetch(`/api/auth/${mode}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(fields),
-      });
-      const result = await response.json();
-      if (!response.ok) {
-        setError(result.error ?? "Impossible de valider la demande.");
+      const { data, error: authError } =
+        await supabase.auth.signInWithPassword({
+          email: fields.email.trim(),
+          password: fields.password,
+        });
+
+      if (authError) {
+        if (
+          authError.message.includes("Invalid login credentials") ||
+          authError.message.includes("invalid_grant")
+        ) {
+          setError("Adresse e-mail ou mot de passe incorrect.");
+        } else if (authError.message.includes("Email not confirmed")) {
+          setError(
+            "Votre compte n’a pas encore été activé. Veuillez cliquer sur le lien reçu dans votre e-mail d'invitation.",
+          );
+        } else {
+          setError(authError.message);
+        }
         return;
       }
-      onAuthenticated(result.user as AuthUser);
+
+      if (data.user) {
+        onAuthenticated(mapSupabaseUser(data.user));
+      }
     } catch {
       setError(
-        "Le service de connexion est indisponible. Réessayez dans un instant.",
+        "Le service d'authentification est indisponible. Veuillez vérifier votre connexion.",
       );
     } finally {
       setBusy(false);
     }
   };
 
-  const isRegistering = mode === "register";
   const enterDemoMode = () => onAuthenticated(LOCAL_DEMO_USER);
 
   return (
@@ -74,97 +82,28 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
         </a>
 
         <div className="auth-content">
-          <p className="auth-eyebrow">ESPACE PROFESSIONNEL</p>
-          <h1>
-            {isRegistering ? "Rejoignez Citynside" : "Content de vous revoir"}
-          </h1>
+          <p className="auth-eyebrow">ESPACE PROFESSIONNEL SÉCURISÉ</p>
+          <h1>Content de vous revoir</h1>
           <p className="auth-intro">
-            {isRegistering
-              ? "Activez votre accès professionnel avec la clé remise par votre administrateur."
-              : "Connectez-vous à votre espace d’analyse de quartier."}
+            Connectez-vous à votre espace d’analyse de quartier et d'évaluation immobilière.
           </p>
 
-          <div
-            className="auth-tabs"
-            role="tablist"
-            aria-label="Accès au compte"
-          >
-            <button
-              id="login-tab"
-              type="button"
-              role="tab"
-              aria-selected={!isRegistering}
-              aria-controls="auth-form"
-              className={!isRegistering ? "selected" : ""}
-              onClick={() => {
-                setMode("login");
-                setError("");
-              }}
-            >
-              Connexion
-            </button>
-            <button
-              id="register-tab"
-              type="button"
-              role="tab"
-              aria-selected={isRegistering}
-              aria-controls="auth-form"
-              className={isRegistering ? "selected" : ""}
-              onClick={() => {
-                setMode("register");
-                setError("");
-              }}
-            >
-              Inscription
-            </button>
-          </div>
-
           <form id="auth-form" className="auth-form" onSubmit={handleSubmit}>
-            {isRegistering && (
-              <label className="auth-field">
-                <span>Nom complet</span>
-                <input
-                  autoComplete="name"
-                  maxLength={80}
-                  required
-                  value={fields.name}
-                  onChange={(event) => updateField("name", event.target.value)}
-                />
-              </label>
-            )}
-
             <label className="auth-field">
               <span>Adresse e-mail professionnelle</span>
-              <input
-                type="email"
-                autoComplete="email"
-                maxLength={254}
-                required
-                value={fields.email}
-                onChange={(event) => updateField("email", event.target.value)}
-              />
+              <span className="auth-input-wrap">
+                <Mail size={17} aria-hidden="true" />
+                <input
+                  type="email"
+                  autoComplete="email"
+                  maxLength={254}
+                  required
+                  placeholder="nom@agence.immo"
+                  value={fields.email}
+                  onChange={(event) => updateField("email", event.target.value)}
+                />
+              </span>
             </label>
-
-            {isRegistering && (
-              <label className="auth-field">
-                <span>Clé d’activation</span>
-                <span className="auth-input-wrap">
-                  <KeyRound size={17} aria-hidden="true" />
-                  <input
-                    autoComplete="off"
-                    maxLength={128}
-                    required
-                    value={fields.invitation}
-                    onChange={(event) =>
-                      updateField("invitation", event.target.value)
-                    }
-                  />
-                </span>
-                <small>
-                  Une clé personnelle est nécessaire pour créer un compte.
-                </small>
-              </label>
-            )}
 
             <label className="auth-field">
               <span>Mot de passe</span>
@@ -172,19 +111,16 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
                 <LockKeyhole size={17} aria-hidden="true" />
                 <input
                   type="password"
-                  autoComplete={
-                    isRegistering ? "new-password" : "current-password"
-                  }
-                  minLength={isRegistering ? 12 : undefined}
+                  autoComplete="current-password"
                   maxLength={256}
                   required
+                  placeholder="••••••••••••"
                   value={fields.password}
                   onChange={(event) =>
                     updateField("password", event.target.value)
                   }
                 />
               </span>
-              {isRegistering && <small>12 caractères minimum.</small>}
             </label>
 
             {error && (
@@ -194,11 +130,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
             )}
 
             <button className="auth-submit" type="submit" disabled={busy}>
-              {busy
-                ? "Vérification…"
-                : isRegistering
-                  ? "Activer mon compte"
-                  : "Se connecter"}
+              {busy ? "Connexion en cours…" : "Se connecter"}
               {!busy && <ArrowRight size={18} aria-hidden="true" />}
             </button>
 
@@ -210,9 +142,22 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
             </button>
           </form>
 
+          {/* Bloc d'explication d'accès restreint */}
+          <div className="auth-notice-card">
+            <div className="auth-notice-header">
+              <ShieldCheck size={18} className="auth-notice-icon" aria-hidden="true" />
+              <strong>Accès restreint sur invitation</strong>
+            </div>
+            <p className="auth-notice-body">
+              L'accès à la plateforme est strictement réservé aux agents agréés. Chaque accès est nominatif et nécessite un lien d'invitation sécurisé unique généré par l'administrateur.
+            </p>
+            <p className="auth-notice-footer">
+              Vous n'avez pas de compte ou vous avez perdu vos accès ? Contactez le responsable de votre agence pour recevoir une invitation personnelle par e-mail.
+            </p>
+          </div>
+
           <p className="auth-privacy">
-            Le compte de démonstration utilise uniquement les données de cet
-            appareil.
+            Le compte de démonstration utilise uniquement les données de cet appareil.
           </p>
         </div>
 
@@ -264,41 +209,33 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
           display: inline-flex;
           align-items: center;
           gap: 10px;
-          width: fit-content;
-          color: var(--color-primary);
-          font-family: var(--font-family-heading);
-          font-size: 1.35rem;
-          font-weight: 700;
+          color: inherit;
           text-decoration: none;
         }
 
-        .auth-brand img { width: 38px; height: 38px; object-fit: contain; }
+        .auth-brand img { width: 34px; height: 34px; border-radius: 8px; }
+        .auth-brand span { font-size: 1.06rem; font-weight: 700; letter-spacing: -0.02em; color: var(--color-primary); }
 
         .auth-content {
           width: 100%;
-          max-width: 430px;
-          margin: 48px auto;
-          padding: 34px;
-          border: 1px solid #e0e9df;
-          border-radius: 8px;
-          background: rgba(255, 255, 255, 0.96);
-          box-shadow: 0 14px 40px rgba(21, 58, 61, 0.07);
-          animation: auth-appear 0.4s ease both;
+          max-width: 420px;
+          margin: 18px 0 28px;
         }
 
         .auth-eyebrow {
-          color: #587d5d;
-          font-size: 0.68rem;
+          margin: 0;
+          color: #4b7454;
+          font-size: 0.67rem;
           font-weight: 700;
-          letter-spacing: 0.1em;
+          letter-spacing: 0.14em;
         }
 
         .auth-content h1 {
-          margin-top: 9px;
-          color: var(--color-primary);
-          font-family: var(--font-family-heading);
-          font-size: 1.8rem;
-          line-height: 1.2;
+          margin: 8px 0 0;
+          color: #102d2f;
+          font-size: clamp(1.45rem, 2.3vw, 1.9rem);
+          font-weight: 600;
+          letter-spacing: -0.03em;
         }
 
         .auth-intro {
@@ -308,35 +245,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
           line-height: 1.55;
         }
 
-        .auth-tabs {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 4px;
-          margin-top: 25px;
-          padding: 4px;
-          border-radius: 6px;
-          background: #f0f5ef;
-        }
-
-        .auth-tabs button {
-          min-height: 38px;
-          border: 0;
-          border-radius: 4px;
-          background: transparent;
-          color: #647a78;
-          font: inherit;
-          font-size: 0.78rem;
-          font-weight: 600;
-          cursor: pointer;
-        }
-
-        .auth-tabs button.selected {
-          background: #fff;
-          color: var(--color-primary);
-          box-shadow: 0 1px 4px rgba(21, 58, 61, 0.11);
-        }
-
-        .auth-form { display: flex; flex-direction: column; gap: 16px; margin-top: 21px; }
+        .auth-form { display: flex; flex-direction: column; gap: 16px; margin-top: 24px; }
         .auth-field { display: flex; flex-direction: column; gap: 7px; color: #315557; font-size: 0.74rem; font-weight: 600; }
 
         .auth-field input {
@@ -358,7 +267,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
         .auth-input-wrap { position: relative; display: flex; align-items: center; color: #78918a; }
         .auth-input-wrap > svg { position: absolute; left: 12px; pointer-events: none; }
         .auth-input-wrap input { padding-left: 39px; }
-        .auth-field small { color: #748582; font-size: 0.67rem; font-weight: 400; line-height: 1.4; }
 
         .auth-error {
           padding: 10px 12px;
@@ -367,6 +275,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
           color: #8a382f;
           font-size: 0.75rem;
           line-height: 1.45;
+          border-radius: 3px;
         }
 
         .auth-submit {
@@ -390,13 +299,63 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
 
         .auth-submit:hover:not(:disabled) { background: #1e4e52; transform: translateY(-1px); }
         .auth-submit:disabled { cursor: wait; opacity: 0.72; }
-        .auth-submit:focus-visible, .auth-tabs button:focus-visible { outline: 3px solid #9dc599; outline-offset: 2px; }
+        .auth-submit:focus-visible { outline: 3px solid #9dc599; outline-offset: 2px; }
 
         .auth-demo-separator { display: flex; align-items: center; gap: 10px; color: #9aaba4; font-size: 0.67rem; }
         .auth-demo-separator::before, .auth-demo-separator::after { height: 1px; flex: 1; background: #e5ece5; content: ""; }
         .auth-demo { min-height: 40px; border: 1px solid #b8cfb4; border-radius: 5px; color: #315557; font: inherit; font-size: 0.74rem; font-weight: 600; cursor: pointer; }
         .auth-demo:hover { background: #f0f7ee; border-color: #8ab887; }
         .auth-demo:focus-visible { outline: 3px solid #9dc599; outline-offset: 2px; }
+
+        /* Notice d'accès restreint */
+        .auth-notice-card {
+          margin-top: 24px;
+          padding: 14px 16px;
+          border-radius: 8px;
+          background: #edf5ee;
+          border: 1px solid #cfe2d2;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .auth-notice-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: #215e2e;
+          font-size: 0.78rem;
+          font-weight: 600;
+        }
+
+        .auth-notice-icon {
+          color: #3b874b;
+          flex-shrink: 0;
+        }
+
+        .auth-notice-body {
+          margin: 0;
+          color: #3f6155;
+          font-size: 0.73rem;
+          line-height: 1.45;
+        }
+
+        .auth-notice-contact {
+          margin: 0;
+          color: #2c5144;
+          font-size: 0.71rem;
+          line-height: 1.4;
+          font-weight: 500;
+        }
+
+        .auth-notice-footer {
+          margin: 0;
+          padding-top: 6px;
+          border-top: 1px solid #dbead9;
+          color: #557268;
+          font-size: 0.70rem;
+          line-height: 1.4;
+        }
 
         .auth-privacy { margin-top: 18px; color: #728581; font-size: 0.68rem; line-height: 1.5; text-align: center; }
         .auth-footer { color: #879894; font-size: 0.67rem; }
@@ -407,60 +366,53 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
           display: flex;
           align-self: start;
           height: 100vh;
-          min-height: 0;
+          min-height: 100vh;
           overflow: hidden;
-          align-items: center;
-          padding: 10%;
-          background-color: #153a3d;
+          background-color: #244b44;
           background-image:
-            linear-gradient(28deg, transparent 48%, rgba(157, 197, 153, 0.12) 49%, transparent 50%),
-            linear-gradient(118deg, transparent 48%, rgba(255, 255, 255, 0.08) 49%, transparent 50%);
-          background-size: 92px 92px, 128px 128px;
+            linear-gradient(rgba(14, 38, 35, 0.42), rgba(12, 32, 29, 0.68)),
+            url("https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1600&q=80");
+          background-position: center;
+          background-size: cover;
         }
 
-        .auth-visual::after {
+        .auth-image-caption {
           position: absolute;
-          right: -18%;
-          bottom: -16%;
-          width: 72%;
-          aspect-ratio: 1;
-          border: 1px solid rgba(196, 218, 154, 0.28);
-          border-radius: 50%;
-          box-shadow: 0 0 0 42px rgba(196, 218, 154, 0.08), 0 0 0 84px rgba(196, 218, 154, 0.05);
-          content: "";
+          right: clamp(24px, 4vw, 44px);
+          bottom: clamp(24px, 4vw, 40px);
+          left: clamp(24px, 4vw, 44px);
+          z-index: 1;
+          color: #f6faf5;
         }
 
-        .auth-image-caption { position: relative; z-index: 1; max-width: 430px; color: #fff; }
-        .auth-location { display: inline-flex; color: #c4da9a; font-size: 0.76rem; font-weight: 600; letter-spacing: 0.04em; }
-        .auth-image-caption > p { margin-top: 18px; font-family: var(--font-family-heading); font-size: clamp(2rem, 3.3vw, 3.5rem); font-weight: 600; line-height: 1.08; }
-        .auth-image-rule { display: block; width: 46px; height: 3px; margin-top: 26px; background: #c4da9a; }
-
-        .auth-checking { display: grid; place-items: center; min-height: 100vh; background: #f5f8f3; }
-        .auth-checking-mark { display: grid; place-items: center; width: 44px; aspect-ratio: 1; border-radius: 50%; background: #153a3d; color: #fff; font-family: var(--font-family-heading); font-size: 1.35rem; animation: auth-pulse 1s ease-in-out infinite alternate; }
-
-        @keyframes auth-appear { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes auth-pulse { to { opacity: 0.55; transform: scale(0.94); } }
-
-        @media (max-width: 900px) {
-          .auth-screen { grid-template-columns: minmax(400px, 1fr) minmax(260px, 0.75fr); }
-          .auth-panel { padding-right: 28px; padding-left: 28px; }
-          .auth-content { padding: 28px 24px; }
+        .auth-location {
+          font-size: 0.67rem;
+          font-weight: 700;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: #c9e4c5;
         }
 
-        @media (max-width: 680px) {
-          .auth-screen { display: block; }
-          .auth-panel { min-height: 100vh; padding: 21px 20px 16px; }
-          .auth-content { margin: 34px auto; padding: 26px 22px; }
+        .auth-image-caption p {
+          margin: 9px 0 0;
+          font-family: var(--font-family-display);
+          font-size: clamp(1.4rem, 2.2vw, 2.05rem);
+          line-height: 1.25;
+          letter-spacing: -0.025em;
+        }
+
+        .auth-image-rule {
+          display: block;
+          width: 44px;
+          height: 2px;
+          margin-top: 18px;
+          background: #75a777;
+        }
+
+        @media (max-width: 980px) {
+          .auth-screen { grid-template-columns: 1fr; }
           .auth-visual { display: none; }
-        }
-
-        @media (max-width: 380px) {
-          .auth-content { padding: 24px 18px; }
-          .auth-content h1 { font-size: 1.55rem; }
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .auth-content, .auth-checking-mark { animation: none; }
+          .auth-panel { min-height: 100vh; padding: 24px 20px 18px; }
         }
       `}</style>
     </main>
