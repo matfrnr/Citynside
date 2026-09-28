@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, MapPin } from 'lucide-react';
+import { ArrowRight, MapPin, Search } from 'lucide-react';
 import { AddressSearchBar } from '../search/AddressSearchBar';
 import { InteractiveMap } from '../map/InteractiveMap';
 import { ScoresList } from '../scores/ScoresList';
@@ -9,7 +9,7 @@ import { calculateCategoryScores } from '../../services/scoringEngine';
 import { reverseGeocode } from '../../services/banApi';
 
 interface NewAnalysisViewProps {
-  currentAnalysis: NeighborhoodAnalysis;
+  currentAnalysis: NeighborhoodAnalysis | null;
   onUpdateAnalysis: (analysis: NeighborhoodAnalysis) => void;
   onGoToImpressions: () => void;
 }
@@ -44,7 +44,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
         globalScore: avg,
         categories,
         pois,
-        impressions: currentAnalysis.impressions,
+        impressions: currentAnalysis?.impressions,
       };
 
       onUpdateAnalysis(updated);
@@ -69,15 +69,15 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
         id: `analysis_${Date.now()}`,
         createdAt: new Date().toISOString(),
         address: rev ? rev.name : `${lat.toFixed(4)}, ${lon.toFixed(4)}`,
-        city: rev ? rev.city : currentAnalysis.city,
-        postcode: rev ? rev.postcode : currentAnalysis.postcode,
-        neighborhoodName: rev ? `Quartier ${rev.name}` : currentAnalysis.neighborhoodName,
+        city: rev ? rev.city : currentAnalysis?.city ?? '',
+        postcode: rev ? rev.postcode : currentAnalysis?.postcode ?? '',
+        neighborhoodName: rev ? `Quartier ${rev.name}` : currentAnalysis?.neighborhoodName ?? 'Zone sélectionnée',
         lat,
         lon,
         globalScore: avg,
         categories,
         pois,
-        impressions: currentAnalysis.impressions,
+        impressions: currentAnalysis?.impressions,
       };
 
       onUpdateAnalysis(updated);
@@ -99,54 +99,61 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
       {/* Dark Search Bar matching Mockup 2 */}
       <div className="search-bar-row">
         <AddressSearchBar
-          initialValue={currentAnalysis.address ? `${currentAnalysis.address}, ${currentAnalysis.city}` : ''}
+          initialValue={currentAnalysis ? `${currentAnalysis.address}, ${currentAnalysis.city}` : ''}
           onSelectAddress={handleSelectAddress}
           onTriggerAnalysis={() => {}}
           isLoading={isLoading}
         />
       </div>
 
-      {/* Tablet Layout Split (Left: Map, Right: Scores) */}
-      <div className="analysis-split-content">
-        {/* Left column: Interactive Map with refined frame */}
-        <section className="split-col-map">
-          <div className="map-card-wrapper cyt-card">
-            <InteractiveMap
-              lat={currentAnalysis.lat}
-              lon={currentAnalysis.lon}
-              neighborhoodName={currentAnalysis.neighborhoodName}
-              pois={currentAnalysis.pois}
-              selectedCategory={selectedCategory}
-              onSelectLocation={handleMapLocationSelect}
-              height="510px"
-            />
-            <div className="map-caption-bar">
-              <span className="map-caption-text">
-                <MapPin size={13} style={{ display: 'inline', marginRight: '4px' }} />
-                Cliquez n'importe où sur la carte pour déplacer l'analyse
-              </span>
+      {currentAnalysis ? (
+        <div className="analysis-results-content">
+          <section className="analysis-map-section">
+            <div className="map-card-wrapper cyt-card">
+              <InteractiveMap
+                lat={currentAnalysis.lat}
+                lon={currentAnalysis.lon}
+                neighborhoodName={currentAnalysis.neighborhoodName}
+                pois={currentAnalysis.pois}
+                selectedCategory={selectedCategory}
+                onSelectLocation={handleMapLocationSelect}
+                height="420px"
+              />
+              <div className="map-caption-bar">
+                <span className="map-caption-text">
+                  <MapPin size={13} style={{ display: 'inline', marginRight: '4px' }} />
+                  Cliquez n'importe où sur la carte pour déplacer l'analyse
+                </span>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
 
-        {/* Right column: Objective Indicators & Scores */}
-        <section className="split-col-scores">
-          <ScoresList
-            categories={currentAnalysis.categories}
-            selectedCategory={selectedCategory}
-            onSelectCategory={setSelectedCategory}
-            addressName={`${currentAnalysis.address}, ${currentAnalysis.city}`}
-          />
-        </section>
-      </div>
+          <section className="analysis-scores-section">
+            <ScoresList
+              categories={currentAnalysis.categories}
+              selectedCategory={selectedCategory}
+              onSelectCategory={setSelectedCategory}
+              addressName={`${currentAnalysis.address}, ${currentAnalysis.city}`}
+            />
+          </section>
+        </div>
+      ) : (
+        <div className="analysis-empty-state" role="status">
+          <span className="empty-search-icon"><Search size={24} /></span>
+          <div>
+            <h2>Commencez par une adresse</h2>
+            <p>La carte et les scores s’affichent après le lancement de l’analyse.</p>
+          </div>
+        </div>
+      )}
 
       {/* Bottom CTA Button matching Mockup 2 */}
-      <div className="analysis-bottom-cta-wrap">
+      {currentAnalysis && <div className="analysis-bottom-cta-wrap">
         <button className="btn-primary cta-impressions-btn" onClick={onGoToImpressions}>
           <span>Renseigner mes impressions</span>
           <ArrowRight size={20} strokeWidth={2.4} />
         </button>
-      </div>
+      </div>}
 
       <style>{`
         /* NewAnalysisView — Charte Citynside V1 */
@@ -185,21 +192,14 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
           justify-content: center;
         }
 
-        /* Disposition en deux colonnes */
-        .analysis-split-content {
-          display: grid;
-          grid-template-columns: 1.05fr 0.95fr;
-          gap: 26px;
-          align-items: start;
+        .analysis-results-content {
+          display: flex;
+          flex-direction: column;
+          gap: 30px;
         }
 
-        @media (max-width: 980px) {
-          .analysis-split-content {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .split-col-map {
+        .analysis-map-section,
+        .analysis-scores-section {
           display: flex;
           flex-direction: column;
         }
@@ -225,10 +225,47 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
           font-weight: 500;
         }
 
-        .split-col-scores {
+        .analysis-empty-state {
+          min-height: 220px;
           display: flex;
-          flex-direction: column;
-          gap: 14px;
+          align-items: center;
+          justify-content: center;
+          gap: 16px;
+          padding: 36px;
+          text-align: left;
+          background: rgba(255, 255, 255, 0.55);
+          border: 1px dashed var(--color-border);
+          border-radius: 20px;
+          color: var(--color-text-muted);
+        }
+
+        .empty-search-icon {
+          width: 48px;
+          height: 48px;
+          display: grid;
+          place-items: center;
+          flex: 0 0 auto;
+          border-radius: 50%;
+          background: var(--color-green-light);
+          color: var(--color-primary);
+        }
+
+        .analysis-empty-state h2 {
+          margin: 0 0 5px;
+          font-size: 1.05rem;
+          color: var(--color-primary);
+        }
+
+        .analysis-empty-state p {
+          margin: 0;
+          font-size: 0.88rem;
+        }
+
+        @media (max-width: 620px) {
+          .analysis-empty-state {
+            flex-direction: column;
+            text-align: center;
+          }
         }
 
         /* CTA en bas — Jaune #f1e850 */

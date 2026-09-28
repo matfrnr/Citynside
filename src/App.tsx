@@ -29,10 +29,8 @@ export const App: React.FC = () => {
   };
 
   const handleStartNewAnalysis = () => {
-    // If we have an active analysis, keep it or default to the first one
-    if (!activeAnalysis && analyses.length > 0) {
-      setActiveAnalysis(analyses[0]);
-    }
+    // A new search must start from a genuinely blank state.
+    setActiveAnalysis(null);
     setCurrentView('new-analysis');
   };
 
@@ -79,7 +77,13 @@ export const App: React.FC = () => {
       {/* Fixed Sidebar */}
       <Sidebar
         currentView={currentView}
-        onNavigate={(view) => setCurrentView(view)}
+        onNavigate={(view) => {
+          if (view === 'new-analysis') {
+            handleStartNewAnalysis();
+            return;
+          }
+          setCurrentView(view);
+        }}
         favoritesCount={favoritesCount}
       />
 
@@ -95,7 +99,7 @@ export const App: React.FC = () => {
             />
           )}
 
-          {currentView === 'new-analysis' && activeAnalysis && (
+          {currentView === 'new-analysis' && (
             <NewAnalysisView
               currentAnalysis={activeAnalysis}
               onUpdateAnalysis={handleUpdateAnalysis}
