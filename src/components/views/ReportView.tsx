@@ -53,20 +53,29 @@ export const ReportView: React.FC<ReportViewProps> = ({
         <header className="sheet-header">
           <div className="header-brand-block">
             <div className="sheet-logo-wrap">
-              <img src="/logo-cytinside.svg" alt="Cytinside" className="sheet-logo" />
+              <img
+                src="/logo-citynside.svg"
+                alt="Citynside"
+                className="sheet-logo"
+              />
             </div>
             <div>
-              <h1 className="sheet-brand-name">Cytinside</h1>
-              <span className="sheet-brand-tagline">Rapport d'Analyse Environnementale du Bien</span>
+              <h1 className="sheet-brand-name">Citynside</h1>
+              <span className="sheet-brand-tagline">
+                Rapport d'Analyse Environnementale du Bien
+              </span>
             </div>
           </div>
 
           <div className="header-agent-badge">
             <span className="agent-agency">IMMOBILIER CONSEIL</span>
-            <span className="agent-rep">Agent certifié Cytinside</span>
+            <span className="agent-rep">Agent certifié Citynside</span>
             <span className="agent-date">
-              <Calendar size={12} style={{ display: 'inline', marginRight: '4px' }} />
-              Édité le {new Date().toLocaleDateString('fr-FR')}
+              <Calendar
+                size={12}
+                style={{ display: "inline", marginRight: "4px" }}
+              />
+              Édité le {new Date().toLocaleDateString("fr-FR")}
             </span>
           </div>
         </header>
@@ -80,14 +89,17 @@ export const ReportView: React.FC<ReportViewProps> = ({
               {analysis.address}
             </h2>
             <p className="prop-city">
-              {analysis.postcode} {analysis.city} • <b>{analysis.neighborhoodName}</b>
+              {analysis.postcode} {analysis.city} •{" "}
+              <b>{analysis.neighborhoodName}</b>
             </p>
           </div>
 
           {/* Global Score Widget */}
           <div className="global-score-widget">
             <div className="score-circle-display">
-              <span className="score-big">{analysis.globalScore.toFixed(1)}</span>
+              <span className="score-big">
+                {analysis.globalScore.toFixed(1)}
+              </span>
               <span className="score-unit">/10</span>
             </div>
             <div className="score-verdict" style={{ color: appraisal.color }}>
@@ -101,7 +113,9 @@ export const ReportView: React.FC<ReportViewProps> = ({
         <div className="sheet-grid-content">
           {/* Left Column: Calculated Data Scores */}
           <div className="sheet-col-scores">
-            <h3 className="section-title">Indicateurs Objectifs & Données Publiques</h3>
+            <h3 className="section-title">
+              Indicateurs Objectifs & Données Publiques
+            </h3>
             <div className="report-categories-list">
               {analysis.categories.map((cat) => (
                 <div key={cat.category} className="report-cat-row">
@@ -125,7 +139,9 @@ export const ReportView: React.FC<ReportViewProps> = ({
                 <span>Transparence & Méthodologie</span>
               </div>
               <p className="meth-text">
-                Les scores sont calculés par algorithme multi-critères selon l'accessibilité piétonne (rayons de 300m à 900m), la variété des équipements et l'exposition sonore.
+                Les scores sont calculés par algorithme multi-critères selon
+                l'accessibilité piétonne (rayons de 300m à 900m), la variété des
+                équipements et l'exposition sonore.
               </p>
               <div className="sources-tags-cloud">
                 <span>Base Adresse Nationale</span>
@@ -143,20 +159,25 @@ export const ReportView: React.FC<ReportViewProps> = ({
               <div className="imp-block">
                 <span className="imp-label">Atmosphère & Sécurité</span>
                 <p className="imp-text">
-                  {analysis.impressions?.atmosphere && analysis.impressions.atmosphere > 60
-                    ? 'Quartier très calme et paisible'
-                    : 'Quartier vivant et commerçant'}
-                  {analysis.impressions?.nightLighting ? ' • Éclairage nocturne adéquat' : ''}
+                  {analysis.impressions?.atmosphere &&
+                  analysis.impressions.atmosphere > 60
+                    ? "Quartier très calme et paisible"
+                    : "Quartier vivant et commerçant"}
+                  {analysis.impressions?.nightLighting
+                    ? " • Éclairage nocturne adéquat"
+                    : ""}
                 </p>
                 {analysis.impressions?.securityObservations && (
-                  <p className="imp-subquote">"{analysis.impressions.securityObservations}"</p>
+                  <p className="imp-subquote">
+                    "{analysis.impressions.securityObservations}"
+                  </p>
                 )}
               </div>
 
               <div className="imp-block">
                 <span className="imp-label">Mobilité & Accessibilité</span>
                 <p className="imp-text">
-                  Facilité de déplacement :{' '}
+                  Facilité de déplacement :{" "}
                   <b>{analysis.impressions?.mobilityEase || 80}/100</b>
                 </p>
                 {analysis.impressions?.observedTransports && (
@@ -169,8 +190,12 @@ export const ReportView: React.FC<ReportViewProps> = ({
                   </div>
                 )}
                 <p className="imp-sub">
-                  Accessibilité PMR :{' '}
-                  <b>{analysis.impressions?.pmrAccessible ? 'Oui (aménagée)' : 'Partielle'}</b>
+                  Accessibilité PMR :{" "}
+                  <b>
+                    {analysis.impressions?.pmrAccessible
+                      ? "Oui (aménagée)"
+                      : "Partielle"}
+                  </b>
                 </p>
               </div>
 
@@ -186,7 +211,9 @@ export const ReportView: React.FC<ReportViewProps> = ({
                   </div>
                 )}
                 {analysis.impressions?.generalNotes && (
-                  <p className="imp-subquote">"{analysis.impressions.generalNotes}"</p>
+                  <p className="imp-subquote">
+                    "{analysis.impressions.generalNotes}"
+                  </p>
                 )}
               </div>
             </div>
@@ -195,8 +222,13 @@ export const ReportView: React.FC<ReportViewProps> = ({
             <div className="guarantee-badge">
               <Award size={28} className="award-icon" />
               <div>
-                <strong className="g-title">Garantie d'Information Vérifiée</strong>
-                <p className="g-desc">Document remis dans le cadre du devoir de conseil de l'agent immobilier.</p>
+                <strong className="g-title">
+                  Garantie d'Information Vérifiée
+                </strong>
+                <p className="g-desc">
+                  Document remis dans le cadre du devoir de conseil de l'agent
+                  immobilier.
+                </p>
               </div>
             </div>
           </div>
@@ -204,7 +236,10 @@ export const ReportView: React.FC<ReportViewProps> = ({
 
         {/* Sheet Footer */}
         <footer className="sheet-footer">
-          <span>Cytinside SaaS — Analyse d'environnement pour professionnels de l'immobilier</span>
+          <span>
+            Citynside SaaS — Analyse d'environnement pour professionnels de
+            l'immobilier
+          </span>
           <span>Page 1 / 1</span>
         </footer>
       </div>

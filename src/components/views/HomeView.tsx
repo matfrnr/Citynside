@@ -18,7 +18,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
     <div className="home-view-container">
       {/* Welcome Header */}
       <div className="home-hero-header">
-        <h1 className="hero-title">Bienvenue sur Cytinside</h1>
+        <h1 className="hero-title">Bienvenue sur Citynside</h1>
         <p className="hero-subtitle">
           Renseignez vos impressions sur un quartier pour aider vos futurs clients
         </p>

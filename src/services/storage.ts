@@ -2,7 +2,7 @@ import type { NeighborhoodAnalysis } from '../types';
 import { calculateCategoryScores } from './scoringEngine';
 import { generateRealisticPOIs } from './osmApi';
 
-const STORAGE_KEY = 'cytinside_analyses_v1';
+const STORAGE_KEY = 'citynside_analyses_v1';
 
 // Données initiales conformes à la maquette de l'utilisateur
 const INITIAL_ANALYSES: NeighborhoodAnalysis[] = [

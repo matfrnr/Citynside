@@ -25,9 +25,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Brand Header Stacked Centered matching mockups */}
       <div className="sidebar-brand-block" onClick={() => onNavigate('home')} role="button" tabIndex={0}>
         <div className="brand-logo-container">
-          <img src="/logo-cytinside.svg" alt="Cytinside" className="brand-logo-img" />
+          <img src="/logo-citynside.svg" alt="Citynside" className="brand-logo-img" />
         </div>
-        <span className="brand-title">Cytinside</span>
+        <span className="brand-title">Citynside</span>
       </div>
 
       {/* Navigation Links */}

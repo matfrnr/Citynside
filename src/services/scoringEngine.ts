@@ -1,7 +1,7 @@
 import type { POI, CategoryScore } from '../types';
 
 /**
- * Moteur de calcul des scores d'environnement Cytinside.
+ * Moteur de calcul des scores d'environnement Citynside.
  * Fournit une explication transparente, vérifiable et reproductible de chaque note.
  */
 export function calculateCategoryScores(pois: POI[]): CategoryScore[] {
