@@ -102,18 +102,40 @@ function toPOI(
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
 
   let subType: string;
-  if (nature.startsWith("ECOLE MATERNELLE")) {
+  const nameUpper = (record.appellation_officielle ?? "").toUpperCase();
+
+  const isHigherEd =
+    nameUpper.includes("SUPERIEUR") ||
+    nameUpper.includes("UNIVERSIT") ||
+    nameUpper.includes("INSTITUT") ||
+    nameUpper.includes("CAMPUS") ||
+    nameUpper.includes("FACULTE") ||
+    nameUpper.includes("IUT") ||
+    nameUpper.includes("BTS") ||
+    nameUpper.includes("CPGE") ||
+    nameUpper.includes("INGENIEUR") ||
+    nameUpper.includes("BUSINESS") ||
+    nameUpper.includes("MANAGEMENT") ||
+    nameUpper.includes("ENS") ||
+    nature.includes("SUPERIEUR") ||
+    nature.includes("UNIVERSIT");
+
+  if (isHigherEd) {
+    subType = "École supérieure";
+  } else if (nature.startsWith("ECOLE MATERNELLE")) {
     subType = "Maternelle";
   } else if (
     nature.startsWith("ECOLE DE NIVEAU") ||
     nature.startsWith("ECOLE ELEMENTAIRE") ||
     nature.startsWith("ECOLE PRIMAIRE")
   ) {
-    subType = "École";
-  } else if (nature.startsWith("COLLEGE") || nature.startsWith("LYCEE")) {
-    subType = "Collège / Lycée";
+    subType = "École primaire";
+  } else if (nature.startsWith("COLLEGE")) {
+    subType = "Collège";
+  } else if (nature.startsWith("LYCEE")) {
+    subType = "Lycée";
   } else {
-    return null;
+    subType = "Établissement scolaire";
   }
 
   return {

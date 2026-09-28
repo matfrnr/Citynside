@@ -21,11 +21,31 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const debounceTimerRef = useRef<any>(null);
 
-  // Sync with initialValue if it changes externally
+  // Sync with initialValue when analysis changes: DO NOT SEARCH, keep dropdown closed
   useEffect(() => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     setQuery(initialValue);
+    setSuggestions([]);
+    setIsOpen(false);
   }, [initialValue]);
+
+  // Fermer immédiatement et annuler toute recherche dès que l'analyse démarre
+  useEffect(() => {
+    if (isLoading) {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      setIsOpen(false);
+      setSuggestions([]);
+    }
+  }, [isLoading]);
+
+  // Nettoyage au démontage
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+  }, []);
 
   // Handle outside clicks to close autocomplete
   useEffect(() => {
@@ -38,33 +58,43 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Debounced search with BAN API
-  useEffect(() => {
-    if (query.trim().length < 3) {
+  // Recherche BAN déclenchée EXCLUSIVEMENT par la saisie manuelle de l'utilisateur
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setQuery(val);
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    if (val.trim().length < 3) {
       setSuggestions([]);
       setIsOpen(false);
       return;
     }
 
-    const timer = setTimeout(async () => {
+    debounceTimerRef.current = setTimeout(async () => {
       setIsSearching(true);
-      const results = await searchAddress(query);
+      const results = await searchAddress(val);
+      setIsSearching(false);
       setSuggestions(results);
       setIsOpen(results.length > 0);
-      setIsSearching(false);
-    }, 200);
-
-    return () => clearTimeout(timer);
-  }, [query]);
+    }, 220);
+  };
 
   const handleSelect = (item: AddressResult) => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     setQuery(item.label);
+    setSuggestions([]);
     setIsOpen(false);
     onSelectAddress(item);
   };
 
   const handleTrigger = async () => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     setIsOpen(false);
+    setSuggestions([]);
+
     if (suggestions.length > 0) {
       handleSelect(suggestions[0]);
     } else if (query.trim().length >= 3) {
@@ -85,6 +115,9 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
     if (e.key === 'Enter') {
       e.preventDefault();
       handleTrigger();
+    } else if (e.key === 'Escape') {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      setIsOpen(false);
     }
   };
 
@@ -97,15 +130,27 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
             type="text"
             className="search-input"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={handleInputChange}
             onFocus={() => {
-              if (suggestions.length > 0) setIsOpen(true);
+              // Ne réaffiche que si l'utilisateur a déjà des suggestions et tape activement
+              if (!isLoading && suggestions.length > 0 && query.trim().length >= 3) {
+                setIsOpen(true);
+              }
             }}
             onKeyDown={handleKeyDown}
             placeholder="Rechercher une adresse (ex: 3 rue Galilée, Grenoble)..."
           />
           {query.length > 0 && (
-            <button className="clear-btn" onClick={() => setQuery('')} aria-label="Effacer">
+            <button
+              className="clear-btn"
+              onClick={() => {
+                if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+                setQuery('');
+                setSuggestions([]);
+                setIsOpen(false);
+              }}
+              aria-label="Effacer"
+            >
               <X size={16} />
             </button>
           )}
@@ -131,7 +176,7 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
       </div>
 
       {/* Autocomplete Dropdown */}
-      {isOpen && suggestions.length > 0 && (
+      {!isLoading && isOpen && suggestions.length > 0 && (
         <div className="autocomplete-dropdown">
           <div className="dropdown-header">Base Adresse Nationale (BAN)</div>
           <ul className="suggestions-list">

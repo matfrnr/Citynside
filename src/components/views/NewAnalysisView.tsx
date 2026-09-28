@@ -181,7 +181,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
                     size={13}
                     style={{ display: "inline", marginRight: "4px" }}
                   />
-                  Cliquez n'importe où sur la carte pour déplacer l'analyse
+                  Navigation libre : glissez et zoomez sans risque • Bouton « Déplacer l'adresse » (ou double-clic) pour repositionner
                 </span>
               </div>
             </div>

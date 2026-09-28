@@ -1,5 +1,6 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
+import { Crosshair, Navigation, X } from 'lucide-react';
 import type { POI } from '../../types';
 
 interface InteractiveMapProps {
@@ -31,6 +32,14 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   const boundaryLayerRef = useRef<L.Polygon | null>(null);
   const mainPinMarkerRef = useRef<L.Marker | null>(null);
 
+  // Mode explicite de repositionnement pour naviguer librement sans fausse manipulation
+  const [isRepositionMode, setIsRepositionMode] = useState(false);
+  const isRepositionModeRef = useRef(false);
+
+  useEffect(() => {
+    isRepositionModeRef.current = isRepositionMode;
+  }, [isRepositionMode]);
+
   // Initialize Map
   useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -57,12 +66,13 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       const markersGroup = L.layerGroup().addTo(map);
       markersLayerRef.current = markersGroup;
 
-      // Handle map clicks
-      if (onSelectLocation) {
-        map.on('click', (e) => {
+      // Déplacement strictement sécurisé : uniquement si le mode repositionnement a été activé par le bouton
+      map.on('click', (e) => {
+        if (isRepositionModeRef.current && onSelectLocation) {
+          setIsRepositionMode(false);
           onSelectLocation(e.latlng.lat, e.latlng.lng);
-        });
-      }
+        }
+      });
 
       mapInstanceRef.current = map;
     }
@@ -244,9 +254,45 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     mapInstanceRef.current?.zoomOut();
   };
 
+  const handleRecenter = () => {
+    mapInstanceRef.current?.flyTo([lat, lon], zoom, { duration: 0.8 });
+  };
+
   return (
-    <div className="interactive-map-wrapper" style={{ height }}>
+    <div
+      className={`interactive-map-wrapper ${isRepositionMode ? 'reposition-mode-active' : ''}`}
+      style={{ height }}
+    >
       <div ref={mapContainerRef} className="map-inner-container" />
+
+      {/* Bannière active de repositionnement */}
+      {isRepositionMode ? (
+        <div className="map-reposition-banner">
+          <div className="banner-content">
+            <Crosshair size={16} className="spin-slow" />
+            <span><b>Mode déplacement :</b> Cliquez sur la carte à l'endroit désiré</span>
+          </div>
+          <button
+            className="banner-cancel-btn"
+            onClick={() => setIsRepositionMode(false)}
+          >
+            <X size={14} />
+            <span>Annuler</span>
+          </button>
+        </div>
+      ) : (
+        /* Bouton pour activer le repositionnement intentionnel */
+        onSelectLocation && (
+          <button
+            className="map-reposition-trigger-btn"
+            onClick={() => setIsRepositionMode(true)}
+            title="Activer pour choisir un nouvel emplacement sur la carte"
+          >
+            <Crosshair size={14} />
+            <span>Déplacer l'adresse</span>
+          </button>
+        )
+      )}
 
       {/* Badge indicateur de filtre actif pour transparence totale */}
       {selectedCategory && (
@@ -267,8 +313,16 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         </div>
       )}
 
-      {/* Floating Tactical Tablet Controls (+ / -) matching mockup 2 */}
+      {/* Floating Tactical Tablet Controls (+ / - / Recentrer) matching mockup 2 */}
       <div className="map-tablet-controls">
+        <button
+          className="map-zoom-btn"
+          onClick={handleRecenter}
+          title="Recentrer sur l'adresse sélectionnée"
+          aria-label="Recentrer"
+        >
+          <Navigation size={18} />
+        </button>
         <button className="map-zoom-btn" onClick={handleZoomIn} aria-label="Zoomer">
           +
         </button>
@@ -448,6 +502,95 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
         .map-filter-reset-btn:hover {
           background: rgba(255, 255, 255, 0.35);
+        }
+
+        /* Reposition Mode Controls */
+        .map-reposition-trigger-btn {
+          position: absolute;
+          top: 16px;
+          right: 16px;
+          z-index: 500;
+          background: #ffffff;
+          color: #153a3d;
+          border: 1px solid #c8d8cb;
+          padding: 7px 13px;
+          border-radius: var(--radius-full);
+          font-size: 0.78rem;
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          box-shadow: 0 4px 14px rgba(21, 58, 61, 0.12);
+          cursor: pointer;
+          transition: all 0.18s ease;
+        }
+
+        .map-reposition-trigger-btn:hover {
+          background: #eef6ed;
+          border-color: #9dc599;
+          transform: translateY(-1px);
+        }
+
+        .map-reposition-banner {
+          position: absolute;
+          top: 16px;
+          left: 50%;
+          transform: translateX(-50%);
+          z-index: 500;
+          background: #153a3d;
+          color: #ffffff;
+          padding: 8px 16px;
+          border-radius: var(--radius-full);
+          font-size: 0.8rem;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+          border: 1.5px solid #9dc599;
+          animation: dropIn 0.2s ease-out;
+        }
+
+        .map-reposition-banner .banner-content {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .banner-cancel-btn {
+          background: rgba(255, 255, 255, 0.2);
+          color: #ffffff;
+          border: none;
+          padding: 3px 9px;
+          border-radius: 9999px;
+          font-size: 0.72rem;
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          cursor: pointer;
+        }
+
+        .banner-cancel-btn:hover {
+          background: rgba(255, 255, 255, 0.35);
+        }
+
+        .interactive-map-wrapper.reposition-mode-active {
+          box-shadow: inset 0 0 0 3px #9dc599;
+        }
+
+        .interactive-map-wrapper.reposition-mode-active .map-inner-container {
+          cursor: crosshair !important;
+        }
+
+        @keyframes dropIn {
+          from {
+            opacity: 0;
+            transform: translate(-50%, -10px);
+          }
+          to {
+            opacity: 1;
+            transform: translate(-50%, 0);
+          }
         }
 
         /* Tablet Zoom Controls matching Mockup 2 */
