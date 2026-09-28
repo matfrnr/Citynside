@@ -39,10 +39,16 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         attributionControl: false,
       }).setView([lat, lon], zoom);
 
-      // CartoDB Voyager : cartographie propre, claire, moderne
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      // Si une clé CARTO est définie, on utilise CartoDB Voyager ; sinon on bascule sur OpenStreetMap standard (sans filigrane "API key")
+      const cartoKey = import.meta.env.VITE_CARTO_API_KEY?.trim();
+      const tileUrl = cartoKey
+        ? `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=${cartoKey}`
+        : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+      L.tileLayer(tileUrl, {
         maxZoom: 19,
-        subdomains: 'abcd',
+        subdomains: cartoKey ? 'abcd' : 'abc',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' + (cartoKey ? ' &copy; CARTO' : ''),
       }).addTo(map);
 
       // Dedicated layer for POIs
