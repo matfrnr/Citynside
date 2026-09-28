@@ -20,6 +20,9 @@ import type {
   NeighborhoodAnalysis,
 } from "./types";
 
+const LOCAL_DEMO_USER_ID = "local-demo-user";
+const LOCAL_DEMO_SESSION_KEY = "citynside_demo_session";
+
 export const App: React.FC = () => {
   const [analyses, setAnalyses] = useState<NeighborhoodAnalysis[]>([]);
   const [currentView, setCurrentView] = useState<AppView>("home");
@@ -30,6 +33,22 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
+    if (localStorage.getItem(LOCAL_DEMO_SESSION_KEY) === "active") {
+      const demoUser: AuthUser = {
+        id: LOCAL_DEMO_USER_ID,
+        name: "Compte de démonstration",
+        email: "demo@citynside.local",
+      };
+      setAuthUser(demoUser);
+      const loaded = getStoredAnalyses(demoUser.id);
+      setAnalyses(loaded);
+      setActiveAnalysis(loaded[0] ?? null);
+      setAuthChecking(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     fetch("/api/auth/session")
       .then(async (response) => {
         if (!response.ok) return null;
@@ -55,6 +74,9 @@ export const App: React.FC = () => {
   }, []);
 
   const handleAuthenticated = (user: AuthUser) => {
+    if (user.id === LOCAL_DEMO_USER_ID) {
+      localStorage.setItem(LOCAL_DEMO_SESSION_KEY, "active");
+    }
     setAuthUser(user);
     const loaded = getStoredAnalyses(user.id);
     setAnalyses(loaded);
@@ -63,16 +85,19 @@ export const App: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    try {
-      await fetch("/api/auth/logout", { method: "POST" });
-    } catch {
-      // La session locale est fermée même si l’API est indisponible.
-    } finally {
-      setAuthUser(null);
-      setAnalyses([]);
-      setActiveAnalysis(null);
-      setCurrentView("home");
+    if (authUser?.id === LOCAL_DEMO_USER_ID) {
+      localStorage.removeItem(LOCAL_DEMO_SESSION_KEY);
+    } else {
+      try {
+        await fetch("/api/auth/logout", { method: "POST" });
+      } catch {
+        // La session locale est fermée même si l’API est indisponible.
+      }
     }
+    setAuthUser(null);
+    setAnalyses([]);
+    setActiveAnalysis(null);
+    setCurrentView("home");
   };
 
   const handleSelectAnalysis = (analysis: NeighborhoodAnalysis) => {

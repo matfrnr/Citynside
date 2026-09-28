@@ -15,6 +15,12 @@ interface AuthFields {
   invitation: string;
 }
 
+const LOCAL_DEMO_USER: AuthUser = {
+  id: "local-demo-user",
+  name: "Compte de démonstration",
+  email: "demo@citynside.local",
+};
+
 export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
   const [mode, setMode] = useState<AuthMode>("login");
   const [fields, setFields] = useState<AuthFields>({
@@ -57,6 +63,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
   };
 
   const isRegistering = mode === "register";
+  const enterDemoMode = () => onAuthenticated(LOCAL_DEMO_USER);
 
   return (
     <main className="auth-screen">
@@ -194,10 +201,17 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
                   : "Se connecter"}
               {!busy && <ArrowRight size={18} aria-hidden="true" />}
             </button>
+
+            <div className="auth-demo-separator" aria-hidden="true">
+              <span>ou</span>
+            </div>
+            <button className="auth-demo" type="button" onClick={enterDemoMode}>
+              Essayer le compte de démonstration
+            </button>
           </form>
 
           <p className="auth-privacy">
-            Accès réservé aux agents disposant d’une invitation valide.
+            Le compte de démonstration utilise uniquement les données de cet appareil.
           </p>
         </div>
 
@@ -376,6 +390,12 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
         .auth-submit:hover:not(:disabled) { background: #1e4e52; transform: translateY(-1px); }
         .auth-submit:disabled { cursor: wait; opacity: 0.72; }
         .auth-submit:focus-visible, .auth-tabs button:focus-visible { outline: 3px solid #9dc599; outline-offset: 2px; }
+
+        .auth-demo-separator { display: flex; align-items: center; gap: 10px; color: #9aaba4; font-size: 0.67rem; }
+        .auth-demo-separator::before, .auth-demo-separator::after { height: 1px; flex: 1; background: #e5ece5; content: ""; }
+        .auth-demo { min-height: 40px; border: 1px solid #b8cfb4; border-radius: 5px; color: #315557; font: inherit; font-size: 0.74rem; font-weight: 600; cursor: pointer; }
+        .auth-demo:hover { background: #f0f7ee; border-color: #8ab887; }
+        .auth-demo:focus-visible { outline: 3px solid #9dc599; outline-offset: 2px; }
 
         .auth-privacy { margin-top: 18px; color: #728581; font-size: 0.68rem; line-height: 1.5; text-align: center; }
         .auth-footer { color: #879894; font-size: 0.67rem; }
