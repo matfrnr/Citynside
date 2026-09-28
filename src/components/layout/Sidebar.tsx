@@ -1,31 +1,54 @@
-import React from 'react';
-import { Home, Map, Bookmark, Bell } from 'lucide-react';
-import type { AppView } from '../../types';
+import { Bell, Bookmark, Home, Map } from "lucide-react";
+import React from "react";
+import type { AppView } from "../../types";
 
 interface SidebarProps {
   currentView: AppView;
+  displayName: string;
   onNavigate: (view: AppView) => void;
   favoritesCount: number;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   currentView,
+  displayName,
   onNavigate,
   favoritesCount,
 }) => {
+  const initials = displayName
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0] ?? "")
+    .join("")
+    .toUpperCase();
+
   const navItems = [
-    { id: 'home' as AppView, label: 'Home', icon: Home },
-    { id: 'new-analysis' as AppView, label: 'Carte', icon: Map },
-    { id: 'enregistrements' as AppView, label: 'Enregistrements', icon: Bookmark, badge: favoritesCount },
-    { id: 'notifications' as AppView, label: 'Notifications', icon: Bell },
+    { id: "home" as AppView, label: "Home", icon: Home },
+    { id: "new-analysis" as AppView, label: "Carte", icon: Map },
+    {
+      id: "enregistrements" as AppView,
+      label: "Favoris",
+      icon: Bookmark,
+      badge: favoritesCount,
+    },
+    { id: "notifications" as AppView, label: "Notifications", icon: Bell },
   ];
 
   return (
     <aside className="cyt-sidebar">
       {/* Brand Header Stacked Centered matching mockups */}
-      <div className="sidebar-brand-block" onClick={() => onNavigate('home')} role="button" tabIndex={0}>
+      <div
+        className="sidebar-brand-block"
+        onClick={() => onNavigate("home")}
+        role="button"
+        tabIndex={0}
+      >
         <div className="brand-logo-container">
-          <img src="/logo-citynside.svg" alt="Citynside" className="brand-logo-img" />
+          <img
+            src="/logo-citynside.svg"
+            alt="Citynside"
+            className="brand-logo-img"
+          />
         </div>
         <span className="brand-title">Citynside</span>
       </div>
@@ -35,16 +58,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {navItems.map((item) => {
           const IconComponent = item.icon;
           const isActive =
-            (currentView === 'home' && item.id === 'home') ||
-            (currentView === 'new-analysis' && item.id === 'new-analysis') ||
-            (currentView === 'impressions' && item.id === 'new-analysis') ||
-            (currentView === 'report' && item.id === 'home') ||
+            (currentView === "home" && item.id === "home") ||
+            (currentView === "new-analysis" && item.id === "new-analysis") ||
+            (currentView === "impressions" && item.id === "new-analysis") ||
+            (currentView === "report" && item.id === "home") ||
             currentView === item.id;
 
           return (
             <button
               key={item.id}
-              className={`sidebar-nav-btn ${isActive ? 'active' : ''}`}
+              className={`sidebar-nav-btn ${isActive ? "active" : ""}`}
               onClick={() => onNavigate(item.id)}
             >
               <IconComponent
@@ -63,18 +86,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Footer Profile */}
       <div className="sidebar-footer">
-        <div className="agent-profile">
+        <button
+          className={`agent-profile ${currentView === "profile" ? "active" : ""}`}
+          onClick={() => onNavigate("profile")}
+          aria-current={currentView === "profile" ? "page" : undefined}
+        >
           <div className="avatar-img-wrap">
-            <img
-              src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80"
-              alt="Agent immobilier"
-              className="agent-avatar"
-            />
+            <span className="agent-avatar" aria-hidden="true">
+              {initials}
+            </span>
           </div>
           <span className="agent-label">Votre Profil</span>
-        </div>
+        </button>
       </div>
-
       <style>{`
         /* ===================================================
            SIDEBAR — Charte Citynside V1
@@ -207,12 +231,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
           gap: 10px;
           cursor: pointer;
           padding: 8px 10px;
+          width: 100%;
+          border: 0;
+          background: transparent;
+          text-align: left;
           border-radius: var(--radius-sm);
           transition: background 0.15s ease;
         }
 
         .agent-profile:hover {
           background: var(--color-green-subtle);
+        }
+
+        .agent-profile.active {
+          background: var(--color-green-light);
         }
 
         /* Bordure avatar en vert de la charte */
@@ -228,7 +260,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         .agent-avatar {
           width: 100%;
           height: 100%;
-          object-fit: cover;
+          display: grid;
+          place-items: center;
+          background: var(--color-green-light);
+          color: var(--color-primary);
+          font-family: var(--font-family-body);
+          font-size: 0.68rem;
+          font-weight: 700;
         }
 
         .agent-label {

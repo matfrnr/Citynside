@@ -13,12 +13,12 @@ export interface AddressResult {
 }
 
 export type POICategory =
-  | 'transports'
-  | 'commerces'
-  | 'ecoles'
-  | 'sante'
-  | 'espaces_verts'
-  | 'stationnement';
+  | "transports"
+  | "commerces"
+  | "ecoles"
+  | "sante"
+  | "espaces_verts"
+  | "stationnement";
 
 export interface POI {
   id: string;
@@ -76,4 +76,17 @@ export interface NeighborhoodAnalysis {
   isFavorite?: boolean;
 }
 
-export type AppView = 'home' | 'new-analysis' | 'impressions' | 'report' | 'enregistrements' | 'notifications';
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export type AppView =
+  | "home"
+  | "new-analysis"
+  | "impressions"
+  | "report"
+  | "enregistrements"
+  | "notifications"
+  | "profile";

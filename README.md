@@ -30,3 +30,16 @@ If you are developing a production application, we recommend enabling type-aware
 ```
 
 See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+
+## Accès agents Citynside
+
+Le serveur d’authentification requiert Node.js 24 ou supérieur (SQLite intégré à Node). Les comptes ne peuvent être créés qu’avec une clé d’invitation à usage unique.
+
+1. Installez les dépendances avec `npm install`.
+2. Créez une clé avec `npm run invite:create`, puis transmettez-la à l’agent par un canal privé. La clé en clair n’est affichée qu’à sa création; seule son empreinte est enregistrée.
+3. Lancez `npm run dev`. L’interface démarre sur `http://localhost:5173` et l’API d’authentification sur le port `3001`.
+4. L’agent choisit « Inscription », saisit son nom, son adresse professionnelle, sa clé et un mot de passe d’au moins 12 caractères.
+
+La base des comptes et invitations est créée dans `data/citynside.sqlite` (ignorée par Git). Pour changer son emplacement, définissez `CITYNSIDE_DATA_DIR`. L’API écoute sur `127.0.0.1:3001` par défaut; `API_HOST` et `API_PORT` permettent de configurer son écoute.
+
+En production, servez l’application et l’API sous la même origine derrière un reverse proxy HTTPS, définissez `NODE_ENV=production` pour activer l’attribut `Secure` du cookie, protégez les sauvegardes SQLite et ne publiez jamais une clé d’invitation. Les analyses et les champs du profil restent dans le `localStorage` du navigateur, isolés par compte sur cet appareil; ils ne sont pas synchronisés entre appareils et ne sont pas stockés dans la base serveur.
