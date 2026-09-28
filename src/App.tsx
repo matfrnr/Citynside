@@ -14,14 +14,14 @@ import {
   toggleFavorite,
 } from "./services/storage";
 import { mapSupabaseUser, supabase } from "./services/supabase";
-import type {
-  AppView,
-  AuthUser,
-  FieldImpressions,
-  NeighborhoodAnalysis,
+import {
+  type AppView,
+  type AuthUser,
+  type FieldImpressions,
+  LOCAL_DEMO_USER_ID,
+  type NeighborhoodAnalysis,
 } from "./types";
 
-const LOCAL_DEMO_USER_ID = "local-demo-user";
 const LOCAL_DEMO_SESSION_KEY = "citynside_demo_session";
 
 export const App: React.FC = () => {
@@ -248,6 +248,7 @@ export const App: React.FC = () => {
               favoritesCount={favoritesCount}
               user={authUser}
               onLogout={handleLogout}
+              onUpdateUser={(updated) => setAuthUser(updated)}
             />
           )}
         </div>

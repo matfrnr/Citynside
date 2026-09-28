@@ -11,13 +11,15 @@ import {
   UserRound,
 } from "lucide-react";
 import { useState } from "react";
-import type { AuthUser } from "../../types";
+import { supabase } from "../../services/supabase";
+import { type AuthUser, LOCAL_DEMO_USER_ID } from "../../types";
 
 interface ProfileViewProps {
   analysesCount: number;
   favoritesCount: number;
   user: AuthUser;
   onLogout: () => void;
+  onUpdateUser?: (updated: AuthUser) => void;
 }
 
 interface ProfileDetails {
@@ -30,14 +32,15 @@ interface ProfileDetails {
 }
 
 const loadProfile = (user: AuthUser): ProfileDetails => {
-  const [firstName = user.name, ...lastNameParts] = user.name.split(" ");
+  const [defaultFirstName = user.name, ...lastNameParts] = user.name.split(" ");
   const defaultProfile: ProfileDetails = {
-    firstName,
-    lastName: lastNameParts.join(" "),
+    firstName: user.firstName || defaultFirstName,
+    lastName:
+      user.lastName !== undefined ? user.lastName : lastNameParts.join(" "),
     email: user.email,
-    phone: "",
-    agency: "Agence immobilière",
-    role: "Agent immobilier",
+    phone: user.phone || "",
+    agency: user.agency || "Agence immobilière",
+    role: user.role || "Agent immobilier",
   };
   try {
     const storedProfile = localStorage.getItem(
@@ -56,24 +59,77 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   favoritesCount,
   user,
   onLogout,
+  onUpdateUser,
 }) => {
   const [profile, setProfile] = useState<ProfileDetails>(() =>
     loadProfile(user),
   );
+  const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   const updateField = (field: keyof ProfileDetails, value: string) => {
     setProfile((current) => ({ ...current, [field]: value }));
     setSaved(false);
+    setSaveError("");
   };
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    localStorage.setItem(
-      `citynside-profile-${encodeURIComponent(user.id)}`,
-      JSON.stringify(profile),
-    );
-    setSaved(true);
+    setIsSaving(true);
+    setSaveError("");
+    setSaved(false);
+
+    const fullName =
+      `${profile.firstName} ${profile.lastName}`.trim() || user.name;
+
+    try {
+      // 1. Sauvegarde locale persistante
+      localStorage.setItem(
+        `citynside-profile-${encodeURIComponent(user.id)}`,
+        JSON.stringify(profile),
+      );
+
+      // 2. Synchronisation Supabase Auth si compte connecté
+      if (user.id !== LOCAL_DEMO_USER_ID) {
+        const { error } = await supabase.auth.updateUser({
+          data: {
+            first_name: profile.firstName,
+            last_name: profile.lastName,
+            name: fullName,
+            full_name: fullName,
+            phone: profile.phone,
+            agency: profile.agency,
+            role: profile.role,
+          },
+        });
+
+        if (error) {
+          console.warn("Échec de la synchronisation Supabase :", error);
+          setSaveError(
+            "Enregistré en local (échec de synchronisation distante).",
+          );
+        }
+      }
+
+      // 3. Mise à jour de l'état utilisateur dans l'application
+      onUpdateUser?.({
+        ...user,
+        name: fullName,
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        phone: profile.phone,
+        agency: profile.agency,
+        role: profile.role,
+      });
+
+      setSaved(true);
+    } catch (err) {
+      console.error(err);
+      setSaveError("Une erreur est survenue lors de l'enregistrement.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const initials =
@@ -215,15 +271,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
           <div className="profile-form-footer">
             <span
-              className={`save-feedback ${saved ? "is-saved" : ""}`}
+              className={`save-feedback ${saved ? "is-saved" : ""} ${saveError ? "is-error" : ""}`}
               aria-live="polite"
             >
-              {saved
-                ? "Modifications enregistrées"
-                : "Vos modifications sont enregistrées sur cet appareil."}
+              {saveError
+                ? saveError
+                : saved
+                  ? "Modifications enregistrées sur votre compte"
+                  : isSaving
+                    ? "Enregistrement en cours..."
+                    : "Vos modifications sont synchronisées avec votre compte."}
             </span>
-            <button type="submit" className="save-profile">
-              <Save size={17} /> Enregistrer
+            <button
+              type="submit"
+              className="save-profile"
+              disabled={isSaving}
+            >
+              <Save size={17} /> {isSaving ? "Enregistrement..." : "Enregistrer"}
             </button>
           </div>
         </form>
@@ -443,6 +507,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
         .save-feedback { color: var(--color-text-muted); font-size: 0.72rem; }
         .save-feedback.is-saved { color: #287149; }
+        .save-feedback.is-error { color: #c93b2b; }
 
         .save-profile {
           display: inline-flex;
@@ -462,7 +527,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           transition: background 0.15s ease, transform 0.15s ease;
         }
 
-        .save-profile:hover { background: var(--color-primary-light); transform: translateY(-1px); }
+        .save-profile:disabled {
+          opacity: 0.65;
+          cursor: not-allowed;
+          transform: none !important;
+        }
+
+        .save-profile:hover:not(:disabled) { background: var(--color-primary-light); transform: translateY(-1px); }
         .save-profile:focus-visible { outline: 3px solid #9dc599; outline-offset: 2px; }
 
         @keyframes profile-enter { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }

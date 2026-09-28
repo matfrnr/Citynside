@@ -76,10 +76,17 @@ export interface NeighborhoodAnalysis {
   isFavorite?: boolean;
 }
 
+export const LOCAL_DEMO_USER_ID = "local-demo-user";
+
 export interface AuthUser {
   id: string;
   name: string;
   email: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  agency?: string;
+  role?: string;
 }
 
 export type AppView =

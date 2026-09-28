@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { mapSupabaseUser, supabase } from "../../services/supabase";
-import type { AuthUser } from "../../types";
+import { type AuthUser, LOCAL_DEMO_USER_ID } from "../../types";
 
 interface AuthViewProps {
   onAuthenticated: (user: AuthUser) => void;
@@ -32,7 +32,7 @@ interface AuthFields {
 }
 
 const LOCAL_DEMO_USER: AuthUser = {
-  id: "local-demo-user",
+  id: LOCAL_DEMO_USER_ID,
   name: "Compte de démonstration",
   email: "demo@citynside.local",
 };
