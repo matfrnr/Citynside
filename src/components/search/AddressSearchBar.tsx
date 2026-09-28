@@ -11,7 +11,7 @@ interface AddressSearchBarProps {
 }
 
 export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
-  initialValue = '3 rue Galilée, 38000 Grenoble',
+  initialValue = '',
   onSelectAddress,
   onTriggerAnalysis,
   isLoading = false,
