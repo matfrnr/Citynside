@@ -211,7 +211,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
           </form>
 
           <p className="auth-privacy">
-            Le compte de démonstration utilise uniquement les données de cet appareil.
+            Le compte de démonstration utilise uniquement les données de cet
+            appareil.
           </p>
         </div>
 
