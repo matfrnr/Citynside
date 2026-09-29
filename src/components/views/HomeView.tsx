@@ -1,5 +1,5 @@
 import React from 'react';
-import { Building2, ArrowRight, Map, Bookmark, Bell, FileText, Calendar, MapPin } from 'lucide-react';
+import { Building2, ArrowRight, Map, Star, Bell, FileText, Calendar, MapPin } from 'lucide-react';
 import type { AppView, NeighborhoodAnalysis } from '../../types';
 
 const MAX_RECENT = 3;
@@ -54,10 +54,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
             <span className="quick-label">Analyser un quartier</span>
           </button>
           <button className="quick-card" onClick={() => onNavigate('enregistrements')}>
-            <div className="quick-icon quick-icon--fav"><Bookmark size={22} /></div>
+            <div className="quick-icon quick-icon--fav"><Star size={22} /></div>
             <div className="quick-label-group">
               <span className="quick-label">Historique & Favoris</span>
-              {favoritesCount > 0 && <span className="quick-badge">{favoritesCount}</span>}
             </div>
           </button>
           <button className="quick-card" onClick={() => onNavigate('notifications')}>

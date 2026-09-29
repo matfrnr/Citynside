@@ -1,6 +1,6 @@
 import {
   BadgeCheck,
-  Bookmark,
+  Star,
   BriefcaseBusiness,
   Building2,
   ChartNoAxesColumnIncreasing,
@@ -158,7 +158,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
             <div className="profile-stat">
               <span className="stat-icon">
-                <Bookmark size={18} />
+                <Star size={18} />
               </span>
               <span className="stat-value">{favoritesCount}</span>
               <span className="stat-label">Adresses favorites</span>

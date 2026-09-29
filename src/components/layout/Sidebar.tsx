@@ -1,6 +1,6 @@
 import {
   Bell,
-  Bookmark,
+  Star,
   Home,
   Map,
   PanelLeftClose,
@@ -107,7 +107,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       id: "enregistrements" as AppView,
       label: "Favoris",
-      icon: Bookmark,
+      icon: Star,
       badge: favoritesCount,
     },
     { id: "notifications" as AppView, label: "Notifications", icon: Bell },

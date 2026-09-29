@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bookmark, Search, Building2, ArrowRight, Calendar, Star, Trash2, Pencil } from 'lucide-react';
+import { Search, Building2, ArrowRight, Calendar, Star, Trash2, Pencil } from 'lucide-react';
 import type { NeighborhoodAnalysis } from '../../types';
 
 const ITEMS_PER_PAGE = 6;
@@ -95,11 +95,11 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
       {/* Grid of cards or Empty state */}
       {displayed.length === 0 ? (
         <div className="enreg-empty">
-          <Bookmark size={40} strokeWidth={1.4} className="enreg-empty-icon" />
+          <Star size={40} strokeWidth={1.4} className="enreg-empty-icon" />
           <h3>{onlyFavorites ? "Aucun favori enregistré" : "Aucune analyse enregistrée"}</h3>
           <p>
             {onlyFavorites
-              ? "Ajoutez une analyse à vos favoris en cliquant sur l’icône signet."
+              ? "Ajoutez une analyse à vos favoris en cliquant sur l'icône étoile."
               : filterQuery
                 ? "Aucune analyse ne correspond à votre recherche."
                 : "Vos analyses sauvegardées apparaîtront ici pour que vous puissiez les consulter depuis n’importe quel appareil."}
@@ -132,7 +132,7 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
                       onClick={() => onToggleFavorite(item.id)}
                       title={item.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
                     >
-                      <Bookmark size={16} fill={item.isFavorite ? 'currentColor' : 'none'} />
+                      <Star size={16} fill={item.isFavorite ? 'currentColor' : 'none'} />
                     </button>
                     <button
                       className="delete-btn"
