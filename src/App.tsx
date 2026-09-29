@@ -346,6 +346,7 @@ export const App: React.FC = () => {
           {currentView === "report" && activeAnalysis && (
             <ReportView
               analysis={activeAnalysis}
+              user={authUser}
               onBackToEdit={() => setCurrentView("new-analysis")}
             />
           )}

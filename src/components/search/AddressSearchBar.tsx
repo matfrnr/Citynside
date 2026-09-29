@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, MapPin, ArrowRight, X, Loader2 } from 'lucide-react';
-import { searchAddress } from '../../services/banApi';
+import { Search, MapPin, ArrowRight, X, Loader2, LocateFixed } from 'lucide-react';
+import { searchAddress, reverseGeocode } from '../../services/banApi';
 import type { AddressResult } from '../../types';
 
 interface AddressSearchBarProps {
@@ -20,6 +20,7 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
   const [suggestions, setSuggestions] = useState<AddressResult[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [isGeolocating, setIsGeolocating] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceTimerRef = useRef<any>(null);
 
@@ -90,6 +91,39 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
     onSelectAddress(item);
   };
 
+  const handleGeolocation = () => {
+    if (!navigator.geolocation) {
+      alert("La géolocalisation n'est pas supportée par votre navigateur.");
+      return;
+    }
+
+    setIsGeolocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          const result = await reverseGeocode(latitude, longitude);
+          if (result) {
+            handleSelect(result);
+          } else {
+            alert("Impossible de trouver une adresse pour cette position.");
+          }
+        } catch (error) {
+          console.error("Erreur de géolocalisation:", error);
+          alert("Erreur lors de la récupération de l'adresse.");
+        } finally {
+          setIsGeolocating(false);
+        }
+      },
+      (error) => {
+        console.error("Erreur de géolocalisation:", error);
+        alert("Impossible de récupérer votre position.");
+        setIsGeolocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+  };
+
   const handleTrigger = async () => {
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     setIsOpen(false);
@@ -142,7 +176,7 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
           />
           {query.length > 0 && (
             <button
-              className="clear-btn"
+              className="icon-btn"
               onClick={() => {
                 if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
                 setQuery('');
@@ -150,10 +184,21 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
                 setIsOpen(false);
               }}
               aria-label="Effacer"
+              type="button"
             >
               <X size={16} />
             </button>
           )}
+          <button
+            className="icon-btn"
+            onClick={handleGeolocation}
+            disabled={isGeolocating || isLoading || isSearching}
+            aria-label="Me géolocaliser"
+            title="Me géolocaliser"
+            type="button"
+          >
+            {isGeolocating ? <Loader2 size={16} className="spin-icon" /> : <LocateFixed size={16} />}
+          </button>
         </div>
 
         <button
@@ -257,18 +302,25 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
           font-weight: 400;
         }
 
-        .clear-btn {
+        .icon-btn {
           color: rgba(255, 255, 255, 0.5);
           padding: 6px;
           display: flex;
           align-items: center;
           justify-content: center;
           border-radius: 50%;
-          transition: background 0.15s ease;
+          transition: background 0.15s ease, color 0.15s ease;
+          background: transparent;
+          border: none;
+          cursor: pointer;
         }
-        .clear-btn:hover {
+        .icon-btn:hover:not(:disabled) {
           color: #ffffff;
           background: rgba(255, 255, 255, 0.12);
+        }
+        .icon-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
 
         /* Bouton Analyser — Jaune #f1e850 (accent fort charte V1) */
