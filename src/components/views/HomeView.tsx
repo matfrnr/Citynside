@@ -22,7 +22,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
 }) => {
   const firstName = userName.split(/\s+/)[0] || 'Agent';
   const recentAnalyses = analyses.slice(0, MAX_RECENT);
-  const favoritesCount = analyses.filter((a) => a.isFavorite).length;
 
   // Determine greeting based on time of day
   const hour = new Date().getHours();
