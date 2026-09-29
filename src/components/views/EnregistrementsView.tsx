@@ -92,73 +92,87 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
         {filtered.length} analyse{filtered.length > 1 ? 's' : ''} trouvée{filtered.length > 1 ? 's' : ''}
       </p>
 
-      {/* Grid of cards */}
-      <div className="enreg-grid">
-        {displayed.map((item) => {
-          const displayName = item.neighborhoodName || item.address;
-          return (
-            <div key={item.id} className="enreg-card cyt-card">
-              <div className="card-top">
-                <div className="title-area">
-                  <Building2 size={18} className="b-icon" />
-                  <div>
-                    <h3 className="card-name">{displayName}</h3>
-                    <span className="card-address">{item.address}, {item.city}</span>
+      {/* Grid of cards or Empty state */}
+      {displayed.length === 0 ? (
+        <div className="enreg-empty">
+          <Bookmark size={40} strokeWidth={1.4} className="enreg-empty-icon" />
+          <h3>{onlyFavorites ? "Aucun favori enregistré" : "Aucune analyse enregistrée"}</h3>
+          <p>
+            {onlyFavorites
+              ? "Ajoutez une analyse à vos favoris en cliquant sur l’icône signet."
+              : filterQuery
+                ? "Aucune analyse ne correspond à votre recherche."
+                : "Vos analyses sauvegardées apparaîtront ici pour que vous puissiez les consulter depuis n’importe quel appareil."}
+          </p>
+        </div>
+      ) : (
+        <div className="enreg-grid">
+          {displayed.map((item) => {
+            const displayName = item.neighborhoodName || item.address;
+            return (
+              <div key={item.id} className="enreg-card cyt-card">
+                <div className="card-top">
+                  <div className="title-area">
+                    <Building2 size={18} className="b-icon" />
+                    <div>
+                      <h3 className="card-name">{displayName}</h3>
+                      <span className="card-address">{item.address}, {item.city}</span>
+                    </div>
+                  </div>
+                  <div className="card-actions">
+                    <button
+                      className="rename-btn"
+                      onClick={() => handleOpenRename(item)}
+                      title="Renommer"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      className={`fav-btn ${item.isFavorite ? 'favorited' : ''}`}
+                      onClick={() => onToggleFavorite(item.id)}
+                      title={item.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+                    >
+                      <Bookmark size={16} fill={item.isFavorite ? 'currentColor' : 'none'} />
+                    </button>
+                    <button
+                      className="delete-btn"
+                      onClick={() => setDeleteConfirmId(item.id)}
+                      title="Supprimer cette analyse"
+                    >
+                      <Trash2 size={15} />
+                    </button>
                   </div>
                 </div>
-                <div className="card-actions">
-                  <button
-                    className="rename-btn"
-                    onClick={() => handleOpenRename(item)}
-                    title="Renommer"
-                  >
-                    <Pencil size={14} />
-                  </button>
-                  <button
-                    className={`fav-btn ${item.isFavorite ? 'favorited' : ''}`}
-                    onClick={() => onToggleFavorite(item.id)}
-                    title={item.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
-                  >
-                    <Bookmark size={16} fill={item.isFavorite ? 'currentColor' : 'none'} />
-                  </button>
-                  <button
-                    className="delete-btn"
-                    onClick={() => setDeleteConfirmId(item.id)}
-                    title="Supprimer cette analyse"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              </div>
 
-              <div className="card-indicators-row">
-                <div className="score-box">
-                  <span className="score-val">{item.globalScore.toFixed(1)}</span>
-                  <span className="score-label">Score global</span>
+                <div className="card-indicators-row">
+                  <div className="score-box">
+                    <span className="score-val">{item.globalScore.toFixed(1)}</span>
+                    <span className="score-label">Score global</span>
+                  </div>
+                  <div className="categories-mini-pills">
+                    {item.categories.slice(0, 3).map((c) => (
+                      <span key={c.category} className="mini-pill">
+                        {c.label.split(' ')[0]}: <b>{c.score.toFixed(1)}</b>
+                      </span>
+                    ))}
+                  </div>
                 </div>
-                <div className="categories-mini-pills">
-                  {item.categories.slice(0, 3).map((c) => (
-                    <span key={c.category} className="mini-pill">
-                      {c.label.split(' ')[0]}: <b>{c.score.toFixed(1)}</b>
-                    </span>
-                  ))}
-                </div>
-              </div>
 
-              <div className="card-bottom">
-                <span className="date-tag">
-                  <Calendar size={12} />
-                  {new Date(item.createdAt).toLocaleDateString('fr-FR')}
-                </span>
-                <button className="btn-outline" onClick={() => onSelectAnalysis(item)}>
-                  <span>Voir le rapport</span>
-                  <ArrowRight size={14} />
-                </button>
+                <div className="card-bottom">
+                  <span className="date-tag">
+                    <Calendar size={12} />
+                    {new Date(item.createdAt).toLocaleDateString('fr-FR')}
+                  </span>
+                  <button className="btn-outline" onClick={() => onSelectAnalysis(item)}>
+                    <span>Voir le rapport</span>
+                    <ArrowRight size={14} />
+                  </button>
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Load more */}
       {hasMore && (
@@ -316,6 +330,37 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
           font-size: 0.82rem;
           color: var(--color-text-subtle);
           margin: -8px 0 0 4px;
+        }
+
+        .enreg-empty {
+          text-align: center;
+          padding: 56px 24px;
+          background: #ffffff;
+          border: 1px dashed var(--color-border);
+          border-radius: var(--radius-md);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 10px;
+          color: var(--color-text-muted);
+        }
+        .enreg-empty-icon {
+          color: var(--color-border-active);
+          margin-bottom: 2px;
+        }
+        .enreg-empty h3 {
+          font-family: var(--font-family-heading);
+          font-size: 1.15rem;
+          font-weight: 700;
+          color: var(--color-primary);
+          margin: 0;
+        }
+        .enreg-empty p {
+          max-width: 440px;
+          font-size: 0.88rem;
+          line-height: 1.5;
+          margin: 0;
+          color: var(--color-text-muted);
         }
 
         .enreg-grid {

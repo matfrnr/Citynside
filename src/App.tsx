@@ -8,14 +8,16 @@ import { NewAnalysisView } from "./components/views/NewAnalysisView";
 import { NotificationsView } from "./components/views/NotificationsView";
 import { ProfileView } from "./components/views/ProfileView";
 import { ReportView } from "./components/views/ReportView";
+import { fetchUserProfile } from "./services/profile";
 import {
   deleteAnalysis,
+  fetchAnalyses,
   getStoredAnalyses,
   renameAnalysis,
   saveAnalysis,
   toggleFavorite,
 } from "./services/storage";
-import { mapSupabaseUser, supabase } from "./services/supabase";
+import { mapProfileRowToAuthUser, supabase } from "./services/supabase";
 import {
   type AppView,
   type AuthUser,
@@ -34,6 +36,37 @@ export const App: React.FC = () => {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [authChecking, setAuthChecking] = useState(true);
 
+  const loadUserAnalyses = async (userId: string, isInitial = false) => {
+    // 1. Instatané depuis le cache local (vide pour un nouveau compte réel)
+    const cached = getStoredAnalyses(userId);
+    setAnalyses(cached);
+    if (isInitial) {
+      setActiveAnalysis(cached[0] ?? null);
+    }
+
+    // 2. Récupération distante depuis Supabase BDD
+    if (userId !== LOCAL_DEMO_USER_ID) {
+      try {
+        const fresh = await fetchAnalyses(userId);
+        setAnalyses(fresh);
+        if (isInitial) {
+          setActiveAnalysis((prev) => prev ?? (fresh[0] ?? null));
+        } else {
+          setActiveAnalysis((prev) => {
+            if (!prev) return null;
+            // Si l'utilisateur est sur une nouvelle recherche en cours (non encore en base), la préserver absolument
+            if (!fresh.some((a) => a.id === prev.id)) {
+              return prev;
+            }
+            return fresh.find((a) => a.id === prev.id) || prev;
+          });
+        }
+      } catch (err) {
+        console.warn("Erreur chargement Supabase:", err);
+      }
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     if (localStorage.getItem(LOCAL_DEMO_SESSION_KEY) === "active") {
@@ -43,9 +76,7 @@ export const App: React.FC = () => {
         email: "demo@citynside.local",
       };
       setAuthUser(demoUser);
-      const loaded = getStoredAnalyses(demoUser.id);
-      setAnalyses(loaded);
-      setActiveAnalysis(loaded[0] ?? null);
+      loadUserAnalyses(demoUser.id, true);
       setAuthChecking(false);
       return () => {
         cancelled = true;
@@ -54,14 +85,12 @@ export const App: React.FC = () => {
 
     supabase.auth
       .getSession()
-      .then(({ data: { session }, error }) => {
+      .then(async ({ data: { session }, error }) => {
         if (cancelled) return;
         if (session?.user && !error) {
-          const user = mapSupabaseUser(session.user);
+          const user = await fetchUserProfile(session.user);
           setAuthUser(user);
-          const loaded = getStoredAnalyses(user.id);
-          setAnalyses(loaded);
-          setActiveAnalysis(loaded[0] ?? null);
+          await loadUserAnalyses(user.id, true);
         }
         setAuthChecking(false);
       })
@@ -71,34 +100,69 @@ export const App: React.FC = () => {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (cancelled) return;
       if (localStorage.getItem(LOCAL_DEMO_SESSION_KEY) === "active") return;
+
+      // Ne jamais écraser l'écran ou l'analyse en cours lors d'un simple rafraîchissement de token (ex: Alt+Tab)
+      if (event === "TOKEN_REFRESHED") return;
+
       if (session?.user) {
-        const user = mapSupabaseUser(session.user);
+        const user = await fetchUserProfile(session.user);
         setAuthUser(user);
-        const loaded = getStoredAnalyses(user.id);
-        setAnalyses(loaded);
-        setActiveAnalysis(loaded[0] ?? null);
+        await loadUserAnalyses(user.id, false);
       } else {
         setAuthUser(null);
+        setAnalyses([]);
+        setActiveAnalysis(null);
       }
     });
+
+    // 3. Synchronisation Realtime : répercute les créations/modifications faites sur d'autres appareils
+    const realtimeChannel = supabase
+      .channel("cytinside-db-sync")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "analyses" },
+        async () => {
+          if (cancelled) return;
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user?.id) {
+            const fresh = await fetchAnalyses(session.user.id);
+            setAnalyses(fresh);
+          }
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "profiles" },
+        async (payload) => {
+          if (cancelled) return;
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user?.id && payload.new && (payload.new as any).id === session.user.id) {
+            const freshProfile = mapProfileRowToAuthUser(payload.new as any, session.user.email);
+            setAuthUser(freshProfile);
+          }
+        },
+      )
+      .subscribe();
 
     return () => {
       cancelled = true;
       subscription.unsubscribe();
+      supabase.removeChannel(realtimeChannel);
     };
   }, []);
 
-  const handleAuthenticated = (user: AuthUser) => {
+  const handleAuthenticated = async (user: AuthUser) => {
     if (user.id === LOCAL_DEMO_USER_ID) {
       localStorage.setItem(LOCAL_DEMO_SESSION_KEY, "active");
+      setAuthUser(user);
+    } else {
+      const freshUser = await fetchUserProfile(user);
+      setAuthUser(freshUser);
     }
-    setAuthUser(user);
-    const loaded = getStoredAnalyses(user.id);
-    setAnalyses(loaded);
-    setActiveAnalysis(loaded[0] ?? null);
+    await loadUserAnalyses(user.id, true);
     setCurrentView("home");
   };
 
@@ -135,18 +199,21 @@ export const App: React.FC = () => {
   };
 
   // Sauvegarde explicite avec nom personnalisé
-  const handleSaveAnalysis = (analysis: NeighborhoodAnalysis, customName: string) => {
+  const handleSaveAnalysis = async (
+    analysis: NeighborhoodAnalysis,
+    customName: string,
+  ) => {
     if (!authUser) return;
     const toSave = { ...analysis, neighborhoodName: customName || analysis.address };
     setActiveAnalysis(toSave);
-    saveAnalysis(toSave, authUser.id);
+    await saveAnalysis(toSave, authUser.id);
     setAnalyses(getStoredAnalyses(authUser.id));
   };
 
   // Renommer une analyse existante
-  const handleRenameAnalysis = (id: string, newName: string) => {
+  const handleRenameAnalysis = async (id: string, newName: string) => {
     if (!authUser) return;
-    renameAnalysis(id, newName, authUser.id);
+    await renameAnalysis(id, newName, authUser.id);
     const updatedList = getStoredAnalyses(authUser.id);
     setAnalyses(updatedList);
     if (activeAnalysis?.id === id) {
@@ -158,7 +225,7 @@ export const App: React.FC = () => {
     setCurrentView("impressions");
   };
 
-  const handleSaveImpressions = (impressions: FieldImpressions) => {
+  const handleSaveImpressions = async (impressions: FieldImpressions) => {
     if (!activeAnalysis || !authUser) return;
 
     const updated: NeighborhoodAnalysis = {
@@ -167,14 +234,14 @@ export const App: React.FC = () => {
     };
 
     setActiveAnalysis(updated);
-    saveAnalysis(updated, authUser.id);
+    await saveAnalysis(updated, authUser.id);
     setAnalyses(getStoredAnalyses(authUser.id));
     setCurrentView("report");
   };
 
-  const handleToggleFav = (id: string) => {
+  const handleToggleFav = async (id: string) => {
     if (!authUser) return;
-    toggleFavorite(id, authUser.id);
+    await toggleFavorite(id, authUser.id);
     const updatedList = getStoredAnalyses(authUser.id);
     setAnalyses(updatedList);
     if (activeAnalysis && activeAnalysis.id === id) {
@@ -185,9 +252,9 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleDeleteAnalysis = (id: string) => {
+  const handleDeleteAnalysis = async (id: string) => {
     if (!authUser) return;
-    deleteAnalysis(id, authUser.id);
+    await deleteAnalysis(id, authUser.id);
     const updatedList = getStoredAnalyses(authUser.id);
     setAnalyses(updatedList);
     if (activeAnalysis?.id === id) {

@@ -1,7 +1,17 @@
-import type { NeighborhoodAnalysis, POI } from "../types";
+import { LOCAL_DEMO_USER_ID, type NeighborhoodAnalysis, type POI } from "../types";
 import { calculateCategoryScores } from "./scoringEngine";
+import { supabase } from "./supabase";
 
 const STORAGE_KEY = "citynside_analyses_v1";
+
+const DEMO_ANALYSIS_IDS = new Set([
+  "aigle_38000",
+  "prefecture_38000",
+  "europole_38000",
+  "hypercentre_38000",
+  "saintbruno_38000",
+  "quais_38000",
+]);
 
 const getStorageKey = (userId: string) =>
   `${STORAGE_KEY}_${encodeURIComponent(userId)}`;
@@ -116,25 +126,120 @@ const INITIAL_ANALYSES: NeighborhoodAnalysis[] = (() => {
   });
 })();
 
+function mapRowToAnalysis(row: Record<string, any>): NeighborhoodAnalysis {
+  return {
+    id: row.id,
+    createdAt: row.created_at || new Date().toISOString(),
+    address: row.address || "",
+    city: row.city || "",
+    postcode: row.postcode || "",
+    neighborhoodName: row.neighborhood_name || row.address || "",
+    lat: Number(row.lat) || 0,
+    lon: Number(row.lon) || 0,
+    globalScore: Number(row.global_score ?? 0),
+    categories: Array.isArray(row.categories) ? row.categories : [],
+    pois: Array.isArray(row.pois) ? row.pois : [],
+    impressions: row.impressions || undefined,
+    isFavorite: Boolean(row.is_favorite),
+  };
+}
+
+function mapAnalysisToRow(analysis: NeighborhoodAnalysis, userId: string) {
+  return {
+    id: analysis.id,
+    user_id: userId,
+    address: analysis.address,
+    city: analysis.city,
+    postcode: analysis.postcode,
+    neighborhood_name: analysis.neighborhoodName || analysis.address,
+    lat: analysis.lat,
+    lon: analysis.lon,
+    global_score: analysis.globalScore,
+    categories: analysis.categories,
+    pois: analysis.pois,
+    impressions: analysis.impressions ?? null,
+    is_favorite: Boolean(analysis.isFavorite),
+    created_at: analysis.createdAt || new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+}
+
 export function getStoredAnalyses(userId: string): NeighborhoodAnalysis[] {
+  const isDemo = userId === LOCAL_DEMO_USER_ID;
   const storageKey = getStorageKey(userId);
   try {
     const raw = localStorage.getItem(storageKey);
     if (!raw) {
-      localStorage.setItem(storageKey, JSON.stringify(INITIAL_ANALYSES));
-      return INITIAL_ANALYSES;
+      if (isDemo) {
+        localStorage.setItem(storageKey, JSON.stringify(INITIAL_ANALYSES));
+        return INITIAL_ANALYSES;
+      }
+      // Pour tout compte réel, un nouveau compte DOIT être vide
+      return [];
     }
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      if (!isDemo) {
+        // Nettoie d'éventuelles fausses analyses de démo injectées par erreur auparavant
+        const cleaned = parsed.filter(
+          (item: NeighborhoodAnalysis) => !DEMO_ANALYSIS_IDS.has(item.id),
+        );
+        if (cleaned.length !== parsed.length) {
+          localStorage.setItem(storageKey, JSON.stringify(cleaned));
+        }
+        return cleaned;
+      }
+      return parsed;
+    }
+    return isDemo ? INITIAL_ANALYSES : [];
   } catch (e) {
     console.error("Erreur lecture localStorage:", e);
-    return INITIAL_ANALYSES;
+    return isDemo ? INITIAL_ANALYSES : [];
   }
 }
 
-export function saveAnalysis(
+/**
+ * Récupère les analyses depuis la base Supabase pour les comptes réels.
+ * Met à jour le cache local pour la réactivité.
+ */
+export async function fetchAnalyses(userId: string): Promise<NeighborhoodAnalysis[]> {
+  const isDemo = userId === LOCAL_DEMO_USER_ID;
+  if (isDemo) {
+    return getStoredAnalyses(userId);
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("analyses")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (!error && data) {
+      const mapped = data.map(mapRowToAnalysis);
+      try {
+        localStorage.setItem(getStorageKey(userId), JSON.stringify(mapped));
+      } catch {
+        // ignore
+      }
+      return mapped;
+    }
+
+    if (error) {
+      console.warn("Supabase analyses sync (fallback local cache):", error.message);
+    }
+  } catch (err) {
+    console.warn("Supabase analyses query failed, fallback local:", err);
+  }
+
+  return getStoredAnalyses(userId);
+}
+
+export async function saveAnalysis(
   analysis: NeighborhoodAnalysis,
   userId: string,
-): void {
+): Promise<void> {
+  const isDemo = userId === LOCAL_DEMO_USER_ID;
   try {
     const list = getStoredAnalyses(userId);
     const existingIndex = list.findIndex((a) => a.id === analysis.id);
@@ -145,34 +250,85 @@ export function saveAnalysis(
     }
     localStorage.setItem(getStorageKey(userId), JSON.stringify(list));
   } catch (e) {
-    console.error("Erreur sauvegarde analyse:", e);
+    console.error("Erreur sauvegarde analyse locale:", e);
+  }
+
+  if (!isDemo) {
+    try {
+      const row = mapAnalysisToRow(analysis, userId);
+      const { error } = await supabase.from("analyses").upsert(row, { onConflict: "id" });
+      if (error) {
+        console.error("Erreur sauvegarde Supabase:", error);
+      }
+    } catch (e) {
+      console.error("Erreur requête Supabase saveAnalysis:", e);
+    }
   }
 }
 
-export function toggleFavorite(analysisId: string, userId: string): void {
+export async function toggleFavorite(analysisId: string, userId: string): Promise<void> {
+  const isDemo = userId === LOCAL_DEMO_USER_ID;
+  let newFavState = false;
   try {
     const list = getStoredAnalyses(userId);
     const item = list.find((a) => a.id === analysisId);
     if (item) {
       item.isFavorite = !item.isFavorite;
+      newFavState = item.isFavorite;
       localStorage.setItem(getStorageKey(userId), JSON.stringify(list));
     }
   } catch (e) {
-    console.error("Erreur toggle favorite:", e);
+    console.error("Erreur toggle favorite local:", e);
+  }
+
+  if (!isDemo) {
+    try {
+      const { error } = await supabase
+        .from("analyses")
+        .update({ is_favorite: newFavState, updated_at: new Date().toISOString() })
+        .eq("id", analysisId)
+        .eq("user_id", userId);
+      if (error) {
+        console.error("Erreur toggle favorite Supabase:", error);
+      }
+    } catch (e) {
+      console.error("Erreur requête Supabase toggleFavorite:", e);
+    }
   }
 }
 
-export function deleteAnalysis(analysisId: string, userId: string): void {
+export async function deleteAnalysis(analysisId: string, userId: string): Promise<void> {
+  const isDemo = userId === LOCAL_DEMO_USER_ID;
   try {
     const list = getStoredAnalyses(userId);
     const filtered = list.filter((a) => a.id !== analysisId);
     localStorage.setItem(getStorageKey(userId), JSON.stringify(filtered));
   } catch (e) {
-    console.error("Erreur suppression analyse:", e);
+    console.error("Erreur suppression analyse locale:", e);
+  }
+
+  if (!isDemo) {
+    try {
+      const { error } = await supabase
+        .from("analyses")
+        .delete()
+        .eq("id", analysisId)
+        .eq("user_id", userId);
+      if (error) {
+        console.error("Erreur suppression Supabase:", error);
+      }
+    } catch (e) {
+      console.error("Erreur requête Supabase deleteAnalysis:", e);
+    }
   }
 }
 
-export function renameAnalysis(analysisId: string, newName: string, userId: string): void {
+export async function renameAnalysis(
+  analysisId: string,
+  newName: string,
+  userId: string,
+): Promise<void> {
+  const isDemo = userId === LOCAL_DEMO_USER_ID;
   try {
     const list = getStoredAnalyses(userId);
     const item = list.find((a) => a.id === analysisId);
@@ -181,6 +337,21 @@ export function renameAnalysis(analysisId: string, newName: string, userId: stri
       localStorage.setItem(getStorageKey(userId), JSON.stringify(list));
     }
   } catch (e) {
-    console.error("Erreur renommage analyse:", e);
+    console.error("Erreur renommage analyse locale:", e);
+  }
+
+  if (!isDemo) {
+    try {
+      const { error } = await supabase
+        .from("analyses")
+        .update({ neighborhood_name: newName, updated_at: new Date().toISOString() })
+        .eq("id", analysisId)
+        .eq("user_id", userId);
+      if (error) {
+        console.error("Erreur renommage Supabase:", error);
+      }
+    } catch (e) {
+      console.error("Erreur requête Supabase renameAnalysis:", e);
+    }
   }
 }

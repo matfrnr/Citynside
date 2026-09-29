@@ -10,8 +10,12 @@ import {
   Save,
   UserRound,
 } from "lucide-react";
-import { useState } from "react";
-import { supabase } from "../../services/supabase";
+import { useEffect, useState } from "react";
+import {
+  type ProfileDetails,
+  isValidPhoneNumber,
+  saveUserProfile,
+} from "../../services/profile";
 import { type AuthUser, LOCAL_DEMO_USER_ID } from "../../types";
 
 interface ProfileViewProps {
@@ -22,18 +26,9 @@ interface ProfileViewProps {
   onUpdateUser?: (updated: AuthUser) => void;
 }
 
-interface ProfileDetails {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  agency: string;
-  role: string;
-}
-
 const loadProfile = (user: AuthUser): ProfileDetails => {
   const [defaultFirstName = user.name, ...lastNameParts] = user.name.split(" ");
-  const defaultProfile: ProfileDetails = {
+  return {
     firstName: user.firstName || defaultFirstName,
     lastName:
       user.lastName !== undefined ? user.lastName : lastNameParts.join(" "),
@@ -42,16 +37,6 @@ const loadProfile = (user: AuthUser): ProfileDetails => {
     agency: user.agency || "Agence immobilière",
     role: user.role || "Agent immobilier",
   };
-  try {
-    const storedProfile = localStorage.getItem(
-      `citynside-profile-${encodeURIComponent(user.id)}`,
-    );
-    return storedProfile
-      ? { ...defaultProfile, ...JSON.parse(storedProfile) }
-      : defaultProfile;
-  } catch {
-    return defaultProfile;
-  }
 };
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
@@ -68,6 +53,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState("");
 
+  // Re-synchronise si user change (ex: modification reçue en direct depuis un autre appareil)
+  useEffect(() => {
+    setProfile(loadProfile(user));
+  }, [user]);
+
   const updateField = (field: keyof ProfileDetails, value: string) => {
     setProfile((current) => ({ ...current, [field]: value }));
     setSaved(false);
@@ -80,53 +70,43 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     setSaveError("");
     setSaved(false);
 
+    const cleanPhone = profile.phone.trim();
+    if (cleanPhone && !isValidPhoneNumber(cleanPhone)) {
+      setSaveError(
+        "Numéro de téléphone invalide : 10 chiffres requis (ex : 06 12 34 56 78) ou format international (+33...). Les valeurs partielles comme 1234 sont refusées.",
+      );
+      setIsSaving(false);
+      return;
+    }
+
     const fullName =
       `${profile.firstName} ${profile.lastName}`.trim() || user.name;
 
+    const updatedUser: AuthUser = {
+      ...user,
+      name: fullName,
+      firstName: profile.firstName,
+      lastName: profile.lastName,
+      phone: cleanPhone,
+      agency: profile.agency,
+      role: profile.role,
+    };
+
     try {
-      // 1. Sauvegarde locale persistante
-      localStorage.setItem(
-        `citynside-profile-${encodeURIComponent(user.id)}`,
-        JSON.stringify(profile),
-      );
-
-      // 2. Synchronisation Supabase Auth si compte connecté
       if (user.id !== LOCAL_DEMO_USER_ID) {
-        const { error } = await supabase.auth.updateUser({
-          data: {
-            first_name: profile.firstName,
-            last_name: profile.lastName,
-            name: fullName,
-            full_name: fullName,
-            phone: profile.phone,
-            agency: profile.agency,
-            role: profile.role,
-          },
+        const freshUser = await saveUserProfile(user, {
+          ...profile,
+          phone: cleanPhone,
         });
-
-        if (error) {
-          console.warn("Échec de la synchronisation Supabase :", error);
-          setSaveError(
-            "Enregistré en local (échec de synchronisation distante).",
-          );
-        }
+        onUpdateUser?.(freshUser);
+      } else {
+        onUpdateUser?.(updatedUser);
       }
 
-      // 3. Mise à jour de l'état utilisateur dans l'application
-      onUpdateUser?.({
-        ...user,
-        name: fullName,
-        firstName: profile.firstName,
-        lastName: profile.lastName,
-        phone: profile.phone,
-        agency: profile.agency,
-        role: profile.role,
-      });
-
       setSaved(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setSaveError("Une erreur est survenue lors de l'enregistrement.");
+      setSaveError(err.message || "Une erreur est survenue lors de l'enregistrement.");
     } finally {
       setIsSaving(false);
     }
@@ -234,16 +214,36 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 Adresse utilisée pour la connexion
               </span>
             </label>
-            <label className="profile-field field-with-icon">
+            <label
+              className={`profile-field field-with-icon ${
+                profile.phone.trim() && !isValidPhoneNumber(profile.phone)
+                  ? "field-error"
+                  : ""
+              }`}
+            >
               <span>Téléphone</span>
               <span className="input-wrap">
                 <Phone size={17} />
                 <input
                   type="tel"
                   value={profile.phone}
+                  placeholder="06 12 34 56 78 ou +33 6 12 34 56 78"
+                  pattern="^(?:(?:\+|00)33|0)\s*[1-9](?:[\s.-]*\d{2}){4}$|^\+(?:[0-9][\s.-]?){9,15}$"
+                  title="Numéro valide à 10 chiffres (ex: 06 12 34 56 78) ou international (+33...)"
                   onChange={(event) => updateField("phone", event.target.value)}
                 />
               </span>
+              {Boolean(
+                profile.phone.trim() && !isValidPhoneNumber(profile.phone),
+              ) ? (
+                <span className="profile-field-error">
+                  Numéro invalide : 10 chiffres requis (ex : 06 12 34 56 78)
+                </span>
+              ) : (
+                <span className="profile-field-note">
+                  Format standard : 06 12 34 56 78 ou international (+33...)
+                </span>
+              )}
             </label>
             <label className="profile-field field-with-icon">
               <span>Agence</span>
@@ -495,6 +495,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         .input-wrap { position: relative; display: flex; align-items: center; color: #7e9990; }
         .input-wrap > svg { position: absolute; left: 11px; pointer-events: none; }
         .input-wrap input { padding-left: 36px; }
+
+        .profile-field-error {
+          font-size: 0.72rem;
+          color: #c93b2b;
+          font-weight: 500;
+        }
+
+        .profile-field.field-error input {
+          border-color: #c93b2b !important;
+          background: #fff8f7;
+        }
+        .profile-field.field-error input:focus {
+          box-shadow: 0 0 0 3px rgba(201, 59, 43, 0.15) !important;
+        }
 
         .profile-form-footer {
           display: flex;
