@@ -1,4 +1,4 @@
-import { ArrowRight, MapPin, Search } from "lucide-react";
+import { ArrowRight, MapPin, Save, Search, X } from "lucide-react";
 import { useState } from "react";
 import { fetchAirQuality } from "../../services/airQualityApi";
 import { reverseGeocode } from "../../services/banApi";
@@ -14,33 +14,23 @@ import { InteractiveMap } from "../map/InteractiveMap";
 import { ScoresList } from "../scores/ScoresList";
 import { AddressSearchBar } from "../search/AddressSearchBar";
 
-/**
- * Extrait le nom de rue à partir du nom d'adresse BAN.
- * Supprime le numéro de voirie pour ne garder que le nom de la voie.
- * Ex: "7 Avenue Coubertin" → "Avenue Coubertin"
- */
-function extractNeighborhoodName(rawName: string, city: string): string {
-  if (!rawName) return city || "Adresse inconnue";
-
-  // Supprimer le numéro de voirie en début (ex: "7 ", "12 bis ", "3-5 ")
-  const streetName = rawName.replace(/^\d[\d\s\-/]*(?:bis|ter|quater)?\s+/i, "").trim();
-
-  return streetName || city || "Adresse inconnue";
-}
-
 interface NewAnalysisViewProps {
   currentAnalysis: NeighborhoodAnalysis | null;
   onUpdateAnalysis: (analysis: NeighborhoodAnalysis) => void;
+  onSaveAnalysis: (analysis: NeighborhoodAnalysis, customName: string) => void;
   onGoToImpressions: () => void;
 }
 
 export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
   currentAnalysis,
   onUpdateAnalysis,
+  onSaveAnalysis,
   onGoToImpressions,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saveName, setSaveName] = useState("");
 
   // Fonction résiliente et accélérée d'agrégation multi-API
   const runParallelAnalysis = async (lat: number, lon: number) => {
@@ -97,7 +87,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
         address: addr.name || addr.label,
         city: addr.city,
         postcode: addr.postcode,
-        neighborhoodName: extractNeighborhoodName(addr.name, addr.city),
+        neighborhoodName: "", // sera défini par l'utilisateur à l'enregistrement
         lat: addr.lat,
         lon: addr.lon,
         globalScore: avg,
@@ -116,7 +106,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
 
   // When user clicks anywhere on map
   const handleMapLocationSelect = async (lat: number, lon: number) => {
-    setSelectedCategory(null); // Réinitialise le filtre pour afficher tous les équipements du nouvel emplacement
+    setSelectedCategory(null);
     setIsLoading(true);
     try {
       const [rev, analysisData] = await Promise.all([
@@ -132,9 +122,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
         address: rev ? rev.name : `${lat.toFixed(4)}, ${lon.toFixed(4)}`,
         city: rev ? rev.city : (currentAnalysis?.city ?? ""),
         postcode: rev ? rev.postcode : (currentAnalysis?.postcode ?? ""),
-        neighborhoodName: rev
-          ? extractNeighborhoodName(rev.name, rev.city)
-          : (currentAnalysis?.neighborhoodName ?? "Zone sélectionnée"),
+        neighborhoodName: "", // sera défini par l'utilisateur à l'enregistrement
         lat,
         lon,
         globalScore: avg,
@@ -151,11 +139,25 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
     }
   };
 
+  const handleOpenSave = () => {
+    // Pré-remplir avec l'adresse courte (sans numéro de voirie)
+    const addr = currentAnalysis?.address || "";
+    const street = addr.replace(/^\d[\d\s\-/]*(?:bis|ter|quater)?\s+/i, "").trim();
+    setSaveName(currentAnalysis?.neighborhoodName || street || addr);
+    setShowSaveModal(true);
+  };
+
+  const handleConfirmSave = () => {
+    if (!currentAnalysis) return;
+    onSaveAnalysis(currentAnalysis, saveName.trim());
+    setShowSaveModal(false);
+  };
+
   return (
     <div className="new-analysis-container">
       {/* Header section matching Mockup 2 */}
       <div className="analysis-page-header">
-        <h1 className="header-main-title">Nouveau quartier</h1>
+        <h1 className="header-main-title">Nouvelle analyse</h1>
         <p className="header-main-subtitle">
           Recherchez et définissez une nouvelle zone à analyser
         </p>
@@ -182,7 +184,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
               <InteractiveMap
                 lat={currentAnalysis.lat}
                 lon={currentAnalysis.lon}
-                neighborhoodName={currentAnalysis.neighborhoodName}
+                neighborhoodName={currentAnalysis.address}
                 pois={currentAnalysis.pois}
                 selectedCategory={selectedCategory}
                 onSelectCategory={setSelectedCategory}
@@ -218,16 +220,23 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
           <div>
             <h2>Commencez par une adresse</h2>
             <p>
-              La carte et les scores s’affichent après le lancement de
-              l’analyse.
+              La carte et les scores s'affichent après le lancement de
+              l'analyse.
             </p>
           </div>
         </div>
       )}
 
-      {/* Bottom CTA Button matching Mockup 2 */}
+      {/* Bottom CTA Buttons */}
       {currentAnalysis && (
         <div className="analysis-bottom-cta-wrap">
+          <button
+            className="btn-save-analysis"
+            onClick={handleOpenSave}
+          >
+            <Save size={18} />
+            <span>Enregistrer l'analyse</span>
+          </button>
           <button
             className="btn-primary cta-impressions-btn"
             onClick={onGoToImpressions}
@@ -235,6 +244,45 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
             <span>Renseigner mes impressions</span>
             <ArrowRight size={20} strokeWidth={2.4} />
           </button>
+        </div>
+      )}
+
+      {/* Save Modal */}
+      {showSaveModal && (
+        <div className="save-modal-overlay" onClick={() => setShowSaveModal(false)}>
+          <div className="save-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="save-modal-close" onClick={() => setShowSaveModal(false)}>
+              <X size={18} />
+            </button>
+            <Save size={28} className="save-modal-icon" />
+            <h3>Enregistrer l'analyse</h3>
+            <p>Donnez un nom à cette analyse pour la retrouver facilement.</p>
+            <div className="save-modal-field">
+              <label htmlFor="save-name-input">Nom de l'analyse</label>
+              <input
+                id="save-name-input"
+                type="text"
+                value={saveName}
+                onChange={(e) => setSaveName(e.target.value)}
+                placeholder="Ex: Quartier Gare, Appt Rue Voltaire..."
+                autoFocus
+                onKeyDown={(e) => e.key === "Enter" && handleConfirmSave()}
+              />
+            </div>
+            <div className="save-modal-info">
+              <MapPin size={13} />
+              <span>{currentAnalysis?.address}, {currentAnalysis?.city}</span>
+            </div>
+            <div className="save-modal-actions">
+              <button className="btn-cancel" onClick={() => setShowSaveModal(false)}>
+                Annuler
+              </button>
+              <button className="btn-confirm-save" onClick={handleConfirmSave}>
+                <Save size={16} />
+                Enregistrer
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -351,16 +399,40 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
           }
         }
 
-        /* CTA en bas — Jaune #f1e850 */
+        /* CTA en bas */
         .analysis-bottom-cta-wrap {
           display: flex;
           justify-content: center;
+          gap: 14px;
           margin-top: 14px;
+          flex-wrap: wrap;
+        }
+
+        .btn-save-analysis {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 14px 28px;
+          border-radius: var(--radius-full);
+          border: 1.5px solid var(--color-green);
+          background: #ffffff;
+          color: var(--color-primary);
+          font-family: var(--font-family-heading);
+          font-weight: 700;
+          font-size: 1rem;
+          cursor: pointer;
+          transition: var(--transition-smooth);
+        }
+
+        .btn-save-analysis:hover {
+          background: var(--color-green-light);
+          border-color: var(--color-green-hover);
+          transform: translateY(-2px);
         }
 
         .cta-impressions-btn {
-          width: 100%;
-          max-width: 640px;
+          flex: 1;
+          max-width: 480px;
           background-color: var(--color-yellow);
           color: var(--color-text-on-yellow);
           font-weight: 700;
@@ -379,6 +451,165 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
 
         .cta-impressions-btn:active {
           transform: translateY(0);
+        }
+
+        /* Save Modal */
+        .save-modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.45);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+          animation: fadeIn 0.15s ease;
+        }
+
+        .save-modal {
+          background: #ffffff;
+          border-radius: 20px;
+          padding: 32px;
+          max-width: 420px;
+          width: 90%;
+          text-align: center;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+          animation: slideUp 0.2s ease;
+          position: relative;
+        }
+
+        .save-modal-close {
+          position: absolute;
+          top: 14px;
+          right: 14px;
+          color: var(--color-text-subtle);
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 4px;
+          border-radius: 6px;
+          transition: color 0.15s ease;
+        }
+        .save-modal-close:hover {
+          color: var(--color-text-main);
+        }
+
+        .save-modal-icon {
+          color: var(--color-primary);
+          margin-bottom: 12px;
+        }
+
+        .save-modal h3 {
+          font-family: var(--font-family-heading);
+          font-size: 1.15rem;
+          font-weight: 700;
+          color: var(--color-text-main);
+          margin-bottom: 6px;
+        }
+
+        .save-modal p {
+          font-family: var(--font-family-body);
+          font-size: 0.85rem;
+          color: var(--color-text-muted);
+          line-height: 1.5;
+          margin-bottom: 20px;
+        }
+
+        .save-modal-field {
+          text-align: left;
+          margin-bottom: 14px;
+        }
+
+        .save-modal-field label {
+          display: block;
+          font-family: var(--font-family-body);
+          font-size: 0.75rem;
+          font-weight: 600;
+          color: var(--color-text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          margin-bottom: 6px;
+        }
+
+        .save-modal-field input {
+          width: 100%;
+          padding: 12px 14px;
+          border: 1.5px solid var(--color-border);
+          border-radius: 10px;
+          font-family: var(--font-family-body);
+          font-size: 0.92rem;
+          color: var(--color-text-main);
+          transition: border-color 0.15s ease;
+          box-sizing: border-box;
+        }
+
+        .save-modal-field input:focus {
+          outline: none;
+          border-color: var(--color-green);
+        }
+
+        .save-modal-info {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          justify-content: center;
+          font-family: var(--font-family-body);
+          font-size: 0.78rem;
+          color: var(--color-text-subtle);
+          margin-bottom: 22px;
+          padding: 8px 12px;
+          background: var(--color-green-subtle);
+          border-radius: 8px;
+        }
+
+        .save-modal-actions {
+          display: flex;
+          gap: 12px;
+          justify-content: center;
+        }
+
+        .btn-cancel {
+          font-family: var(--font-family-body);
+          font-size: 0.88rem;
+          font-weight: 600;
+          padding: 10px 24px;
+          border-radius: var(--radius-full);
+          border: 1px solid var(--color-border);
+          background: #ffffff;
+          color: var(--color-text-muted);
+          cursor: pointer;
+          transition: var(--transition-fast);
+        }
+        .btn-cancel:hover {
+          background: var(--color-green-subtle);
+        }
+
+        .btn-confirm-save {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-family: var(--font-family-body);
+          font-size: 0.88rem;
+          font-weight: 700;
+          padding: 10px 24px;
+          border-radius: var(--radius-full);
+          border: none;
+          background: var(--color-primary);
+          color: #ffffff;
+          cursor: pointer;
+          transition: var(--transition-fast);
+        }
+        .btn-confirm-save:hover {
+          background: var(--color-primary-light);
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+          from { transform: translateY(16px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
         }
       `}</style>
     </div>

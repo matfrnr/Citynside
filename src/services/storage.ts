@@ -171,3 +171,16 @@ export function deleteAnalysis(analysisId: string, userId: string): void {
     console.error("Erreur suppression analyse:", e);
   }
 }
+
+export function renameAnalysis(analysisId: string, newName: string, userId: string): void {
+  try {
+    const list = getStoredAnalyses(userId);
+    const item = list.find((a) => a.id === analysisId);
+    if (item) {
+      item.neighborhoodName = newName;
+      localStorage.setItem(getStorageKey(userId), JSON.stringify(list));
+    }
+  } catch (e) {
+    console.error("Erreur renommage analyse:", e);
+  }
+}

@@ -11,6 +11,7 @@ import { ReportView } from "./components/views/ReportView";
 import {
   deleteAnalysis,
   getStoredAnalyses,
+  renameAnalysis,
   saveAnalysis,
   toggleFavorite,
 } from "./services/storage";
@@ -128,11 +129,29 @@ export const App: React.FC = () => {
     setCurrentView("new-analysis");
   };
 
+  // Met à jour l'analyse active en mémoire SANS sauvegarder dans le localStorage
   const handleUpdateAnalysis = (updated: NeighborhoodAnalysis) => {
-    if (!authUser) return;
     setActiveAnalysis(updated);
-    saveAnalysis(updated, authUser.id);
+  };
+
+  // Sauvegarde explicite avec nom personnalisé
+  const handleSaveAnalysis = (analysis: NeighborhoodAnalysis, customName: string) => {
+    if (!authUser) return;
+    const toSave = { ...analysis, neighborhoodName: customName || analysis.address };
+    setActiveAnalysis(toSave);
+    saveAnalysis(toSave, authUser.id);
     setAnalyses(getStoredAnalyses(authUser.id));
+  };
+
+  // Renommer une analyse existante
+  const handleRenameAnalysis = (id: string, newName: string) => {
+    if (!authUser) return;
+    renameAnalysis(id, newName, authUser.id);
+    const updatedList = getStoredAnalyses(authUser.id);
+    setAnalyses(updatedList);
+    if (activeAnalysis?.id === id) {
+      setActiveAnalysis({ ...activeAnalysis, neighborhoodName: newName });
+    }
   };
 
   const handleGoToImpressions = () => {
@@ -226,6 +245,7 @@ export const App: React.FC = () => {
             <NewAnalysisView
               currentAnalysis={activeAnalysis}
               onUpdateAnalysis={handleUpdateAnalysis}
+              onSaveAnalysis={handleSaveAnalysis}
               onGoToImpressions={handleGoToImpressions}
             />
           )}
@@ -251,6 +271,7 @@ export const App: React.FC = () => {
               onSelectAnalysis={handleSelectAnalysis}
               onToggleFavorite={handleToggleFav}
               onDeleteAnalysis={handleDeleteAnalysis}
+              onRenameAnalysis={handleRenameAnalysis}
             />
           )}
 

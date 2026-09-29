@@ -89,8 +89,10 @@ export const ReportView: React.FC<ReportViewProps> = ({
               {analysis.address}
             </h2>
             <p className="prop-city">
-              {analysis.postcode} {analysis.city} •{" "}
-              <b>{analysis.neighborhoodName}</b>
+              {analysis.postcode} {analysis.city}
+              {analysis.neighborhoodName && analysis.neighborhoodName !== analysis.address && (
+                <> • <b>{analysis.neighborhoodName}</b></>
+              )}
             </p>
           </div>
 

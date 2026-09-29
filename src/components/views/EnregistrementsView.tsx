@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bookmark, Search, Building2, ArrowRight, Calendar, Star, Trash2 } from 'lucide-react';
+import { Bookmark, Search, Building2, ArrowRight, Calendar, Star, Trash2, Pencil } from 'lucide-react';
 import type { NeighborhoodAnalysis } from '../../types';
 
 const ITEMS_PER_PAGE = 6;
@@ -9,6 +9,7 @@ interface EnregistrementsViewProps {
   onSelectAnalysis: (analysis: NeighborhoodAnalysis) => void;
   onToggleFavorite: (id: string) => void;
   onDeleteAnalysis: (id: string) => void;
+  onRenameAnalysis: (id: string, newName: string) => void;
 }
 
 export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
@@ -16,15 +17,18 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
   onSelectAnalysis,
   onToggleFavorite,
   onDeleteAnalysis,
+  onRenameAnalysis,
 }) => {
   const [filterQuery, setFilterQuery] = useState('');
   const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [renameId, setRenameId] = useState<string | null>(null);
+  const [renameName, setRenameName] = useState('');
 
   const filtered = analyses.filter((item) => {
     const matchesSearch =
-      item.neighborhoodName.toLowerCase().includes(filterQuery.toLowerCase()) ||
+      (item.neighborhoodName || '').toLowerCase().includes(filterQuery.toLowerCase()) ||
       item.city.toLowerCase().includes(filterQuery.toLowerCase()) ||
       item.address.toLowerCase().includes(filterQuery.toLowerCase());
     const matchesFav = onlyFavorites ? item.isFavorite : true;
@@ -38,6 +42,18 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
     if (deleteConfirmId) {
       onDeleteAnalysis(deleteConfirmId);
       setDeleteConfirmId(null);
+    }
+  };
+
+  const handleOpenRename = (item: NeighborhoodAnalysis) => {
+    setRenameId(item.id);
+    setRenameName(item.neighborhoodName || item.address);
+  };
+
+  const handleConfirmRename = () => {
+    if (renameId && renameName.trim()) {
+      onRenameAnalysis(renameId, renameName.trim());
+      setRenameId(null);
     }
   };
 
@@ -56,7 +72,7 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
           <Search size={16} className="s-icon" />
           <input
             type="text"
-            placeholder="Rechercher par adresse ou quartier..."
+            placeholder="Rechercher par adresse ou nom..."
             value={filterQuery}
             onChange={(e) => setFilterQuery(e.target.value)}
           />
@@ -78,60 +94,70 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
 
       {/* Grid of cards */}
       <div className="enreg-grid">
-        {displayed.map((item) => (
-          <div key={item.id} className="enreg-card cyt-card">
-            <div className="card-top">
-              <div className="title-area">
-                <Building2 size={18} className="b-icon" />
-                <div>
-                  <h3 className="card-name">{item.neighborhoodName}</h3>
-                  <span className="card-address">{item.address}, {item.city}</span>
+        {displayed.map((item) => {
+          const displayName = item.neighborhoodName || item.address;
+          return (
+            <div key={item.id} className="enreg-card cyt-card">
+              <div className="card-top">
+                <div className="title-area">
+                  <Building2 size={18} className="b-icon" />
+                  <div>
+                    <h3 className="card-name">{displayName}</h3>
+                    <span className="card-address">{item.address}, {item.city}</span>
+                  </div>
+                </div>
+                <div className="card-actions">
+                  <button
+                    className="rename-btn"
+                    onClick={() => handleOpenRename(item)}
+                    title="Renommer"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
+                    className={`fav-btn ${item.isFavorite ? 'favorited' : ''}`}
+                    onClick={() => onToggleFavorite(item.id)}
+                    title={item.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+                  >
+                    <Bookmark size={16} fill={item.isFavorite ? 'currentColor' : 'none'} />
+                  </button>
+                  <button
+                    className="delete-btn"
+                    onClick={() => setDeleteConfirmId(item.id)}
+                    title="Supprimer cette analyse"
+                  >
+                    <Trash2 size={15} />
+                  </button>
                 </div>
               </div>
-              <div className="card-actions">
-                <button
-                  className={`fav-btn ${item.isFavorite ? 'favorited' : ''}`}
-                  onClick={() => onToggleFavorite(item.id)}
-                  title={item.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
-                >
-                  <Bookmark size={16} fill={item.isFavorite ? 'currentColor' : 'none'} />
-                </button>
-                <button
-                  className="delete-btn"
-                  onClick={() => setDeleteConfirmId(item.id)}
-                  title="Supprimer cette analyse"
-                >
-                  <Trash2 size={15} />
-                </button>
-              </div>
-            </div>
 
-            <div className="card-indicators-row">
-              <div className="score-box">
-                <span className="score-val">{item.globalScore.toFixed(1)}</span>
-                <span className="score-label">Score global</span>
+              <div className="card-indicators-row">
+                <div className="score-box">
+                  <span className="score-val">{item.globalScore.toFixed(1)}</span>
+                  <span className="score-label">Score global</span>
+                </div>
+                <div className="categories-mini-pills">
+                  {item.categories.slice(0, 3).map((c) => (
+                    <span key={c.category} className="mini-pill">
+                      {c.label.split(' ')[0]}: <b>{c.score.toFixed(1)}</b>
+                    </span>
+                  ))}
+                </div>
               </div>
-              <div className="categories-mini-pills">
-                {item.categories.slice(0, 3).map((c) => (
-                  <span key={c.category} className="mini-pill">
-                    {c.label.split(' ')[0]}: <b>{c.score.toFixed(1)}</b>
-                  </span>
-                ))}
-              </div>
-            </div>
 
-            <div className="card-bottom">
-              <span className="date-tag">
-                <Calendar size={12} />
-                {new Date(item.createdAt).toLocaleDateString('fr-FR')}
-              </span>
-              <button className="btn-outline" onClick={() => onSelectAnalysis(item)}>
-                <span>Voir le rapport</span>
-                <ArrowRight size={14} />
-              </button>
+              <div className="card-bottom">
+                <span className="date-tag">
+                  <Calendar size={12} />
+                  {new Date(item.createdAt).toLocaleDateString('fr-FR')}
+                </span>
+                <button className="btn-outline" onClick={() => onSelectAnalysis(item)}>
+                  <span>Voir le rapport</span>
+                  <ArrowRight size={14} />
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Load more */}
@@ -159,6 +185,34 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
               </button>
               <button className="btn-confirm-delete" onClick={handleConfirmDelete}>
                 Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rename modal */}
+      {renameId && (
+        <div className="delete-modal-overlay" onClick={() => setRenameId(null)}>
+          <div className="delete-modal" onClick={(e) => e.stopPropagation()}>
+            <Pencil size={28} className="rename-modal-icon" />
+            <h3>Renommer l'analyse</h3>
+            <div className="rename-field">
+              <input
+                type="text"
+                value={renameName}
+                onChange={(e) => setRenameName(e.target.value)}
+                placeholder="Nom de l'analyse..."
+                autoFocus
+                onKeyDown={(e) => e.key === 'Enter' && handleConfirmRename()}
+              />
+            </div>
+            <div className="delete-modal-actions">
+              <button className="btn-cancel" onClick={() => setRenameId(null)}>
+                Annuler
+              </button>
+              <button className="btn-confirm-save" onClick={handleConfirmRename}>
+                Renommer
               </button>
             </div>
           </div>
@@ -521,6 +575,59 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
         @keyframes slideUp {
           from { transform: translateY(16px); opacity: 0; }
           to { transform: translateY(0); opacity: 1; }
+        }
+
+        .rename-btn {
+          color: var(--color-text-subtle);
+          padding: 4px;
+          border-radius: 6px;
+          transition: all 0.15s ease;
+        }
+        .rename-btn:hover {
+          color: var(--color-primary);
+          background: var(--color-green-light);
+        }
+
+        .rename-modal-icon {
+          color: var(--color-primary);
+          margin-bottom: 12px;
+        }
+
+        .rename-field {
+          margin: 16px 0 20px;
+        }
+
+        .rename-field input {
+          width: 100%;
+          padding: 12px 14px;
+          border: 1.5px solid var(--color-border);
+          border-radius: 10px;
+          font-family: var(--font-family-body);
+          font-size: 0.92rem;
+          color: var(--color-text-main);
+          transition: border-color 0.15s ease;
+          box-sizing: border-box;
+        }
+
+        .rename-field input:focus {
+          outline: none;
+          border-color: var(--color-green);
+        }
+
+        .btn-confirm-save {
+          font-family: var(--font-family-body);
+          font-size: 0.88rem;
+          font-weight: 700;
+          padding: 10px 24px;
+          border-radius: var(--radius-full);
+          border: none;
+          background: var(--color-primary);
+          color: #ffffff;
+          cursor: pointer;
+          transition: var(--transition-fast);
+        }
+        .btn-confirm-save:hover {
+          background: var(--color-primary-light);
         }
       `}</style>
     </div>

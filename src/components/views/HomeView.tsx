@@ -96,7 +96,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     <Building2 size={18} strokeWidth={2.2} />
                   </div>
                   <div className="rc-info">
-                    <h3 className="rc-name">{item.neighborhoodName}</h3>
+                    <h3 className="rc-name">{item.neighborhoodName || item.address}</h3>
                     <span className="rc-address">
                       <MapPin size={11} />
                       {item.address}, {item.city}
