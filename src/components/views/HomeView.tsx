@@ -518,6 +518,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
           line-height: 1.5;
         }
 
+        .home-empty .hero-cta {
+          align-self: center;
+          margin-top: 16px;
+        }
+
         /* ── Responsive ── */
         @media (max-width: 820px) {
           .quick-grid {
