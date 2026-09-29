@@ -267,11 +267,29 @@ export const App: React.FC = () => {
   if (authChecking) {
     return (
       <div
-        className="auth-checking"
         role="status"
         aria-label="Vérification de la session"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          height: "100vh",
+          width: "100vw",
+          backgroundColor: "var(--color-bg-app, #f6f9f6)",
+        }}
       >
-        <span className="auth-checking-mark">C</span>
+        <img
+          src="/logo-citynside.svg"
+          alt="Chargement Citynside..."
+          style={{ width: "72px", height: "72px", animation: "cyt-auth-pulse 1.5s ease-in-out infinite" }}
+        />
+        <style>{`
+          @keyframes cyt-auth-pulse {
+            0% { transform: scale(0.95); opacity: 0.6; }
+            50% { transform: scale(1.05); opacity: 1; }
+            100% { transform: scale(0.95); opacity: 0.6; }
+          }
+        `}</style>
       </div>
     );
   }
