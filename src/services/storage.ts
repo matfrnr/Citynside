@@ -161,3 +161,13 @@ export function toggleFavorite(analysisId: string, userId: string): void {
     console.error("Erreur toggle favorite:", e);
   }
 }
+
+export function deleteAnalysis(analysisId: string, userId: string): void {
+  try {
+    const list = getStoredAnalyses(userId);
+    const filtered = list.filter((a) => a.id !== analysisId);
+    localStorage.setItem(getStorageKey(userId), JSON.stringify(filtered));
+  } catch (e) {
+    console.error("Erreur suppression analyse:", e);
+  }
+}

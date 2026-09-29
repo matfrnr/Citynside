@@ -14,6 +14,20 @@ import { InteractiveMap } from "../map/InteractiveMap";
 import { ScoresList } from "../scores/ScoresList";
 import { AddressSearchBar } from "../search/AddressSearchBar";
 
+/**
+ * Extrait le nom de rue à partir du nom d'adresse BAN.
+ * Supprime le numéro de voirie pour ne garder que le nom de la voie.
+ * Ex: "7 Avenue Coubertin" → "Avenue Coubertin"
+ */
+function extractNeighborhoodName(rawName: string, city: string): string {
+  if (!rawName) return city || "Adresse inconnue";
+
+  // Supprimer le numéro de voirie en début (ex: "7 ", "12 bis ", "3-5 ")
+  const streetName = rawName.replace(/^\d[\d\s\-/]*(?:bis|ter|quater)?\s+/i, "").trim();
+
+  return streetName || city || "Adresse inconnue";
+}
+
 interface NewAnalysisViewProps {
   currentAnalysis: NeighborhoodAnalysis | null;
   onUpdateAnalysis: (analysis: NeighborhoodAnalysis) => void;
@@ -83,7 +97,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
         address: addr.name || addr.label,
         city: addr.city,
         postcode: addr.postcode,
-        neighborhoodName: `Quartier ${addr.name.split(" ")[0] || addr.city}`,
+        neighborhoodName: extractNeighborhoodName(addr.name, addr.city),
         lat: addr.lat,
         lon: addr.lon,
         globalScore: avg,
@@ -119,7 +133,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
         city: rev ? rev.city : (currentAnalysis?.city ?? ""),
         postcode: rev ? rev.postcode : (currentAnalysis?.postcode ?? ""),
         neighborhoodName: rev
-          ? `Quartier ${rev.name}`
+          ? extractNeighborhoodName(rev.name, rev.city)
           : (currentAnalysis?.neighborhoodName ?? "Zone sélectionnée"),
         lat,
         lon,

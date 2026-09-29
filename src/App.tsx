@@ -9,6 +9,7 @@ import { NotificationsView } from "./components/views/NotificationsView";
 import { ProfileView } from "./components/views/ProfileView";
 import { ReportView } from "./components/views/ReportView";
 import {
+  deleteAnalysis,
   getStoredAnalyses,
   saveAnalysis,
   toggleFavorite,
@@ -165,6 +166,16 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleDeleteAnalysis = (id: string) => {
+    if (!authUser) return;
+    deleteAnalysis(id, authUser.id);
+    const updatedList = getStoredAnalyses(authUser.id);
+    setAnalyses(updatedList);
+    if (activeAnalysis?.id === id) {
+      setActiveAnalysis(null);
+    }
+  };
+
   const favoritesCount = analyses.filter((a) => a.isFavorite).length;
 
   if (authChecking) {
@@ -206,6 +217,8 @@ export const App: React.FC = () => {
               onSelectAnalysis={handleSelectAnalysis}
               onStartNewAnalysis={handleStartNewAnalysis}
               onToggleFavorite={handleToggleFav}
+              onNavigate={setCurrentView}
+              userName={authUser.name}
             />
           )}
 
@@ -237,6 +250,7 @@ export const App: React.FC = () => {
               analyses={analyses}
               onSelectAnalysis={handleSelectAnalysis}
               onToggleFavorite={handleToggleFav}
+              onDeleteAnalysis={handleDeleteAnalysis}
             />
           )}
 

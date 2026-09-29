@@ -1,20 +1,26 @@
 import { useState } from 'react';
-import { Bookmark, Search, Building2, ArrowRight, Calendar, Star } from 'lucide-react';
+import { Bookmark, Search, Building2, ArrowRight, Calendar, Star, Trash2 } from 'lucide-react';
 import type { NeighborhoodAnalysis } from '../../types';
+
+const ITEMS_PER_PAGE = 6;
 
 interface EnregistrementsViewProps {
   analyses: NeighborhoodAnalysis[];
   onSelectAnalysis: (analysis: NeighborhoodAnalysis) => void;
   onToggleFavorite: (id: string) => void;
+  onDeleteAnalysis: (id: string) => void;
 }
 
 export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
   analyses,
   onSelectAnalysis,
   onToggleFavorite,
+  onDeleteAnalysis,
 }) => {
   const [filterQuery, setFilterQuery] = useState('');
   const [onlyFavorites, setOnlyFavorites] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const filtered = analyses.filter((item) => {
     const matchesSearch =
@@ -24,6 +30,16 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
     const matchesFav = onlyFavorites ? item.isFavorite : true;
     return matchesSearch && matchesFav;
   });
+
+  const displayed = filtered.slice(0, visibleCount);
+  const hasMore = filtered.length > visibleCount;
+
+  const handleConfirmDelete = () => {
+    if (deleteConfirmId) {
+      onDeleteAnalysis(deleteConfirmId);
+      setDeleteConfirmId(null);
+    }
+  };
 
   return (
     <div className="enregistrements-container">
@@ -55,9 +71,14 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
         </button>
       </div>
 
+      {/* Counter */}
+      <p className="enreg-count">
+        {filtered.length} analyse{filtered.length > 1 ? 's' : ''} trouvée{filtered.length > 1 ? 's' : ''}
+      </p>
+
       {/* Grid of cards */}
       <div className="enreg-grid">
-        {filtered.map((item) => (
+        {displayed.map((item) => (
           <div key={item.id} className="enreg-card cyt-card">
             <div className="card-top">
               <div className="title-area">
@@ -67,12 +88,22 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
                   <span className="card-address">{item.address}, {item.city}</span>
                 </div>
               </div>
-              <button
-                className={`fav-btn ${item.isFavorite ? 'favorited' : ''}`}
-                onClick={() => onToggleFavorite(item.id)}
-              >
-                <Bookmark size={16} fill={item.isFavorite ? 'currentColor' : 'none'} />
-              </button>
+              <div className="card-actions">
+                <button
+                  className={`fav-btn ${item.isFavorite ? 'favorited' : ''}`}
+                  onClick={() => onToggleFavorite(item.id)}
+                  title={item.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+                >
+                  <Bookmark size={16} fill={item.isFavorite ? 'currentColor' : 'none'} />
+                </button>
+                <button
+                  className="delete-btn"
+                  onClick={() => setDeleteConfirmId(item.id)}
+                  title="Supprimer cette analyse"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
             </div>
 
             <div className="card-indicators-row">
@@ -102,6 +133,37 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
           </div>
         ))}
       </div>
+
+      {/* Load more */}
+      {hasMore && (
+        <div className="enreg-load-more">
+          <button
+            className="btn-load-more"
+            onClick={() => setVisibleCount((prev) => prev + ITEMS_PER_PAGE)}
+          >
+            Voir plus ({filtered.length - visibleCount} restante{filtered.length - visibleCount > 1 ? 's' : ''})
+          </button>
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteConfirmId && (
+        <div className="delete-modal-overlay" onClick={() => setDeleteConfirmId(null)}>
+          <div className="delete-modal" onClick={(e) => e.stopPropagation()}>
+            <Trash2 size={28} className="delete-modal-icon" />
+            <h3>Supprimer cette analyse ?</h3>
+            <p>Cette action est irréversible. L'analyse sera définitivement supprimée de votre historique.</p>
+            <div className="delete-modal-actions">
+              <button className="btn-cancel" onClick={() => setDeleteConfirmId(null)}>
+                Annuler
+              </button>
+              <button className="btn-confirm-delete" onClick={handleConfirmDelete}>
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         /* EnregistrementsView — Charte Citynside V1 */
@@ -195,6 +257,13 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
           font-weight: 700;
         }
 
+        .enreg-count {
+          font-family: var(--font-family-body);
+          font-size: 0.82rem;
+          color: var(--color-text-subtle);
+          margin: -8px 0 0 4px;
+        }
+
         .enreg-grid {
           display: grid;
           grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
@@ -218,6 +287,8 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
         .title-area {
           display: flex;
           gap: 10px;
+          min-width: 0;
+          flex: 1;
         }
 
         .b-icon {
@@ -240,15 +311,35 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
           margin-top: 2px;
         }
 
+        .card-actions {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          flex-shrink: 0;
+        }
+
         .fav-btn {
           color: var(--color-border-active);
           transition: color 0.15s ease;
+          padding: 4px;
+          border-radius: 6px;
         }
         .fav-btn.favorited {
           color: var(--color-primary);
         }
         .fav-btn:hover {
           color: var(--color-primary-light);
+        }
+
+        .delete-btn {
+          color: var(--color-text-subtle);
+          padding: 4px;
+          border-radius: 6px;
+          transition: all 0.15s ease;
+        }
+        .delete-btn:hover {
+          color: #dc3545;
+          background: rgba(220, 53, 69, 0.08);
         }
 
         /* Zone score en fond vert très clair */
@@ -314,6 +405,122 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
           display: flex;
           align-items: center;
           gap: 4px;
+        }
+
+        /* Bouton Voir plus */
+        .enreg-load-more {
+          display: flex;
+          justify-content: center;
+          padding-top: 4px;
+        }
+
+        .btn-load-more {
+          font-family: var(--font-family-body);
+          font-size: 0.88rem;
+          font-weight: 600;
+          color: var(--color-primary);
+          background: var(--color-green-subtle);
+          border: 1px solid var(--color-border);
+          border-radius: var(--radius-full);
+          padding: 10px 28px;
+          cursor: pointer;
+          transition: var(--transition-fast);
+        }
+        .btn-load-more:hover {
+          background: var(--color-green);
+          border-color: var(--color-green);
+        }
+
+        /* Delete confirmation modal */
+        .delete-modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.45);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+          animation: fadeIn 0.15s ease;
+        }
+
+        .delete-modal {
+          background: #ffffff;
+          border-radius: 16px;
+          padding: 32px;
+          max-width: 380px;
+          width: 90%;
+          text-align: center;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+          animation: slideUp 0.2s ease;
+        }
+
+        .delete-modal-icon {
+          color: #dc3545;
+          margin-bottom: 12px;
+        }
+
+        .delete-modal h3 {
+          font-family: var(--font-family-heading);
+          font-size: 1.1rem;
+          font-weight: 700;
+          color: var(--color-text-main);
+          margin-bottom: 8px;
+        }
+
+        .delete-modal p {
+          font-family: var(--font-family-body);
+          font-size: 0.85rem;
+          color: var(--color-text-muted);
+          line-height: 1.5;
+          margin-bottom: 24px;
+        }
+
+        .delete-modal-actions {
+          display: flex;
+          gap: 12px;
+          justify-content: center;
+        }
+
+        .btn-cancel {
+          font-family: var(--font-family-body);
+          font-size: 0.88rem;
+          font-weight: 600;
+          padding: 10px 24px;
+          border-radius: var(--radius-full);
+          border: 1px solid var(--color-border);
+          background: #ffffff;
+          color: var(--color-text-muted);
+          cursor: pointer;
+          transition: var(--transition-fast);
+        }
+        .btn-cancel:hover {
+          background: var(--color-green-subtle);
+        }
+
+        .btn-confirm-delete {
+          font-family: var(--font-family-body);
+          font-size: 0.88rem;
+          font-weight: 600;
+          padding: 10px 24px;
+          border-radius: var(--radius-full);
+          border: none;
+          background: #dc3545;
+          color: #ffffff;
+          cursor: pointer;
+          transition: var(--transition-fast);
+        }
+        .btn-confirm-delete:hover {
+          background: #c82333;
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+          from { transform: translateY(16px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
         }
       `}</style>
     </div>
