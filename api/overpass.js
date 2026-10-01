@@ -60,7 +60,7 @@ export default async (request) => {
       if (recent && Date.now() - recent.timestamp < CACHE_TTL_MS) return recent.body;
 
       const failures = [];
-      const globalDeadline = Date.now() + 20000;
+      const globalDeadline = Date.now() + 25000;
       
       const batches = [
         OVERPASS_ENDPOINTS.slice(0, 3),
@@ -77,7 +77,7 @@ export default async (request) => {
         try {
           const attempts = batch.map(async (endpoint) => {
             const reqController = new AbortController();
-            const reqTimeout = setTimeout(() => reqController.abort(), 6500); // 6.5s per request max
+            const reqTimeout = setTimeout(() => reqController.abort(), 25000); // 25s per request max to allow queue waiting
             
             const abortFromBatch = () => reqController.abort();
             batchController.signal.addEventListener("abort", abortFromBatch);
