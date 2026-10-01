@@ -92,7 +92,7 @@ function setCachedPOIs(key: string, pois: POI[]): void {
 const OVERPASS_MIRRORS = [
   ...(import.meta.env.PROD
     ? [
-        "/.netlify/functions/overpass",
+        "/api/overpass",
       ]
     : [
         "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
@@ -124,15 +124,23 @@ export async function fetchPOIsInRadius(
   }
 
   const overpassQuery = `
-    [out:json][timeout:8];
+    [out:json][timeout:15];
     (
-      nwr(around:${radiusMeters},${lat},${lon})["highway"="bus_stop"];
-      nwr(around:${radiusMeters},${lat},${lon})["railway"~"^(tram_stop|station|halt)$"];
-      nwr(around:${radiusMeters},${lat},${lon})["station"="subway"];
-      nwr(around:${radiusMeters},${lat},${lon})["amenity"~"^(bicycle_rental|parking|pharmacy|doctors|clinic|hospital|dentist|school|kindergarten|college|university|library|arts_centre|cinema|theatre|community_centre)$"];
-      nwr(around:${radiusMeters},${lat},${lon})["shop"~"^(bakery|supermarket|convenience|butcher|greengrocer)$"];
-      nwr(around:${radiusMeters},${lat},${lon})["leisure"~"^(park|garden|playground|sports_centre|fitness_centre|swimming_pool|pitch|stadium|ice_rink|golf_course)$"];
-      nwr(around:${radiusMeters},${lat},${lon})["tourism"="museum"];
+      node(around:${radiusMeters},${lat},${lon})["highway"="bus_stop"];
+      node(around:${radiusMeters},${lat},${lon})["railway"~"^(tram_stop|station|halt)$"];
+      node(around:${radiusMeters},${lat},${lon})["station"="subway"];
+      node(around:${radiusMeters},${lat},${lon})["amenity"~"^(bicycle_rental|parking|pharmacy|doctors|clinic|hospital|dentist|school|kindergarten|college|university|library|arts_centre|cinema|theatre|community_centre)$"];
+      node(around:${radiusMeters},${lat},${lon})["shop"~"^(bakery|supermarket|convenience|butcher|greengrocer)$"];
+      node(around:${radiusMeters},${lat},${lon})["leisure"~"^(park|garden|playground|sports_centre|fitness_centre|swimming_pool|pitch|stadium|ice_rink|golf_course)$"];
+      node(around:${radiusMeters},${lat},${lon})["tourism"="museum"];
+
+      way(around:${radiusMeters},${lat},${lon})["highway"="bus_stop"];
+      way(around:${radiusMeters},${lat},${lon})["railway"~"^(tram_stop|station|halt)$"];
+      way(around:${radiusMeters},${lat},${lon})["station"="subway"];
+      way(around:${radiusMeters},${lat},${lon})["amenity"~"^(bicycle_rental|parking|pharmacy|doctors|clinic|hospital|dentist|school|kindergarten|college|university|library|arts_centre|cinema|theatre|community_centre)$"];
+      way(around:${radiusMeters},${lat},${lon})["shop"~"^(bakery|supermarket|convenience|butcher|greengrocer)$"];
+      way(around:${radiusMeters},${lat},${lon})["leisure"~"^(park|garden|playground|sports_centre|fitness_centre|swimming_pool|pitch|stadium|ice_rink|golf_course)$"];
+      way(around:${radiusMeters},${lat},${lon})["tourism"="museum"];
     );
     out center qt 200;
   `;
