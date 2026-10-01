@@ -59,8 +59,10 @@ export async function fetchRiskAssessment(lat: number, lon: number): Promise<Ris
 
   const reportUrl = `https://georisques.gouv.fr/api/v1/rapport_pdf?latlon=${encodeURIComponent(`${lon},${lat}`)}`;
   try {
-    const endpoint = `https://georisques.gouv.fr/api/v1/resultats_rapport_risque?latlon=${encodeURIComponent(`${lon},${lat}`)}`;
-    const response = await fetch(endpoint, { signal: AbortSignal.timeout(4500) });
+    const endpoint = import.meta.env.PROD
+      ? `/.netlify/functions/georisques?latlon=${encodeURIComponent(`${lon},${lat}`)}`
+      : `https://georisques.gouv.fr/api/v1/resultats_rapport_risque?latlon=${encodeURIComponent(`${lon},${lat}`)}`;
+    const response = await fetch(endpoint, { signal: AbortSignal.timeout(8000) });
     if (!response.ok) throw new Error(`Géorisques indisponible (${response.status})`);
     const payload: unknown = await response.json();
     const assessment: RiskAssessment = {

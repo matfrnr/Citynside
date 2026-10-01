@@ -129,19 +129,13 @@ export async function fetchPOIsInRadius(
       node(around:${radiusMeters},${lat},${lon})["highway"="bus_stop"];
       node(around:${radiusMeters},${lat},${lon})["railway"~"tram_stop|station|halt"];
       node(around:${radiusMeters},${lat},${lon})["station"="subway"];
-      node(around:${radiusMeters},${lat},${lon})["amenity"="bicycle_rental"];
-      node(around:${radiusMeters},${lat},${lon})["amenity"="parking"];
+      node(around:${radiusMeters},${lat},${lon})["amenity"~"bicycle_rental|parking|pharmacy|doctors|clinic|hospital|dentist|school|kindergarten|college|university|library|arts_centre|cinema|theatre|community_centre"];
       node(around:${radiusMeters},${lat},${lon})["shop"~"bakery|supermarket|convenience|butcher|greengrocer"];
-      node(around:${radiusMeters},${lat},${lon})["amenity"~"pharmacy|doctors|clinic|hospital|dentist"];
-      node(around:${radiusMeters},${lat},${lon})["amenity"~"school|kindergarten|college|university"];
-      node(around:${radiusMeters},${lat},${lon})["leisure"~"park|garden|playground"];
-      node(around:${radiusMeters},${lat},${lon})["leisure"~"sports_centre|fitness_centre|swimming_pool|pitch|stadium|ice_rink|golf_course"];
-      node(around:${radiusMeters},${lat},${lon})["amenity"~"library|arts_centre|cinema|theatre|community_centre"];
+      node(around:${radiusMeters},${lat},${lon})["leisure"~"park|garden|playground|sports_centre|fitness_centre|swimming_pool|pitch|stadium|ice_rink|golf_course"];
       node(around:${radiusMeters},${lat},${lon})["tourism"="museum"];
       way(around:${radiusMeters},${lat},${lon})["amenity"~"parking|pharmacy|hospital|clinic|school|college|university"];
       way(around:${radiusMeters},${lat},${lon})["shop"~"bakery|supermarket|convenience"];
-      way(around:${radiusMeters},${lat},${lon})["leisure"~"park|garden|playground"];
-      way(around:${radiusMeters},${lat},${lon})["leisure"~"sports_centre|fitness_centre|swimming_pool|pitch|stadium|ice_rink|golf_course"];
+      way(around:${radiusMeters},${lat},${lon})["leisure"~"park|garden|playground|sports_centre|fitness_centre|swimming_pool|pitch|stadium|ice_rink|golf_course"];
       way(around:${radiusMeters},${lat},${lon})["amenity"~"library|arts_centre|cinema|theatre|community_centre"];
       way(around:${radiusMeters},${lat},${lon})["tourism"="museum"];
     );
@@ -196,7 +190,10 @@ async function fetchFastFromOverpass(
           headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
           signal: controller.signal,
         });
-        if (!response.ok) throw new Error(`Overpass indisponible (${response.status})`);
+        if (!response.ok) {
+          const details = (await response.clone().text()).slice(0, 300);
+          throw new Error(`Overpass indisponible (${response.status})${details ? ` : ${details}` : ""}`);
+        }
         const data = await response.json();
         const results = parseOverpassResponse(data, centerLat, centerLon, radiusMeters);
         if (results.length === 0) throw new Error("Aucun résultat sur ce miroir Overpass");
@@ -211,9 +208,15 @@ async function fetchFastFromOverpass(
       const results = await Promise.any(attempts);
       controllers.forEach((controller) => controller.abort());
       return results;
-    } catch {
+    } catch (error) {
       controllers.forEach((controller) => controller.abort());
       if (externalSignal?.aborted) return [];
+      if (import.meta.env.PROD) {
+        const reasons = error instanceof AggregateError
+          ? error.errors.map((item) => item instanceof Error ? item.message : String(item)).join(" | ")
+          : error instanceof Error ? error.message : String(error);
+        console.warn("Relais Overpass en échec :", reasons);
+      }
       // Si les trois serveurs sont indisponibles, le groupe suivant est essayé.
     }
   }

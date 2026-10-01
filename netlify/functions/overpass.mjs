@@ -58,31 +58,43 @@ export default async (request) => {
       if (recent && Date.now() - recent.timestamp < CACHE_TTL_MS) return recent.body;
 
       let lastError;
-      for (const endpoint of OVERPASS_ENDPOINTS) {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 7_000);
-        try {
-          const response = await fetch(endpoint, {
-            method: "POST",
-            headers: { "content-type": "application/x-www-form-urlencoded; charset=UTF-8" },
-            body: new URLSearchParams({ data: encodedQuery }),
-            signal: controller.signal,
-          });
-          if (!response.ok) throw new Error(`Overpass indisponible (${response.status})`);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 7_500);
+      const failures = [];
+      try {
+        const attempts = OVERPASS_ENDPOINTS.map(async (endpoint) => {
+          try {
+            const response = await fetch(endpoint, {
+              method: "POST",
+              headers: { "content-type": "application/x-www-form-urlencoded; charset=UTF-8" },
+              body: new URLSearchParams({ data: encodedQuery }),
+              signal: controller.signal,
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-          const responseBody = await response.text();
-          const parsed = JSON.parse(responseBody);
-          if (!parsed || !Array.isArray(parsed.elements)) throw new Error("Réponse Overpass invalide.");
-          responseCache.set(encodedQuery, { body: responseBody, timestamp: Date.now() });
-          if (responseCache.size > 80) responseCache.delete(responseCache.keys().next().value);
-          return responseBody;
-        } catch (error) {
-          lastError = error;
-        } finally {
-          clearTimeout(timeout);
-        }
+            const responseBody = await response.text();
+            const parsed = JSON.parse(responseBody);
+            if (!parsed || !Array.isArray(parsed.elements)) throw new Error("Réponse JSON invalide");
+            return responseBody;
+          } catch (error) {
+            const reason = error?.name === "AbortError" ? "timeout" : String(error?.message ?? error);
+            failures.push(`${new URL(endpoint).hostname}: ${reason}`);
+            throw error;
+          }
+        });
+
+        const responseBody = await Promise.any(attempts);
+        responseCache.set(encodedQuery, { body: responseBody, timestamp: Date.now() });
+        if (responseCache.size > 80) responseCache.delete(responseCache.keys().next().value);
+        return responseBody;
+      } catch (error) {
+        lastError = error ?? new Error("Aucun serveur Overpass disponible.");
+        lastError.overpassAttempts = failures;
+        throw lastError;
+      } finally {
+        clearTimeout(timeout);
+        controller.abort();
       }
-      throw lastError ?? new Error("Aucun serveur Overpass disponible.");
     });
 
     pending = run.finally(() => inFlight.delete(encodedQuery));
@@ -96,7 +108,10 @@ export default async (request) => {
       status: 200,
       headers: { "content-type": "application/json; charset=utf-8", "cache-control": "public, max-age=300" },
     });
-  } catch {
-    return jsonResponse({ error: "Les serveurs Overpass sont temporairement indisponibles après plusieurs tentatives." }, 502);
+  } catch (error) {
+    return jsonResponse({
+      error: "Les serveurs Overpass sont temporairement indisponibles après plusieurs tentatives.",
+      attempts: error?.overpassAttempts ?? [],
+    }, 502);
   }
 };
