@@ -736,7 +736,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }
           .nav-label { display: block !important; max-width: 58px; font-size: .58rem; line-height: 1.1; text-align: center; }
           .nav-icon-wrapper { margin: 0; }
-          .nav-badge, .badge-dot-compact { position: absolute; top: 1px; right: 5px; margin: 0; min-width: 15px; height: 15px; padding: 0 3px; font-size: .55rem; }
+          .nav-badge, .badge-dot-compact { position: absolute; top: 1px; right: 5px; margin: 0; min-width: 15px; height: 15px; padding: 0 3px; display: flex; align-items: center; justify-content: center; line-height: 1; text-align: center; font-size: .55rem; box-sizing: border-box; }
           .sidebar-footer { flex: 0 0 50px; width: 50px; margin: 0; padding: 0; border: 0; display: flex; align-items: center; }
           .agent-profile, .cyt-sidebar.is-collapsed .agent-profile { width: 50px; justify-content: center; padding: 5px 0; }
           .agent-info-text, .brand-title { display: none !important; }

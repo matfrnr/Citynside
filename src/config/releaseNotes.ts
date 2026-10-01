@@ -1,24 +1,32 @@
 export const CURRENT_RELEASE_NOTES = {
-  version: "2026-09-30-v2",
-  date: "30 septembre 2026",
-  title: "Les nouveautés Citynside",
-  introduction: "Découvrez les dernières améliorations de votre espace de travail.",
+  version: "2026-10-01-v1",
+  date: "1er octobre 2026",
+  title: "Citynside évolue",
+  introduction: "Les principales nouveautés ajoutées à votre espace ces derniers mois.",
   items: [
     {
-      title: "Comparer deux quartiers",
-      description: "Visualisez leurs scores et leurs équipements côte à côte, avec une phrase courte sur les principaux écarts.",
+      title: "Comparer et retrouver vos analyses",
+      description: "Comparez deux quartiers côte à côte. Vos recherches sont conservées dans l’historique (20 dernières) et vous pouvez ajouter les adresses utiles à vos favoris.",
     },
     {
-      title: "Rapports personnalisables",
-      description: "Choisissez les sections à inclure et retrouvez vos points forts et réserves enregistrés avec votre compte.",
+      title: "Des analyses plus complètes",
+      description: "De nouveaux indicateurs enrichissent les scores. Les risques et nuisances peuvent être ajoutés au rapport à la demande.",
     },
     {
-      title: "Rapports PDF plus lisibles",
-      description: "Les observations commencent sur une nouvelle page lorsqu’un rapport doit être réparti sur plusieurs pages.",
+      title: "Rapports personnalisables et synchronisés",
+      description: "Choisissez les sections du rapport, enregistrez vos points forts et réserves sur votre compte, puis consultez un aperçu et un PDF mieux mis en page.",
     },
     {
-      title: "Historique et favoris mieux organisés",
-      description: "Les filtres sont répartis sur deux rangées pour faciliter la recherche de vos analyses.",
+      title: "Notifications utiles",
+      description: "Retrouvez les événements importants du compte et de vos rapports, avec des niveaux de priorité, un badge et la possibilité de supprimer les notifications.",
+    },
+    {
+      title: "Accès rapides personnalisables",
+      description: "Choisissez les raccourcis qui vous conviennent et retrouvez vos analyses enregistrées plus facilement.",
+    },
+    {
+      title: "Une expérience adaptée à chaque écran",
+      description: "La navigation, la recherche, la carte et les rapports s’adaptent aux mobiles et aux tablettes.",
     },
   ],
 } as const;

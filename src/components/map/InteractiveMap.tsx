@@ -601,6 +601,23 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
           background: rgba(255, 255, 255, 0.35);
         }
 
+        @media (max-width: 600px) {
+          .map-reposition-banner {
+            top: 10px; left: 10px; right: 10px; width: auto; max-width: none;
+            transform: none; justify-content: space-between; align-items: flex-start;
+            gap: 8px; padding: 10px 11px; border-radius: 12px; font-size: .73rem;
+            animation: dropInMobile .2s ease-out;
+          }
+          .map-reposition-banner .banner-content { min-width: 0; flex: 1; align-items: flex-start; gap: 7px; line-height: 1.35; }
+          .map-reposition-banner .banner-content span { min-width: 0; }
+          .banner-cancel-btn { flex: 0 0 auto; padding: 6px 9px; font-size: .68rem; }
+        }
+
+        @keyframes dropInMobile {
+          from { opacity: 0; transform: translateY(-8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
         .interactive-map-wrapper.reposition-mode-active {
           box-shadow: inset 0 0 0 3px #9dc599;
         }

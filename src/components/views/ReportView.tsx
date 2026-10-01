@@ -147,6 +147,8 @@ export const ReportView: React.FC<ReportViewProps> = ({
     const pageBreaks: number[] = [];
     const canvas = await html2canvas(element, {
       scale: 2,
+      // Keep the exported PDF on its desktop A4 layout even when generated on mobile.
+      windowWidth: 1024,
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
@@ -1246,7 +1248,34 @@ export const ReportView: React.FC<ReportViewProps> = ({
             margin: 0;
           }
         }
-        @media(max-width:700px){.report-options-panel{grid-template-columns:1fr}.report-notes-fields,.report-categories-list,.impressions-report-card,.sheet-col-impressions{grid-template-columns:1fr}.sheet-col-impressions>.methodology-box,.sheet-col-impressions:not(.has-impressions)>.methodology-box{grid-column:1}.report-cat-row{grid-template-columns:minmax(0,1fr) auto}}
+        @media(max-width:900px){
+          .report-options-panel{grid-template-columns:1fr}
+          .report-notes-fields,.report-categories-list,.impressions-report-card,.sheet-col-impressions{grid-template-columns:1fr}
+          .sheet-col-impressions>.methodology-box,.sheet-col-impressions:not(.has-impressions)>.methodology-box{grid-column:1}
+          .report-cat-row{grid-template-columns:minmax(0,1fr) auto}
+          .printable-report-sheet{width:100%;min-width:0;max-width:100%;min-height:0;padding:20px 15px;border-radius:10px;gap:12px;flex-shrink:1}
+          .sheet-header{flex-wrap:wrap;gap:10px}
+          .property-summary-banner{flex-direction:column;align-items:stretch;gap:12px;padding:14px}
+          .property-details{width:100%;min-width:0}
+          .prop-address{align-items:flex-start;gap:6px;font-size:1.12rem;line-height:1.25;overflow-wrap:anywhere;word-break:break-word}
+          .prop-address .pin-icon{flex:0 0 18px;margin-top:2px}
+          .prop-city{font-size:.78rem;line-height:1.4;overflow-wrap:anywhere}
+          .global-score-widget{width:100%;min-width:0;box-sizing:border-box;justify-content:flex-start;gap:14px;padding:10px 13px}
+          .score-big{font-size:2.05rem}
+          .score-verdict{min-width:0;padding-left:12px}
+          .verdict-grade{font-size:1.2rem}
+          .verdict-label{font-size:.7rem;line-height:1.25;overflow-wrap:anywhere}
+          .sheet-grid-content,.sheet-grid-content.two-columns{grid-template-columns:minmax(0,1fr);gap:14px}
+          .report-risk-section{grid-column:1}
+          .report-risk-grid,.report-notes-strip{grid-template-columns:minmax(0,1fr)}
+        }
+        @media(max-width:600px){
+          .report-actions-bar{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+          .report-actions-bar .back-btn{width:100%;justify-content:center}
+          .report-actions-bar .actions-right{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+          .report-actions-bar .print-action-btn{min-width:0;justify-content:center;padding:9px 8px}
+          .report-actions-bar .print-btn{grid-column:1/-1;width:100%;justify-content:center;padding:10px 12px}
+        }
       `}</style>
     </div>
   );

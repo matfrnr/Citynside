@@ -254,9 +254,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <input
                   type="tel"
                   value={profile.phone}
-                  placeholder="06 12 34 56 78 ou +33 6 12 34 56 78"
+                  placeholder="06 12 34 56 78"
                   pattern="^(?:(?:\+|00)33|0)\s*[1-9](?:[\s.-]*\d{2}){4}$|^\+(?:[0-9][\s.-]?){9,15}$"
-                  title="Numéro valide à 10 chiffres (ex: 06 12 34 56 78) ou international (+33...)"
+                  title="Numéro valide à 10 chiffres (06 ou +33)"
                   onChange={(event) => updateField("phone", event.target.value)}
                 />
               </span>

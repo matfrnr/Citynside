@@ -26,6 +26,7 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
   const [isGeolocating, setIsGeolocating] = useState(false);
   const [geoFeedback, setGeoFeedback] = useState<{ type: 'info' | 'error' | 'success'; text: string } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const debounceTimerRef = useRef<any>(null);
 
   // Auto-effacement du message de feedback après 6 secondes
@@ -42,6 +43,14 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
     setQuery(initialValue);
     setSuggestions([]);
     setIsOpen(false);
+    const frame = requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (input && window.matchMedia('(max-width: 600px)').matches) {
+        input.scrollLeft = input.scrollWidth;
+        input.setSelectionRange(input.value.length, input.value.length);
+      }
+    });
+    return () => cancelAnimationFrame(frame);
   }, [initialValue]);
 
   // Fermer immédiatement et annuler toute recherche dès que l'analyse démarre
@@ -260,6 +269,7 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
         <div className="search-input-left">
           <Search size={20} className="search-icon" />
           <input
+            ref={inputRef}
             type="text"
             className="search-input"
             value={query}
@@ -493,10 +503,11 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
         }
 
         @media (max-width: 480px) {
-          .search-pill-wrapper { min-height: 50px; padding-left: 13px; }
+          .search-pill-wrapper { min-height: 0; padding: 8px 9px; border-radius: 17px; flex-wrap: wrap; gap: 8px; }
           .search-input-left { gap: 8px; }
+          .search-input-left { flex: 1 1 100%; width: 100%; }
           .search-input { min-width: 0; font-size: .78rem; text-overflow: ellipsis; }
-          .btn-analyser { gap: 5px; padding: 10px 12px; font-size: .8rem; }
+          .btn-analyser { flex: 1 1 100%; width: 100%; min-height: 40px; justify-content: center; gap: 5px; padding: 8px 12px; font-size: .78rem; }
           .search-icon { width: 17px; height: 17px; }
         }
 

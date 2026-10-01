@@ -1457,6 +1457,165 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
           }
         }
 
+        /* Présentation dédiée aux tablettes : deux panneaux pleine hauteur */
+        @media (min-width: 768px) and (max-width: 1024px) {
+          .auth-container {
+            display: grid;
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+            grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+            min-height: 100dvh;
+            height: auto;
+            overflow-x: clip;
+            overflow-y: auto;
+            background: #fff;
+          }
+
+          .auth-form-panel {
+            box-sizing: border-box;
+            width: 100%;
+            min-height: 100dvh;
+            height: auto;
+            margin: 0;
+            padding: 28px clamp(28px, 4vw, 48px) 20px;
+            justify-content: space-between;
+            gap: 12px;
+            border: 0;
+            border-radius: 0;
+            box-shadow: 8px 0 32px rgba(14, 35, 37, 0.06);
+          }
+
+          .auth-body {
+            max-width: 440px;
+            margin: 12px auto;
+          }
+
+          .auth-showcase-panel {
+            display: flex;
+            min-width: 0;
+            min-height: 100dvh;
+            padding: 28px clamp(16px, 2.4vw, 24px);
+          }
+
+          .auth-showcase-inner {
+            width: 100%;
+            min-width: 0;
+          }
+
+          .auth-preview-card {
+            padding: 20px;
+          }
+
+          .auth-preview-header {
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 12px;
+          }
+
+          .auth-preview-location {
+            flex: 1 1 100%;
+            min-width: 0;
+          }
+
+          .auth-preview-location > div:last-child {
+            min-width: 0;
+          }
+
+          .auth-preview-location h3 {
+            overflow-wrap: anywhere;
+          }
+
+          .auth-preview-global-score {
+            flex-direction: row;
+            align-items: center;
+            gap: 8px;
+          }
+
+          .auth-score-label {
+            margin-top: 0;
+            text-align: left;
+          }
+
+          .auth-preview-stats {
+            grid-template-columns: minmax(0, 1fr);
+          }
+
+          .auth-stat-name {
+            white-space: normal;
+            overflow: visible;
+            text-overflow: clip;
+          }
+
+          .auth-showcase-bottom h2 {
+            font-size: clamp(1.45rem, 2.7vw, 2rem);
+          }
+
+          .auth-showcase-bottom p {
+            font-size: 0.84rem;
+          }
+
+          .auth-footer {
+            justify-content: center;
+            margin-top: auto;
+            padding-top: 12px;
+          }
+        }
+
+        @media (min-width: 768px) and (max-width: 850px) {
+          .auth-container {
+            grid-template-columns: minmax(0, 1.18fr) minmax(0, 0.82fr);
+          }
+
+          .auth-preview-header {
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 10px;
+          }
+
+          .auth-preview-location {
+            min-width: 0;
+            gap: 8px;
+          }
+
+          .auth-preview-location h3 {
+            font-size: 0.78rem;
+            overflow-wrap: anywhere;
+          }
+
+          .auth-preview-global-score {
+            flex-direction: row;
+            align-items: center;
+            gap: 8px;
+          }
+
+          .auth-score-label {
+            max-width: 72px;
+            text-align: right;
+          }
+
+        }
+
+        @media (min-width: 768px) and (max-width: 1024px) and (max-height: 760px) {
+          .auth-form-panel {
+            min-height: 760px;
+          }
+
+          .auth-body {
+            margin-top: 0;
+            margin-bottom: 0;
+          }
+
+          .auth-form {
+            margin-top: 20px;
+            gap: 14px;
+          }
+
+          .auth-showcase-panel {
+            min-height: 760px;
+          }
+        }
+
         @media (max-width: 480px) {
           .auth-header {
             flex-direction: column;

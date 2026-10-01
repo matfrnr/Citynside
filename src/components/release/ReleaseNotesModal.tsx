@@ -108,7 +108,23 @@ export const ReleaseNotesModal: React.FC<ReleaseNotesModalProps> = ({ userId }) 
         .release-dismiss-button, .release-later-button { min-height: 42px; padding: 0 17px; border-radius: 999px; font: inherit; font-size: .85rem; font-weight: 650; cursor: pointer; }
         .release-dismiss-button { border: 1px solid #dce5dd; background: #fff; color: #53655a; }
         .release-later-button { display: inline-flex; align-items: center; justify-content: center; border: 1px solid #193832; background: #193832; color: #fff; }
-        @media (max-width: 520px) { .release-modal { padding: 26px 21px 21px; border-radius: 18px; } .release-modal h2 { font-size: 1.4rem; } }
+        @media (max-width: 520px) {
+          .release-modal-backdrop { padding: 12px; }
+          .release-modal { padding: 20px 16px 16px; border-radius: 16px; max-height: calc(100dvh - 24px); }
+          .release-modal-icon { width: 40px; height: 40px; border-radius: 12px; }
+          .release-modal-eyebrow { margin: 14px 0 5px; font-size: .65rem; }
+          .release-modal h2 { padding-right: 24px; font-size: 1.16rem; line-height: 1.25; }
+          .release-modal-intro { margin: 8px 0 16px; font-size: .78rem; line-height: 1.45; }
+          .release-modal-list { gap: 11px; }
+          .release-modal-list li { grid-template-columns: 22px minmax(0, 1fr); gap: 8px; }
+          .release-modal-bullet { width: 21px; height: 21px; }
+          .release-modal-bullet svg { width: 12px; height: 12px; }
+          .release-modal-list strong { font-size: .78rem; line-height: 1.3; }
+          .release-modal-list p { font-size: .73rem; line-height: 1.4; }
+          .release-modal-actions { flex-direction: column-reverse; gap: 8px; margin-top: 18px; padding-top: 13px; }
+          .release-dismiss-button, .release-later-button { width: 100%; min-height: 40px; padding: 0 10px; font-size: .75rem; }
+          .release-modal-close { top: 12px; right: 12px; width: 32px; height: 32px; }
+        }
       `}</style>
     </div>
   );

@@ -135,6 +135,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
   // When user selects an address in autocomplete or hits Analyser
   const handleSelectAddress = async (addr: AddressResult) => {
     if (isDemo) return;
+    setSelectedCategory(null);
     const searchId = ++latestSearchId.current;
     setIsLoading(true);
     try {
