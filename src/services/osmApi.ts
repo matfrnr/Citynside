@@ -90,18 +90,12 @@ function setCachedPOIs(key: string, pois: POI[]): void {
 // Miroirs Overpass fiables et performants
 // ─────────────────────────────────────────────────────────────────────────────
 const OVERPASS_MIRRORS = [
-  ...(import.meta.env.PROD
-    ? [
-        "/api/overpass",
-      ]
-    : [
-        "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-        "https://overpass.private.coffee/api/interpreter",
-        "https://overpass-api.de/api/interpreter",
-        "https://lz4.overpass-api.de/api/interpreter",
-        "https://z.overpass-api.de/api/interpreter",
-        "https://overpass.kumi.systems/api/interpreter",
-      ]),
+  "https://overpass-api.de/api/interpreter",
+  "https://lz4.overpass-api.de/api/interpreter",
+  "https://z.overpass-api.de/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 ];
 
 /**
@@ -190,7 +184,10 @@ async function fetchFastFromOverpass(
         const response = await fetch(mirrorUrl, {
           method: "POST",
           body: `data=${encodeURIComponent(query)}`,
-          headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "Accept": "application/json"
+          },
           signal: controller.signal,
         });
         if (!response.ok) {
