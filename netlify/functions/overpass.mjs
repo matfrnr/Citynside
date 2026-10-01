@@ -1,10 +1,10 @@
 const OVERPASS_ENDPOINTS = [
-  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
   "https://overpass.private.coffee/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
   "https://overpass-api.de/api/interpreter",
   "https://lz4.overpass-api.de/api/interpreter",
   "https://z.overpass-api.de/api/interpreter",
-  "https://overpass.kumi.systems/api/interpreter",
 ];
 
 // Les instances publiques limitent les requêtes concurrentes. On sérialise les
@@ -57,44 +57,45 @@ export default async (request) => {
       const recent = responseCache.get(encodedQuery);
       if (recent && Date.now() - recent.timestamp < CACHE_TTL_MS) return recent.body;
 
-      let lastError;
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 7_500);
       const failures = [];
-      try {
-        const attempts = OVERPASS_ENDPOINTS.map(async (endpoint) => {
-          try {
-            const response = await fetch(endpoint, {
-              method: "POST",
-              headers: { "content-type": "application/x-www-form-urlencoded; charset=UTF-8" },
-              body: new URLSearchParams({ data: encodedQuery }),
-              signal: controller.signal,
-            });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const deadline = Date.now() + 8_500;
+      for (const endpoint of OVERPASS_ENDPOINTS) {
+        const remainingMs = deadline - Date.now();
+        if (remainingMs < 300) break;
 
-            const responseBody = await response.text();
-            const parsed = JSON.parse(responseBody);
-            if (!parsed || !Array.isArray(parsed.elements)) throw new Error("Réponse JSON invalide");
-            return responseBody;
-          } catch (error) {
-            const reason = error?.name === "AbortError" ? "timeout" : String(error?.message ?? error);
-            failures.push(`${new URL(endpoint).hostname}: ${reason}`);
-            throw error;
-          }
-        });
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), Math.min(2_400, remainingMs));
+        try {
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+              accept: "application/json",
+              "user-agent": "Citynside/1.0 (+https://citynside-app.netlify.app)",
+              referer: "https://citynside-app.netlify.app/",
+            },
+            body: new URLSearchParams({ data: encodedQuery }),
+            signal: controller.signal,
+          });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-        const responseBody = await Promise.any(attempts);
-        responseCache.set(encodedQuery, { body: responseBody, timestamp: Date.now() });
-        if (responseCache.size > 80) responseCache.delete(responseCache.keys().next().value);
-        return responseBody;
-      } catch (error) {
-        lastError = error ?? new Error("Aucun serveur Overpass disponible.");
-        lastError.overpassAttempts = failures;
-        throw lastError;
-      } finally {
-        clearTimeout(timeout);
-        controller.abort();
+          const responseBody = await response.text();
+          const parsed = JSON.parse(responseBody);
+          if (!parsed || !Array.isArray(parsed.elements)) throw new Error("Réponse JSON invalide");
+          responseCache.set(encodedQuery, { body: responseBody, timestamp: Date.now() });
+          if (responseCache.size > 80) responseCache.delete(responseCache.keys().next().value);
+          return responseBody;
+        } catch (error) {
+          const reason = error?.name === "AbortError" ? "timeout" : String(error?.message ?? error);
+          failures.push(`${new URL(endpoint).hostname}: ${reason}`);
+        } finally {
+          clearTimeout(timeout);
+        }
       }
+
+      const unavailable = new Error("Aucun serveur Overpass n'a répondu dans le délai imparti.");
+      unavailable.overpassAttempts = failures;
+      throw unavailable;
     });
 
     pending = run.finally(() => inFlight.delete(encodedQuery));
