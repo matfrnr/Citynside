@@ -413,6 +413,7 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
           align-items: center;
           gap: 14px;
           flex: 1;
+          min-width: 0;
         }
 
         /* Icône loupe en vert de la charte */
@@ -489,6 +490,14 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
         .btn-analyser:disabled {
           opacity: 0.65;
           cursor: not-allowed;
+        }
+
+        @media (max-width: 480px) {
+          .search-pill-wrapper { min-height: 50px; padding-left: 13px; }
+          .search-input-left { gap: 8px; }
+          .search-input { min-width: 0; font-size: .78rem; text-overflow: ellipsis; }
+          .btn-analyser { gap: 5px; padding: 10px 12px; font-size: .8rem; }
+          .search-icon { width: 17px; height: 17px; }
         }
 
         .spin-icon {

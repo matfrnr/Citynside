@@ -293,7 +293,9 @@ export const App: React.FC = () => {
   const handleStartNewAnalysis = () => {
     if (authUser?.id === LOCAL_DEMO_USER_ID) {
       const demoExamples = analyses.length ? analyses : getStoredAnalyses(LOCAL_DEMO_USER_ID);
-      const currentExample = activeAnalysis && demoExamples.find((item) => item.id === activeAnalysis.id);
+      const currentExample = activeAnalysis && demoExamples.some((item) => item.id === activeAnalysis.id)
+        ? activeAnalysis
+        : null;
       const defaultExample = demoExamples.find((item) => item.id === "aigle_38000") ?? demoExamples[0] ?? null;
       setActiveAnalysis(currentExample ?? defaultExample);
     } else {
@@ -593,12 +595,33 @@ export const App: React.FC = () => {
         .demo-info-limits{margin-top:20px;padding:16px 18px;border:1px solid #f1e2df;border-radius:12px;background:#fff9f8;font-size:.84rem}.demo-info-limits strong{color:#85332e}.demo-info-limits ul{display:grid;gap:8px;margin:10px 0 0;padding-left:19px;color:#5f6b66;line-height:1.45}
         .demo-info-confirm{width:100%;margin-top:22px;padding:12px 16px;border:0;border-radius:10px;background:#ad342e;color:#fff;font:inherit;font-weight:650;cursor:pointer}.demo-info-confirm:hover{background:#912923}
 
+        @media (min-width: 769px) and (max-width: 1024px) {
+          .main-scroll-inner { padding: 24px 22px 40px; }
+          .profile-layout { grid-template-columns: 1fr; }
+          .risk-nuisance-grid { grid-template-columns: 1fr; }
+        }
+
         @media (max-width: 768px) {
+          .cyt-app-layout { display: block; width: 100%; height: 100dvh; }
+          .cyt-main-viewport { width: 100%; height: calc(100dvh - 72px - env(safe-area-inset-bottom)); }
           .main-scroll-inner {
-            padding: 20px 16px 36px;
+            padding: 18px 14px 28px;
           }
           .demo-warning-banner{margin-bottom:16px}
           .demo-info-dialog{padding:26px 22px}
+          .main-scroll-inner > * { min-width: 0; max-width: 100%; }
+          .enreg-title, .notif-title, .impressions-title, .comparison-heading h1, .profile-heading h1, .header-main-title { font-size: clamp(1.3rem, 5.4vw, 1.58rem) !important; line-height: 1.18; }
+          .comparison-section-heading h2, .comparison-score-card h2, .comparison-empty h2, .risk-nuisance-heading h2, .watch-heading h2, .analysis-empty-state h2 { font-size: clamp(1rem, 4.4vw, 1.2rem) !important; line-height: 1.25; }
+          .hero-greeting { font-size: clamp(1.25rem, 5vw, 1.45rem) !important; }
+          .section-title { font-size: 1.08rem !important; }
+          .enreg-grid { grid-template-columns: minmax(0, 1fr) !important; }
+          .enreg-card { min-width: 0; padding: 14px; }
+          .notif-card { padding: 13px 14px; gap: 10px; }
+          .scores-title { font-size: 1rem !important; }
+          .methodology-modal { max-height: calc(100dvh - 28px); overflow-y: auto; }
+          .balance-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .report-view-wrapper { align-items: flex-start; padding-bottom: 32px; }
+          .report-actions-bar { flex-wrap: wrap; gap: 8px; padding: 0; }
         }
       `}</style>
     </div>

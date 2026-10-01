@@ -37,8 +37,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
   });
 
   const [isHovered, setIsHovered] = useState(false);
+  const [isMobileLayout, setIsMobileLayout] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches,
+  );
   const [tooltipPos, setTooltipPos] = useState<{ top: number; left?: number; right?: number } | null>(null);
   const toggleBtnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 768px)");
+    const syncLayout = () => setIsMobileLayout(media.matches);
+    syncLayout();
+    media.addEventListener("change", syncLayout);
+    return () => media.removeEventListener("change", syncLayout);
+  }, []);
 
   const isMac =
     typeof navigator !== "undefined" &&
@@ -222,7 +233,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 )}
               </div>
 
-              {!isCollapsed && <span className="nav-label">{item.label}</span>}
+              {(!isCollapsed || isMobileLayout) && <span className="nav-label">{item.label}</span>}
 
               {Boolean(!isCollapsed && item.badge && item.badge > 0) && (
                 <span className="nav-badge">{item.badge}</span>
@@ -692,22 +703,44 @@ export const Sidebar: React.FC<SidebarProps> = ({
           margin-top: 2px;
         }
 
+        @media (min-width: 769px) and (max-width: 1024px) {
+          .cyt-sidebar, .cyt-sidebar.is-collapsed { width: 74px; min-width: 74px; padding: 18px 8px; }
+          .sidebar-header-row, .cyt-sidebar.is-collapsed .sidebar-header-row { justify-content: center; margin-bottom: 20px; }
+          .brand-title, .nav-label, .agent-info-text, .sidebar-collapse-toggle { display: none !important; }
+          .sidebar-nav-btn, .cyt-sidebar.is-collapsed .sidebar-nav-btn { justify-content: center; padding: 12px 0; }
+          .sidebar-nav-btn { position: relative; }
+          .nav-icon-wrapper { margin-top: 0; }
+          .sidebar-nav-btn .nav-badge { position: absolute; top: 3px; right: 5px; margin: 0; min-width: 16px; height: 16px; padding: 0 3px; display: flex; align-items: center; justify-content: center; font-size: .58rem; }
+          .sidebar-nav-btn .badge-dot-compact { top: -2px; right: -6px; }
+          .sidebar-footer { padding-top: 10px; }
+          .agent-profile, .cyt-sidebar.is-collapsed .agent-profile { justify-content: center; padding: 8px 0; }
+        }
+
         @media (max-width: 768px) {
-          .cyt-sidebar {
-            width: 74px;
-            min-width: 74px;
-            padding: 20px 8px;
+          .cyt-sidebar, .cyt-sidebar.is-collapsed {
+            position: fixed; inset: auto 0 0; z-index: 100; width: 100%; min-width: 0;
+            height: calc(72px + env(safe-area-inset-bottom)); padding: 5px 6px calc(5px + env(safe-area-inset-bottom));
+            box-sizing: border-box; flex-direction: row; align-items: stretch; gap: 4px;
+            overflow: hidden; border: 0; border-top: 1px solid #dce8e0; box-shadow: 0 -5px 20px rgba(21,58,61,.09);
           }
-          .brand-title, .nav-label, .agent-info-text {
-            display: none !important;
+          .sidebar-header-row { display: none; }
+          .sidebar-nav {
+            min-width: 0; flex: 1; flex-direction: row; align-items: stretch; gap: 2px;
+            overflow-x: auto; overflow-y: hidden; scrollbar-width: none; overscroll-behavior-x: contain;
           }
-          .sidebar-collapse-toggle {
-            display: none;
+          .sidebar-nav::-webkit-scrollbar { display: none; }
+          .sidebar-nav-btn, .cyt-sidebar.is-collapsed .sidebar-nav-btn {
+            position: relative; flex: 0 0 60px; width: 60px; min-width: 60px; height: 100%; min-height: 0;
+            display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 3px;
+            padding: 5px 2px; border-radius: 10px; box-shadow: none;
           }
-          .sidebar-nav-btn {
-            justify-content: center;
-            padding: 12px 0;
-          }
+          .nav-label { display: block !important; max-width: 58px; font-size: .58rem; line-height: 1.1; text-align: center; }
+          .nav-icon-wrapper { margin: 0; }
+          .nav-badge, .badge-dot-compact { position: absolute; top: 1px; right: 5px; margin: 0; min-width: 15px; height: 15px; padding: 0 3px; font-size: .55rem; }
+          .sidebar-footer { flex: 0 0 50px; width: 50px; margin: 0; padding: 0; border: 0; display: flex; align-items: center; }
+          .agent-profile, .cyt-sidebar.is-collapsed .agent-profile { width: 50px; justify-content: center; padding: 5px 0; }
+          .agent-info-text, .brand-title { display: none !important; }
+          .avatar-img-wrap { width: 32px; height: 32px; }
         }
       `}</style>
     </aside>

@@ -444,7 +444,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         /* ── Recent analyses ── */
         .recent-grid {
           display: grid;
-          grid-template-columns: repeat(3, 1fr);
+          grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
           gap: 16px;
           margin-top: 14px;
         }
@@ -644,17 +644,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
           .quick-grid {
             grid-template-columns: repeat(2, 1fr);
           }
-          .recent-grid {
-            grid-template-columns: repeat(2, 1fr);
-          }
         }
 
         @media (max-width: 540px) {
           .quick-grid {
             grid-template-columns: repeat(2, 1fr);
-          }
-          .recent-grid {
-            grid-template-columns: 1fr;
           }
           .home-hero {
             padding: 24px 20px;

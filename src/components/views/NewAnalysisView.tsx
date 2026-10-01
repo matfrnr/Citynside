@@ -413,6 +413,13 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
         }
 
         @media (max-width: 620px) {
+          .new-analysis-container { gap: 21px; padding: 4px 0 28px; }
+          .analysis-page-header { margin-top: 2px; }
+          .header-main-title { font-size: 1.75rem; line-height: 1.15; }
+          .header-main-subtitle { font-size: .85rem; line-height: 1.45; }
+          .map-card-wrapper { padding: 4px; border-radius: 15px; }
+          .analysis-bottom-cta-wrap { flex-direction: column; align-items: stretch; gap: 9px; }
+          .analysis-bottom-cta-wrap button { width: 100%; justify-content: center; }
           .analysis-empty-state {
             flex-direction: column;
             text-align: center;

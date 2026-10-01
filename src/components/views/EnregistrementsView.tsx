@@ -359,6 +359,8 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
           .toolbar-search, .toolbar-favorites { grid-column: span 2; }
           .toolbar-city, .toolbar-score { grid-column: span 1; }
           .toolbar-sort { grid-column: span 2; }
+          .enreg-title { font-size: 1.55rem; }
+          .enreg-grid { grid-template-columns: minmax(0, 1fr); }
         }
 
         .enreg-count {
