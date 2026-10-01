@@ -39,7 +39,6 @@ export async function fetchSNCFStationsInRadius(
     const response = await fetch(`${SNCF_API_URL}?${params}`, {
       signal: controller.signal,
     });
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(`SNCF API status: ${response.status}`);
@@ -70,8 +69,9 @@ export async function fetchSNCFStationsInRadius(
 
     return pois.sort((a, b) => a.distanceMeters - b.distanceMeters);
   } catch (error) {
-    clearTimeout(timeoutId);
     console.warn("SNCF Gares API indisponible ou hors secteur:", error);
     return [];
+  } finally {
+    clearTimeout(timeoutId);
   }
 }

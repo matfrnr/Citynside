@@ -3,6 +3,33 @@ import { calculateCategoryScores } from "./scoringEngine";
 import { supabase } from "./supabase";
 
 const STORAGE_KEY = "citynside_analyses_v1";
+const MAX_HISTORY_ANALYSES = 20;
+
+function retainHistoryAndFavorites(items: NeighborhoodAnalysis[]): NeighborhoodAnalysis[] {
+  const sorted = [...items].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  const recentIds = new Set(sorted.slice(0, MAX_HISTORY_ANALYSES).map((item) => item.id));
+  return sorted.filter((item) => recentIds.has(item.id) || item.isFavorite);
+}
+
+async function pruneRemoteAnalyses(userId: string): Promise<void> {
+  const { data, error } = await supabase
+    .from("analyses")
+    .select("id, created_at, is_favorite")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+  if (error || !data) return;
+  const keepIds = new Set<string>(data.slice(0, MAX_HISTORY_ANALYSES).map((row: any) => row.id));
+  for (const row of data) if (row.is_favorite) keepIds.add(row.id);
+  const obsoleteIds = data.filter((row: any) => !keepIds.has(row.id)).map((row: any) => row.id);
+  if (obsoleteIds.length) {
+    const { error: deleteError } = await supabase
+      .from("analyses")
+      .delete()
+      .eq("user_id", userId)
+      .in("id", obsoleteIds);
+    if (deleteError) console.warn("Nettoyage de l’historique Supabase impossible:", deleteError.message);
+  }
+}
 
 const DEMO_ANALYSIS_IDS = new Set([
   "aigle_38000",
@@ -172,7 +199,7 @@ export function getStoredAnalyses(userId: string): NeighborhoodAnalysis[] {
     if (!raw) {
       if (isDemo) {
         localStorage.setItem(storageKey, JSON.stringify(INITIAL_ANALYSES));
-        return INITIAL_ANALYSES;
+      return retainHistoryAndFavorites(INITIAL_ANALYSES);
       }
       // Pour tout compte réel, un nouveau compte DOIT être vide
       return [];
@@ -181,15 +208,17 @@ export function getStoredAnalyses(userId: string): NeighborhoodAnalysis[] {
     if (Array.isArray(parsed)) {
       if (!isDemo) {
         // Nettoie d'éventuelles fausses analyses de démo injectées par erreur auparavant
-        const cleaned = parsed.filter(
+        const cleaned = retainHistoryAndFavorites(parsed.filter(
           (item: NeighborhoodAnalysis) => !DEMO_ANALYSIS_IDS.has(item.id),
-        );
+        ));
         if (cleaned.length !== parsed.length) {
           localStorage.setItem(storageKey, JSON.stringify(cleaned));
         }
-        return cleaned;
+      return cleaned;
       }
-      return parsed;
+      const retained = retainHistoryAndFavorites(parsed);
+      if (retained.length !== parsed.length) localStorage.setItem(storageKey, JSON.stringify(retained));
+      return retained;
     }
     return isDemo ? INITIAL_ANALYSES : [];
   } catch (e) {
@@ -216,7 +245,13 @@ export async function fetchAnalyses(userId: string): Promise<NeighborhoodAnalysi
       .order("created_at", { ascending: false });
 
     if (!error && data) {
-      const mapped = data.map(mapRowToAnalysis);
+      const mapped = retainHistoryAndFavorites(data.map(mapRowToAnalysis));
+      const retainedIds = new Set(mapped.map((item) => item.id));
+      const obsoleteIds = data.filter((row: any) => !retainedIds.has(row.id)).map((row: any) => row.id);
+      if (obsoleteIds.length) {
+        const { error: deleteError } = await supabase.from("analyses").delete().eq("user_id", userId).in("id", obsoleteIds);
+        if (deleteError) console.warn("Nettoyage de l’historique Supabase impossible:", deleteError.message);
+      }
       try {
         localStorage.setItem(getStorageKey(userId), JSON.stringify(mapped));
       } catch {
@@ -248,7 +283,7 @@ export async function saveAnalysis(
     } else {
       list.unshift(analysis);
     }
-    localStorage.setItem(getStorageKey(userId), JSON.stringify(list));
+    localStorage.setItem(getStorageKey(userId), JSON.stringify(retainHistoryAndFavorites(list)));
   } catch (e) {
     console.error("Erreur sauvegarde analyse locale:", e);
   }
@@ -259,6 +294,8 @@ export async function saveAnalysis(
       const { error } = await supabase.from("analyses").upsert(row, { onConflict: "id" });
       if (error) {
         console.error("Erreur sauvegarde Supabase:", error);
+      } else {
+        await pruneRemoteAnalyses(userId);
       }
     } catch (e) {
       console.error("Erreur requête Supabase saveAnalysis:", e);

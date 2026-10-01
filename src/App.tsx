@@ -258,9 +258,14 @@ export const App: React.FC = () => {
     setCurrentView("new-analysis");
   };
 
-  // Met à jour l'analyse active en mémoire SANS sauvegarder dans le localStorage
+  // Chaque recherche terminée devient immédiatement une entrée d'historique.
   const handleUpdateAnalysis = (updated: NeighborhoodAnalysis) => {
     setActiveAnalysis(updated);
+    if (authUser) {
+      void saveAnalysis(updated, authUser.id).then(() => {
+        setAnalyses(getStoredAnalyses(authUser.id));
+      });
+    }
     if (authUser) {
       void createNotification(authUser.id, {
         id: `analysis_${updated.id}`,
@@ -269,18 +274,6 @@ export const App: React.FC = () => {
         kind: "analysis",
       }).catch((error) => console.warn("Notification d’analyse non enregistrée :", error));
     }
-  };
-
-  // Sauvegarde explicite avec nom personnalisé
-  const handleSaveAnalysis = async (
-    analysis: NeighborhoodAnalysis,
-    customName: string,
-  ) => {
-    if (!authUser) return;
-    const toSave = { ...analysis, neighborhoodName: customName || analysis.address };
-    setActiveAnalysis(toSave);
-    await saveAnalysis(toSave, authUser.id);
-    setAnalyses(getStoredAnalyses(authUser.id));
   };
 
   // Renommer une analyse existante
@@ -404,7 +397,7 @@ export const App: React.FC = () => {
             <NewAnalysisView
               currentAnalysis={activeAnalysis}
               onUpdateAnalysis={handleUpdateAnalysis}
-              onSaveAnalysis={handleSaveAnalysis}
+              onToggleFavorite={handleToggleFav}
               onGoToImpressions={handleGoToImpressions}
             />
           )}
@@ -433,9 +426,10 @@ export const App: React.FC = () => {
             />
           )}
 
-          {currentView === "enregistrements" && (
+          {(currentView === "enregistrements" || currentView === "favoris") && (
             <EnregistrementsView
               analyses={analyses}
+              activeTab={currentView === "favoris" ? "favorites" : "history"}
               onSelectAnalysis={handleSelectAnalysis}
               onToggleFavorite={handleToggleFav}
               onDeleteAnalysis={handleDeleteAnalysis}

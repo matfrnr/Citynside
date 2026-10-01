@@ -1,5 +1,5 @@
-import { ArrowRight, MapPin, Save, Search, X } from "lucide-react";
-import { useState } from "react";
+import { ArrowRight, Star, Search } from "lucide-react";
+import { useRef, useState } from "react";
 import { fetchAirQuality } from "../../services/airQualityApi";
 import { reverseGeocode } from "../../services/banApi";
 import {
@@ -17,20 +17,19 @@ import { AddressSearchBar } from "../search/AddressSearchBar";
 interface NewAnalysisViewProps {
   currentAnalysis: NeighborhoodAnalysis | null;
   onUpdateAnalysis: (analysis: NeighborhoodAnalysis) => void;
-  onSaveAnalysis: (analysis: NeighborhoodAnalysis, customName: string) => void;
+  onToggleFavorite: (id: string) => void;
   onGoToImpressions: () => void;
 }
 
 export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
   currentAnalysis,
   onUpdateAnalysis,
-  onSaveAnalysis,
+  onToggleFavorite,
   onGoToImpressions,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [showSaveModal, setShowSaveModal] = useState(false);
-  const [saveName, setSaveName] = useState("");
+  const latestSearchId = useRef(0);
 
   // Fonction résiliente et accélérée d'agrégation multi-API
   const runParallelAnalysis = async (lat: number, lon: number) => {
@@ -103,12 +102,14 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
 
   // When user selects an address in autocomplete or hits Analyser
   const handleSelectAddress = async (addr: AddressResult) => {
+    const searchId = ++latestSearchId.current;
     setIsLoading(true);
     try {
       const { pois, categories, avg } = await runParallelAnalysis(
         addr.lat,
         addr.lon,
       );
+      if (searchId !== latestSearchId.current) return;
 
       const updated: NeighborhoodAnalysis = {
         id: `analysis_${Date.now()}`,
@@ -129,12 +130,13 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
     } catch (e) {
       console.error("Erreur analyse:", e);
     } finally {
-      setIsLoading(false);
+      if (searchId === latestSearchId.current) setIsLoading(false);
     }
   };
 
   // When user clicks anywhere on map
   const handleMapLocationSelect = async (lat: number, lon: number) => {
+    const searchId = ++latestSearchId.current;
     setSelectedCategory(null);
     setIsLoading(true);
     try {
@@ -142,6 +144,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
         reverseGeocode(lat, lon),
         runParallelAnalysis(lat, lon),
       ]);
+      if (searchId !== latestSearchId.current) return;
 
       const { pois, categories, avg } = analysisData;
 
@@ -164,22 +167,8 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
     } catch (e) {
       console.error("Erreur lors de la sélection de position:", e);
     } finally {
-      setIsLoading(false);
+      if (searchId === latestSearchId.current) setIsLoading(false);
     }
-  };
-
-  const handleOpenSave = () => {
-    // Pré-remplir avec l'adresse courte (sans numéro de voirie)
-    const addr = currentAnalysis?.address || "";
-    const street = addr.replace(/^\d[\d\s\-/]*(?:bis|ter|quater)?\s+/i, "").trim();
-    setSaveName(currentAnalysis?.neighborhoodName || street || addr);
-    setShowSaveModal(true);
-  };
-
-  const handleConfirmSave = () => {
-    if (!currentAnalysis) return;
-    onSaveAnalysis(currentAnalysis, saveName.trim());
-    setShowSaveModal(false);
   };
 
   return (
@@ -251,11 +240,11 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
       {currentAnalysis && (
         <div className="analysis-bottom-cta-wrap">
           <button
-            className="btn-save-analysis"
-            onClick={handleOpenSave}
+            className={`btn-save-analysis ${currentAnalysis.isFavorite ? 'is-favorite' : ''}`}
+            onClick={() => onToggleFavorite(currentAnalysis.id)}
           >
-            <Save size={18} />
-            <span>Enregistrer l'analyse</span>
+            <Star size={18} fill={currentAnalysis.isFavorite ? 'currentColor' : 'none'} />
+            <span>{currentAnalysis.isFavorite ? 'Retirer des favoris' : 'Mettre en favori'}</span>
           </button>
           <button
             className="btn-primary cta-impressions-btn"
@@ -264,45 +253,6 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
             <span>Renseigner mes impressions</span>
             <ArrowRight size={20} strokeWidth={2.4} />
           </button>
-        </div>
-      )}
-
-      {/* Save Modal */}
-      {showSaveModal && (
-        <div className="save-modal-overlay" onClick={() => setShowSaveModal(false)}>
-          <div className="save-modal" onClick={(e) => e.stopPropagation()}>
-            <button className="save-modal-close" onClick={() => setShowSaveModal(false)}>
-              <X size={18} />
-            </button>
-            <Save size={28} className="save-modal-icon" />
-            <h3>Enregistrer l'analyse</h3>
-            <p>Donnez un nom à cette analyse pour la retrouver facilement.</p>
-            <div className="save-modal-field">
-              <label htmlFor="save-name-input">Nom de l'analyse</label>
-              <input
-                id="save-name-input"
-                type="text"
-                value={saveName}
-                onChange={(e) => setSaveName(e.target.value)}
-                placeholder="Ex: Quartier Gare, Appt Rue Voltaire..."
-                autoFocus
-                onKeyDown={(e) => e.key === "Enter" && handleConfirmSave()}
-              />
-            </div>
-            <div className="save-modal-info">
-              <MapPin size={13} />
-              <span>{currentAnalysis?.address}, {currentAnalysis?.city}</span>
-            </div>
-            <div className="save-modal-actions">
-              <button className="btn-cancel" onClick={() => setShowSaveModal(false)}>
-                Annuler
-              </button>
-              <button className="btn-confirm-save" onClick={handleConfirmSave}>
-                <Save size={16} />
-                Enregistrer
-              </button>
-            </div>
-          </div>
         </div>
       )}
 

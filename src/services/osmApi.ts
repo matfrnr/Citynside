@@ -160,36 +160,41 @@ async function fetchFastFromOverpass(
   centerLat: number,
   centerLon: number,
 ): Promise<POI[]> {
-  for (let i = 0; i < OVERPASS_MIRRORS.length; i++) {
-    const mirrorUrl = OVERPASS_MIRRORS[i];
+  const mirrorsPerBatch = 3;
+  const requestTimeoutMs = 10000;
+
+  // Les miroirs Overpass servent la même base. Les interroger par petits groupes
+  // évite d'attendre plusieurs délais de 10 s en série si un serveur est lent.
+  for (let start = 0; start < OVERPASS_MIRRORS.length; start += mirrorsPerBatch) {
+    const mirrors = OVERPASS_MIRRORS.slice(start, start + mirrorsPerBatch);
+    const controllers = mirrors.map(() => new AbortController());
+    const attempts = mirrors.map(async (mirrorUrl, index) => {
+      const controller = controllers[index];
+      const timeoutId = setTimeout(() => controller.abort(), requestTimeoutMs);
+      try {
+        const response = await fetch(mirrorUrl, {
+          method: "POST",
+          body: `data=${encodeURIComponent(query)}`,
+          headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(`Overpass indisponible (${response.status})`);
+        const data = await response.json();
+        const results = parseOverpassResponse(data, centerLat, centerLon);
+        if (results.length === 0) throw new Error("Aucun résultat sur ce miroir Overpass");
+        return results;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    });
 
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout (Overpass peut être lent)
-
-      const response = await fetch(mirrorUrl, {
-        method: "POST",
-        body: `data=${encodeURIComponent(query)}`,
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        },
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        continue;
-      }
-
-      const data = await response.json();
-      const results = parseOverpassResponse(data, centerLat, centerLon);
-      if (results.length > 0) {
-        return results;
-      }
+      const results = await Promise.any(attempts);
+      controllers.forEach((controller) => controller.abort());
+      return results;
     } catch {
-      // Passer au miroir suivant
-      continue;
+      controllers.forEach((controller) => controller.abort());
+      // Si les trois serveurs sont indisponibles, le groupe suivant est essayé.
     }
   }
 

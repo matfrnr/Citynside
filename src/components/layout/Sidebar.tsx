@@ -6,6 +6,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   GitCompareArrows,
+  History,
 } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import type { AppView } from "../../types";
@@ -109,10 +110,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: "new-analysis" as AppView, label: "Carte", icon: Map },
     {
       id: "enregistrements" as AppView,
-      label: "Favoris",
-      icon: Star,
-      badge: favoritesCount,
+      label: "Historique",
+      icon: History,
     },
+    { id: "favoris" as AppView, label: "Favoris", icon: Star, badge: favoritesCount },
     { id: "comparison" as AppView, label: "Comparer", icon: GitCompareArrows },
     { id: "notifications" as AppView, label: "Notifications", icon: Bell, badge: importantNotificationsCount },
   ];

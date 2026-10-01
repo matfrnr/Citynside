@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Search, Building2, ArrowRight, Calendar, Star, Trash2, Pencil } from 'lucide-react';
+import { Search, Building2, ArrowRight, Calendar, Star, Trash2, Pencil, History } from 'lucide-react';
 import type { NeighborhoodAnalysis } from '../../types';
 
 const ITEMS_PER_PAGE = 6;
 
 interface EnregistrementsViewProps {
   analyses: NeighborhoodAnalysis[];
+  activeTab: 'history' | 'favorites';
   onSelectAnalysis: (analysis: NeighborhoodAnalysis) => void;
   onToggleFavorite: (id: string) => void;
   onDeleteAnalysis: (id: string) => void;
@@ -14,13 +15,13 @@ interface EnregistrementsViewProps {
 
 export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
   analyses,
+  activeTab,
   onSelectAnalysis,
   onToggleFavorite,
   onDeleteAnalysis,
   onRenameAnalysis,
 }) => {
   const [filterQuery, setFilterQuery] = useState('');
-  const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [selectedCity, setSelectedCity] = useState('all');
   const [minimumScore, setMinimumScore] = useState('all');
   const [sortOrder, setSortOrder] = useState('recent');
@@ -29,24 +30,26 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameName, setRenameName] = useState('');
 
-  const cities = [...new Set(analyses.map((item) => item.city.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
-  const filtered = analyses.filter((item) => {
+  const sourceAnalyses = activeTab === 'favorites'
+    ? analyses.filter((item) => item.isFavorite)
+    : [...analyses].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 20);
+  const cities = [...new Set(sourceAnalyses.map((item) => item.city.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
+  const filtered = sourceAnalyses.filter((item) => {
     const query = filterQuery.trim().toLocaleLowerCase('fr');
     const matchesSearch =
       (item.neighborhoodName || '').toLocaleLowerCase('fr').includes(query) ||
       item.city.toLocaleLowerCase('fr').includes(query) ||
       item.address.toLocaleLowerCase('fr').includes(query);
-    const matchesFav = onlyFavorites ? item.isFavorite : true;
     const matchesCity = selectedCity === 'all' || item.city === selectedCity;
     const matchesScore = minimumScore === 'all' || item.globalScore >= Number(minimumScore);
-    return matchesSearch && matchesFav && matchesCity && matchesScore;
+    return matchesSearch && matchesCity && matchesScore;
   }).sort((a, b) => {
     if (sortOrder === 'score-desc') return b.globalScore - a.globalScore;
     if (sortOrder === 'score-asc') return a.globalScore - b.globalScore;
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 
-  useEffect(() => setVisibleCount(ITEMS_PER_PAGE), [filterQuery, onlyFavorites, selectedCity, minimumScore, sortOrder]);
+  useEffect(() => setVisibleCount(ITEMS_PER_PAGE), [filterQuery, activeTab, selectedCity, minimumScore, sortOrder]);
 
   const displayed = filtered.slice(0, visibleCount);
   const hasMore = filtered.length > visibleCount;
@@ -73,9 +76,9 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
   return (
     <div className="enregistrements-container">
       <div className="enreg-header">
-        <h1 className="enreg-title">Historique & Favoris</h1>
+        <h1 className="enreg-title">{activeTab === 'history' ? 'Historique' : 'Favoris'}</h1>
         <p className="enreg-subtitle">
-          Retrouvez toutes vos analyses de biens et régénérez vos rapports clients
+          {activeTab === 'history' ? 'Vos 20 recherches les plus récentes, enregistrées automatiquement.' : 'Les analyses que vous avez marquées d’une étoile.'}
         </p>
       </div>
 
@@ -91,13 +94,6 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
           />
         </div>
 
-        <button
-          className={`filter-btn toolbar-favorites ${onlyFavorites ? 'active' : ''}`}
-          onClick={() => setOnlyFavorites(!onlyFavorites)}
-        >
-          <Star size={15} fill={onlyFavorites ? 'currentColor' : 'none'} />
-          <span>Favoris uniquement ({analyses.filter((a) => a.isFavorite).length})</span>
-        </button>
         <select className="enreg-select toolbar-city" value={selectedCity} onChange={(e) => setSelectedCity(e.target.value)} aria-label="Filtrer par ville">
           <option value="all">Toutes les villes</option>
           {cities.map((city) => <option key={city} value={city}>{city}</option>)}
@@ -123,10 +119,10 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
       {/* Grid of cards or Empty state */}
       {displayed.length === 0 ? (
         <div className="enreg-empty">
-          <Star size={40} strokeWidth={1.4} className="enreg-empty-icon" />
-          <h3>{onlyFavorites ? "Aucun favori enregistré" : "Aucune analyse enregistrée"}</h3>
+          {activeTab === 'history' ? <History size={40} strokeWidth={1.4} className="enreg-empty-icon" /> : <Star size={40} strokeWidth={1.4} className="enreg-empty-icon" />}
+          <h3>{activeTab === 'favorites' ? "Aucun favori enregistré" : "Aucune recherche récente"}</h3>
           <p>
-            {onlyFavorites
+            {activeTab === 'favorites'
               ? "Ajoutez une analyse à vos favoris en cliquant sur l'icône étoile."
               : filterQuery
                 ? "Aucune analyse ne correspond à votre recherche."

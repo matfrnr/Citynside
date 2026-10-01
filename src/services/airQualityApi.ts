@@ -29,7 +29,6 @@ export async function fetchAirQuality(lat: number, lon: number): Promise<AirQual
   try {
     const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=european_aqi,pm10,pm2_5,nitrogen_dioxide`;
     const response = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(`Air Quality API error: ${response.status}`);
@@ -76,8 +75,9 @@ export async function fetchAirQuality(lat: number, lon: number): Promise<AirQual
     cache.set(roundedKey, { data: result, timestamp: Date.now() });
     return result;
   } catch (error) {
-    clearTimeout(timeoutId);
     console.warn("Qualité de l'air indisponible:", error);
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }

@@ -106,6 +106,7 @@ export type AppView =
   | "impressions"
   | "report"
   | "enregistrements"
+  | "favoris"
   | "comparison"
   | "notifications"
   | "profile";
