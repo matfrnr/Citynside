@@ -45,6 +45,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({ analyses }) => {
       { category: "espaces_verts", label: "Espaces verts", singular: "espace vert", plural: "espaces verts" },
       { category: "transports", label: "Transports", singular: "transport", plural: "transports" },
       { category: "stationnement", label: "Stationnement", singular: "place de stationnement", plural: "places de stationnement" },
+      { category: "loisirs", label: "Sport, culture & loisirs", singular: "équipement de sport, culture ou loisir", plural: "équipements de sport, culture ou loisir" },
     ].map((type) => ({
       id: type.category, label: type.label, singular: type.singular, plural: type.plural,
       a: left.pois.filter((poi) => poi.category === type.category).length,

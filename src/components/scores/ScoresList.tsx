@@ -13,6 +13,7 @@ import {
   MinusCircle,
   PlusCircle,
   ShoppingBag,
+  Sparkles,
   TreePine,
   Volume2,
   X,
@@ -36,6 +37,21 @@ export const ScoresList: React.FC<ScoresListProps> = ({
   const [modalCategory, setModalCategory] = useState<CategoryScore | null>(
     null,
   );
+  const [scoreProfile, setScoreProfile] = useState("family");
+  const scoreProfiles: { id: string; label: string; weights: Record<string, number> }[] = [
+    { id: "family", label: "Famille", weights: { ecoles: 3, sante: 2, espaces_verts: 2, tranquillite: 2, loisirs: 1.3, commerces: 1, transports: 1, pmr: 1 } },
+    { id: "student", label: "Étudiant", weights: { transports: 3, commerces: 2, loisirs: 3, sante: .5, espaces_verts: 1, tranquillite: .8, ecoles: .5 } },
+    { id: "senior", label: "Senior", weights: { sante: 3, pmr: 3, commerces: 2, transports: 1.5, espaces_verts: 1, tranquillite: 2, loisirs: 1 } },
+    { id: "investor", label: "Investisseur", weights: { transports: 3, commerces: 3, ecoles: 1.5, sante: 1.5, loisirs: 1, espaces_verts: 1, tranquillite: 1, pmr: .7, stationnement: .7 } },
+  ];
+  const activeProfile = scoreProfiles.find((profile) => profile.id === scoreProfile) || scoreProfiles[0];
+  const profileEntries = categories.flatMap((category) => {
+    const weight = activeProfile.weights[category.category];
+    return weight ? [{ score: category.score, weight }] : [];
+  });
+  const profileScore = profileEntries.length
+    ? profileEntries.reduce((sum, item) => sum + item.score * item.weight, 0) / profileEntries.reduce((sum, item) => sum + item.weight, 0)
+    : null;
 
   const getIcon = (iconName: string) => {
     switch (iconName) {
@@ -55,6 +71,8 @@ export const ScoresList: React.FC<ScoresListProps> = ({
         return <Volume2 size={18} />;
       case "Accessibility":
         return <Accessibility size={18} />;
+      case "Sparkles":
+        return <Sparkles size={18} />;
       default:
         return <Info size={18} />;
     }
@@ -87,6 +105,17 @@ export const ScoresList: React.FC<ScoresListProps> = ({
           Chaque note sur 10 est accompagnée d’un repère clair : très favorable, favorable, à améliorer ou point de vigilance.
         </p>
       </div>
+
+      <section className="profile-score-panel" aria-label="Lecture du score selon votre profil">
+        <div className="profile-score-heading">
+          <div><strong>Lecture selon votre projet</strong><span>Les mêmes indicateurs sont pondérés différemment.</span></div>
+          {profileScore !== null && <b>{profileScore.toFixed(1)}<small>/10</small></b>}
+        </div>
+        <div className="profile-score-options">
+          {scoreProfiles.map((profile) => <button key={profile.id} className={scoreProfile === profile.id ? "active" : ""} onClick={() => setScoreProfile(profile.id)}>{profile.label}</button>)}
+        </div>
+        <p>Repère indicatif, distinct du score global. Le profil investisseur décrit les services et la desserte, sans estimer la rentabilité d’un bien.</p>
+      </section>
 
       {/* Filter Tabs */}
       <div className="categories-filter-bar">
@@ -175,7 +204,7 @@ export const ScoresList: React.FC<ScoresListProps> = ({
                 </div>
 
                 {/* Highlights List: Top Positive & Top Negative */}
-                <div className="factors-preview-list">
+                {(cat.positiveFactors?.length || cat.negativeFactors?.length) ? <div className="factors-preview-list">
                   {(cat.positiveFactors || []).slice(0, 2).map((pos, idx) => (
                     <div key={`pos_${idx}`} className="preview-factor-item pos">
                       <PlusCircle size={14} className="factor-icon pos" />
@@ -190,7 +219,7 @@ export const ScoresList: React.FC<ScoresListProps> = ({
                       <span className="factor-pts">{neg.points.toFixed(1)}</span>
                     </div>
                   ))}
-                </div>
+                </div> : null}
 
                 {/* Explainability button */}
                 <div className="card-footer-action">
@@ -653,6 +682,7 @@ export const ScoresList: React.FC<ScoresListProps> = ({
           overflow-x: auto;
           padding-bottom: 6px;
         }
+        .profile-score-panel{margin:14px 0;padding:15px 17px;border:1px solid #dce8dd;border-radius:12px;background:#f7faf6}.profile-score-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.profile-score-heading>div{display:flex;flex-direction:column;gap:3px}.profile-score-heading strong{color:#173d36;font-size:.9rem}.profile-score-heading span,.profile-score-panel>p{color:#667c78;font-size:.75rem}.profile-score-heading>b{color:#2e6846;font-size:1.45rem}.profile-score-heading b small{font-size:.75rem}.profile-score-options{display:flex;flex-wrap:wrap;gap:7px;margin:11px 0 8px}.profile-score-options button{padding:6px 12px;border:1px solid #d2dfd3;border-radius:999px;background:#fff;color:#38554e;font:inherit;font-size:.76rem;cursor:pointer}.profile-score-options button.active{border-color:#376a4d;background:#376a4d;color:#fff}.profile-score-panel>p{margin:0;line-height:1.45}
 
         .filter-pill {
           padding: 5px 12px;

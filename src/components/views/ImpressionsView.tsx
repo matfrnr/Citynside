@@ -13,12 +13,14 @@ import {
 import type { FieldImpressions, NeighborhoodAnalysis } from '../../types';
 
 interface ImpressionsViewProps {
+  isDemo: boolean;
   analysis: NeighborhoodAnalysis;
   onSaveImpressions: (impressions: FieldImpressions) => void;
   onBack: () => void;
 }
 
 export const ImpressionsView: React.FC<ImpressionsViewProps> = ({
+  isDemo,
   analysis,
   onSaveImpressions,
   onBack,
@@ -71,6 +73,7 @@ export const ImpressionsView: React.FC<ImpressionsViewProps> = ({
   };
 
   const handleSave = () => {
+    if (isDemo) return;
     onSaveImpressions(impressions);
   };
 
@@ -90,7 +93,8 @@ export const ImpressionsView: React.FC<ImpressionsViewProps> = ({
         </p>
       </div>
 
-      <div className="impressions-sections-list">
+      {isDemo && <p className="demo-impressions-note">Compte découverte : ces observations sont consultables en lecture seule.</p>}
+      <fieldset className="impressions-readonly" disabled={isDemo}><div className="impressions-sections-list">
         {/* SECTION 1: Sécurité & tranquillité */}
         <div className="section-group">
           <div className="section-title-badge">
@@ -299,17 +303,18 @@ export const ImpressionsView: React.FC<ImpressionsViewProps> = ({
             </div>
           </div>
         </div>
-      </div>
+      </div></fieldset>
 
       {/* Submit button */}
-      <div className="impressions-footer-action">
+      {!isDemo && <div className="impressions-footer-action">
         <button className="btn-primary btn-save-large" onClick={handleSave}>
           <span>Enregistrer & Générer le rapport</span>
           <ArrowRight size={19} strokeWidth={2.4} />
         </button>
-      </div>
+      </div>}
 
       <style>{`
+        .impressions-readonly{min-width:0;margin:0;padding:0;border:0}.demo-impressions-note{padding:11px 14px;border-radius:8px;background:#f4f8f2;color:#46614e;font-size:.8rem}
         /* ImpressionsView — Charte Citynside V1 */
         .impressions-view-container {
           max-width: 680px;

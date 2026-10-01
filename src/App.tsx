@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { AlertTriangle, ChevronRight, X } from "lucide-react";
 import { Sidebar } from "./components/layout/Sidebar";
 import { AuthView } from "./components/views/AuthView";
 import { EnregistrementsView } from "./components/views/EnregistrementsView";
@@ -29,9 +30,19 @@ import {
   type FieldImpressions,
   LOCAL_DEMO_USER_ID,
   type NeighborhoodAnalysis,
+  type RiskAssessment,
 } from "./types";
 
 const LOCAL_DEMO_SESSION_KEY = "citynside_demo_session";
+const APP_VIEWS: AppView[] = [
+  "home", "new-analysis", "impressions", "report", "enregistrements",
+  "favoris", "comparison", "notifications", "profile",
+];
+
+const readViewFromUrl = (): AppView => {
+  const requested = new URLSearchParams(window.location.search).get("view");
+  return APP_VIEWS.includes(requested as AppView) ? requested as AppView : "home";
+};
 
 const notifyAccountActivated = async (userId: string) => {
   if (userId === LOCAL_DEMO_USER_ID) return;
@@ -72,12 +83,27 @@ const notifyAccountActivated = async (userId: string) => {
 
 export const App: React.FC = () => {
   const [analyses, setAnalyses] = useState<NeighborhoodAnalysis[]>([]);
-  const [currentView, setCurrentView] = useState<AppView>("home");
+  const [currentView, setCurrentView] = useState<AppView>(readViewFromUrl);
   const [activeAnalysis, setActiveAnalysis] =
     useState<NeighborhoodAnalysis | null>(null);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [authChecking, setAuthChecking] = useState(true);
   const [importantNotificationsCount, setImportantNotificationsCount] = useState(0);
+  const [isDemoInfoOpen, setIsDemoInfoOpen] = useState(false);
+
+  useEffect(() => {
+    if (!authUser || authChecking) return;
+    const url = new URL(window.location.href);
+    if (currentView === "home") url.searchParams.delete("view");
+    else url.searchParams.set("view", currentView);
+
+    if (["report", "impressions", "new-analysis"].includes(currentView) && activeAnalysis) {
+      url.searchParams.set("analysis", activeAnalysis.id);
+    } else {
+      url.searchParams.delete("analysis");
+    }
+    window.history.replaceState(window.history.state, "", url);
+  }, [activeAnalysis?.id, authChecking, authUser?.id, currentView]);
 
   const refreshImportantNotificationsCount = async (userId: string) => {
     try {
@@ -98,7 +124,11 @@ export const App: React.FC = () => {
     const cached = getStoredAnalyses(userId);
     setAnalyses(cached);
     if (isInitial) {
-      setActiveAnalysis(cached[0] ?? null);
+      const requestedAnalysisId = new URLSearchParams(window.location.search).get("analysis");
+      const blankNewAnalysis = userId !== LOCAL_DEMO_USER_ID && readViewFromUrl() === "new-analysis" && !requestedAnalysisId;
+      setActiveAnalysis(blankNewAnalysis
+        ? null
+        : cached.find((analysis) => analysis.id === requestedAnalysisId) ?? cached[0] ?? null);
     }
 
     // 2. Récupération distante depuis Supabase BDD
@@ -107,7 +137,15 @@ export const App: React.FC = () => {
         const fresh = await fetchAnalyses(userId);
         setAnalyses(fresh);
         if (isInitial) {
-          setActiveAnalysis((prev) => prev ?? (fresh[0] ?? null));
+          const requestedAnalysisId = new URLSearchParams(window.location.search).get("analysis");
+          const blankNewAnalysis = userId !== LOCAL_DEMO_USER_ID && readViewFromUrl() === "new-analysis" && !requestedAnalysisId;
+          setActiveAnalysis((prev) => blankNewAnalysis
+            ? null
+            : fresh.find((analysis) => analysis.id === requestedAnalysisId) ??
+              fresh.find((analysis) => analysis.id === prev?.id) ??
+              prev ??
+              fresh[0] ??
+              null);
         } else {
           setActiveAnalysis((prev) => {
             if (!prev) return null;
@@ -253,13 +291,26 @@ export const App: React.FC = () => {
   };
 
   const handleStartNewAnalysis = () => {
-    // A new search must start from a genuinely blank state.
-    setActiveAnalysis(null);
+    if (authUser?.id === LOCAL_DEMO_USER_ID) {
+      const demoExamples = analyses.length ? analyses : getStoredAnalyses(LOCAL_DEMO_USER_ID);
+      const currentExample = activeAnalysis && demoExamples.find((item) => item.id === activeAnalysis.id);
+      const defaultExample = demoExamples.find((item) => item.id === "aigle_38000") ?? demoExamples[0] ?? null;
+      setActiveAnalysis(currentExample ?? defaultExample);
+    } else {
+      // A new search must start from a genuinely blank state.
+      setActiveAnalysis(null);
+    }
     setCurrentView("new-analysis");
   };
 
   // Chaque recherche terminée devient immédiatement une entrée d'historique.
   const handleUpdateAnalysis = (updated: NeighborhoodAnalysis) => {
+    if (authUser?.id === LOCAL_DEMO_USER_ID) {
+      // Demo examples may be enriched from the same public sources as a live
+      // analysis, but those refreshed details stay in memory only.
+      setActiveAnalysis(updated);
+      return;
+    }
     setActiveAnalysis(updated);
     if (authUser) {
       void saveAnalysis(updated, authUser.id).then(() => {
@@ -276,9 +327,20 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleUpdateRiskAssessment = async (analysisId: string, riskAssessment: RiskAssessment) => {
+    if (!authUser || authUser.id === LOCAL_DEMO_USER_ID) return;
+    const stored = getStoredAnalyses(authUser.id).find((analysis) => analysis.id === analysisId);
+    if (!stored) return;
+    const base = activeAnalysis?.id === analysisId ? activeAnalysis : stored;
+    const updated = { ...base, riskAssessment };
+    if (activeAnalysis?.id === analysisId) setActiveAnalysis(updated);
+    await saveAnalysis(updated, authUser.id);
+    setAnalyses(getStoredAnalyses(authUser.id));
+  };
+
   // Renommer une analyse existante
   const handleRenameAnalysis = async (id: string, newName: string) => {
-    if (!authUser) return;
+    if (!authUser || authUser.id === LOCAL_DEMO_USER_ID) return;
     await renameAnalysis(id, newName, authUser.id);
     const updatedList = getStoredAnalyses(authUser.id);
     setAnalyses(updatedList);
@@ -292,7 +354,7 @@ export const App: React.FC = () => {
   };
 
   const handleSaveImpressions = async (impressions: FieldImpressions) => {
-    if (!activeAnalysis || !authUser) return;
+    if (!activeAnalysis || !authUser || authUser.id === LOCAL_DEMO_USER_ID) return;
 
     const updated: NeighborhoodAnalysis = {
       ...activeAnalysis,
@@ -306,7 +368,7 @@ export const App: React.FC = () => {
   };
 
   const handleToggleFav = async (id: string) => {
-    if (!authUser) return;
+    if (!authUser || authUser.id === LOCAL_DEMO_USER_ID) return;
     await toggleFavorite(id, authUser.id);
     const updatedList = getStoredAnalyses(authUser.id);
     setAnalyses(updatedList);
@@ -319,7 +381,7 @@ export const App: React.FC = () => {
   };
 
   const handleDeleteAnalysis = async (id: string) => {
-    if (!authUser) return;
+    if (!authUser || authUser.id === LOCAL_DEMO_USER_ID) return;
     await deleteAnalysis(id, authUser.id);
     const updatedList = getStoredAnalyses(authUser.id);
     setAnalyses(updatedList);
@@ -382,28 +444,38 @@ export const App: React.FC = () => {
       {/* Main Tablet Content Area */}
       <main className="cyt-main-viewport">
         <div className="main-scroll-inner">
+          {authUser.id === LOCAL_DEMO_USER_ID && <button className="demo-warning-banner" type="button" onClick={() => setIsDemoInfoOpen(true)}>
+            <AlertTriangle size={19} aria-hidden="true" />
+            <span><strong>Compte démo</strong><small>Fonctionnalités limitées · Cliquez pour en savoir plus</small></span>
+            <ChevronRight size={19} aria-hidden="true" />
+          </button>}
+
           {currentView === "home" && (
             <HomeView
               analyses={analyses}
               onSelectAnalysis={handleSelectAnalysis}
               onStartNewAnalysis={handleStartNewAnalysis}
-              onToggleFavorite={handleToggleFav}
               onNavigate={setCurrentView}
               userName={authUser.name}
+              userId={authUser.id}
             />
           )}
 
           {currentView === "new-analysis" && (
             <NewAnalysisView
+              isDemo={authUser.id === LOCAL_DEMO_USER_ID}
               currentAnalysis={activeAnalysis}
               onUpdateAnalysis={handleUpdateAnalysis}
+              onUpdateRiskAssessment={handleUpdateRiskAssessment}
               onToggleFavorite={handleToggleFav}
+              onGoToReport={() => setCurrentView("report")}
               onGoToImpressions={handleGoToImpressions}
             />
           )}
 
           {currentView === "impressions" && activeAnalysis && (
             <ImpressionsView
+              isDemo={authUser.id === LOCAL_DEMO_USER_ID}
               analysis={activeAnalysis}
               onSaveImpressions={handleSaveImpressions}
               onBack={() => setCurrentView("new-analysis")}
@@ -412,6 +484,7 @@ export const App: React.FC = () => {
 
           {currentView === "report" && activeAnalysis && (
             <ReportView
+              isDemo={authUser.id === LOCAL_DEMO_USER_ID}
               analysis={activeAnalysis}
               user={authUser}
               onReportGenerated={() => {
@@ -428,6 +501,7 @@ export const App: React.FC = () => {
 
           {(currentView === "enregistrements" || currentView === "favoris") && (
             <EnregistrementsView
+              isDemo={authUser.id === LOCAL_DEMO_USER_ID}
               analyses={analyses}
               activeTab={currentView === "favoris" ? "favorites" : "history"}
               onSelectAnalysis={handleSelectAnalysis}
@@ -439,10 +513,11 @@ export const App: React.FC = () => {
 
           {currentView === "comparison" && <ComparisonView analyses={analyses} />}
 
-          {currentView === "notifications" && <NotificationsView user={authUser} onImportantUnreadChange={setImportantNotificationsCount} />}
+          {currentView === "notifications" && <NotificationsView isDemo={authUser.id === LOCAL_DEMO_USER_ID} user={authUser} onImportantUnreadChange={setImportantNotificationsCount} />}
 
           {currentView === "profile" && (
             <ProfileView
+              isDemo={authUser.id === LOCAL_DEMO_USER_ID}
               analysesCount={analyses.length}
               favoritesCount={favoritesCount}
               user={authUser}
@@ -472,6 +547,18 @@ export const App: React.FC = () => {
         </div>
       </main>
 
+      {isDemoInfoOpen && <div className="demo-info-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setIsDemoInfoOpen(false); }}>
+        <section className="demo-info-dialog" role="dialog" aria-modal="true" aria-labelledby="demo-info-title">
+          <button className="demo-info-close" type="button" onClick={() => setIsDemoInfoOpen(false)} aria-label="Fermer"><X size={19} /></button>
+          <span className="demo-info-icon"><AlertTriangle size={23} /></span>
+          <p className="demo-info-eyebrow">MODE DÉCOUVERTE</p>
+          <h2 id="demo-info-title">Vous utilisez un compte démo</h2>
+          <p className="demo-info-copy">Ce compte permet de découvrir Citynside en parcourant trois exemples de quartiers et leurs données, scores et rapports.</p>
+          <div className="demo-info-limits"><strong>Les actions sont limitées</strong><ul><li>La recherche d’une nouvelle adresse est désactivée.</li><li>Le profil, les favoris et les impressions ne peuvent pas être modifiés.</li><li>Les données consultées dans la démo ne sont pas enregistrées.</li></ul></div>
+          <button className="demo-info-confirm" type="button" onClick={() => setIsDemoInfoOpen(false)}>Continuer la découverte</button>
+        </section>
+      </div>}
+
       <ReleaseNotesModal userId={authUser.id} />
 
       <style>{`
@@ -497,10 +584,21 @@ export const App: React.FC = () => {
           min-height: 100%;
         }
 
+        .demo-warning-banner{width:100%;display:flex;align-items:center;gap:12px;padding:11px 16px;margin:0 0 22px;border:1px solid #f3b1ad;border-radius:12px;background:#fff0ef;color:#a62b26;text-align:left;cursor:pointer;box-shadow:0 4px 16px rgba(130,35,30,.08)}
+        .demo-warning-banner>span{display:flex;flex:1;flex-direction:column;gap:2px}.demo-warning-banner strong{font-size:.84rem}.demo-warning-banner small{font-size:.76rem;color:#9c514a}.demo-warning-banner:hover{background:#ffe8e6;border-color:#e98c86}
+        .demo-info-overlay{position:fixed;inset:0;z-index:2000;display:grid;place-items:center;padding:20px;background:rgba(20,35,33,.56);backdrop-filter:blur(3px)}
+        .demo-info-dialog{position:relative;width:min(100%,480px);padding:32px;border:1px solid #f1d0cd;border-radius:20px;background:#fff;box-shadow:0 24px 70px rgba(0,0,0,.2);color:#29433d}
+        .demo-info-close{position:absolute;top:14px;right:14px;display:grid;place-items:center;width:36px;height:36px;border:0;border-radius:50%;background:#f5f5f4;color:#53635d;cursor:pointer}
+        .demo-info-icon{display:grid;place-items:center;width:48px;height:48px;border-radius:14px;background:#fff0ef;color:#bd3932}.demo-info-eyebrow{margin-top:20px;color:#ba3932;font-size:.7rem;font-weight:750;letter-spacing:.1em}.demo-info-dialog h2{margin-top:6px;color:#183b39;font-size:1.55rem;line-height:1.2}.demo-info-copy{margin-top:12px;color:#60716c;font-size:.9rem;line-height:1.6}
+        .demo-info-limits{margin-top:20px;padding:16px 18px;border:1px solid #f1e2df;border-radius:12px;background:#fff9f8;font-size:.84rem}.demo-info-limits strong{color:#85332e}.demo-info-limits ul{display:grid;gap:8px;margin:10px 0 0;padding-left:19px;color:#5f6b66;line-height:1.45}
+        .demo-info-confirm{width:100%;margin-top:22px;padding:12px 16px;border:0;border-radius:10px;background:#ad342e;color:#fff;font:inherit;font-weight:650;cursor:pointer}.demo-info-confirm:hover{background:#912923}
+
         @media (max-width: 768px) {
           .main-scroll-inner {
             padding: 20px 16px 36px;
           }
+          .demo-warning-banner{margin-bottom:16px}
+          .demo-info-dialog{padding:26px 22px}
         }
       `}</style>
     </div>

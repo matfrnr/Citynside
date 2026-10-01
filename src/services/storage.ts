@@ -39,6 +39,11 @@ const DEMO_ANALYSIS_IDS = new Set([
   "saintbruno_38000",
   "quais_38000",
 ]);
+const DEMO_EXAMPLE_ANALYSIS_IDS = new Set([
+  "aigle_38000",
+  "prefecture_38000",
+  "europole_38000",
+]);
 
 const getStorageKey = (userId: string) =>
   `${STORAGE_KEY}_${encodeURIComponent(userId)}`;
@@ -168,6 +173,7 @@ function mapRowToAnalysis(row: Record<string, any>): NeighborhoodAnalysis {
     pois: Array.isArray(row.pois) ? row.pois : [],
     impressions: row.impressions || undefined,
     isFavorite: Boolean(row.is_favorite),
+    riskAssessment: row.risk_assessment || undefined,
   };
 }
 
@@ -186,6 +192,7 @@ function mapAnalysisToRow(analysis: NeighborhoodAnalysis, userId: string) {
     pois: analysis.pois,
     impressions: analysis.impressions ?? null,
     is_favorite: Boolean(analysis.isFavorite),
+    risk_assessment: analysis.riskAssessment ?? null,
     created_at: analysis.createdAt || new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -194,36 +201,38 @@ function mapAnalysisToRow(analysis: NeighborhoodAnalysis, userId: string) {
 export function getStoredAnalyses(userId: string): NeighborhoodAnalysis[] {
   const isDemo = userId === LOCAL_DEMO_USER_ID;
   const storageKey = getStorageKey(userId);
+  if (isDemo) {
+    // The demo is a fixed, read-only showcase. Always use the current bundled
+    // examples so older local caches cannot hide the latest score breakdowns.
+    const examples = INITIAL_ANALYSES.filter((item) => DEMO_EXAMPLE_ANALYSIS_IDS.has(item.id));
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(examples));
+    } catch {
+      // The bundled examples remain available even when storage is unavailable.
+    }
+    return examples;
+  }
   try {
     const raw = localStorage.getItem(storageKey);
     if (!raw) {
-      if (isDemo) {
-        localStorage.setItem(storageKey, JSON.stringify(INITIAL_ANALYSES));
-      return retainHistoryAndFavorites(INITIAL_ANALYSES);
-      }
       // Pour tout compte réel, un nouveau compte DOIT être vide
       return [];
     }
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      if (!isDemo) {
-        // Nettoie d'éventuelles fausses analyses de démo injectées par erreur auparavant
-        const cleaned = retainHistoryAndFavorites(parsed.filter(
-          (item: NeighborhoodAnalysis) => !DEMO_ANALYSIS_IDS.has(item.id),
-        ));
-        if (cleaned.length !== parsed.length) {
-          localStorage.setItem(storageKey, JSON.stringify(cleaned));
-        }
-      return cleaned;
+      // Nettoie d'éventuelles fausses analyses de démo injectées par erreur auparavant
+      const cleaned = retainHistoryAndFavorites(parsed.filter(
+        (item: NeighborhoodAnalysis) => !DEMO_ANALYSIS_IDS.has(item.id),
+      ));
+      if (cleaned.length !== parsed.length) {
+        localStorage.setItem(storageKey, JSON.stringify(cleaned));
       }
-      const retained = retainHistoryAndFavorites(parsed);
-      if (retained.length !== parsed.length) localStorage.setItem(storageKey, JSON.stringify(retained));
-      return retained;
+      return cleaned;
     }
-    return isDemo ? INITIAL_ANALYSES : [];
+      return [];
   } catch (e) {
     console.error("Erreur lecture localStorage:", e);
-    return isDemo ? INITIAL_ANALYSES : [];
+    return [];
   }
 }
 
@@ -275,6 +284,7 @@ export async function saveAnalysis(
   userId: string,
 ): Promise<void> {
   const isDemo = userId === LOCAL_DEMO_USER_ID;
+  if (isDemo && !DEMO_EXAMPLE_ANALYSIS_IDS.has(analysis.id)) return;
   try {
     const list = getStoredAnalyses(userId);
     const existingIndex = list.findIndex((a) => a.id === analysis.id);
@@ -305,6 +315,7 @@ export async function saveAnalysis(
 
 export async function toggleFavorite(analysisId: string, userId: string): Promise<void> {
   const isDemo = userId === LOCAL_DEMO_USER_ID;
+  if (isDemo) return;
   let newFavState = false;
   try {
     const list = getStoredAnalyses(userId);
@@ -336,6 +347,7 @@ export async function toggleFavorite(analysisId: string, userId: string): Promis
 
 export async function deleteAnalysis(analysisId: string, userId: string): Promise<void> {
   const isDemo = userId === LOCAL_DEMO_USER_ID;
+  if (isDemo) return;
   try {
     const list = getStoredAnalyses(userId);
     const filtered = list.filter((a) => a.id !== analysisId);
@@ -366,6 +378,7 @@ export async function renameAnalysis(
   userId: string,
 ): Promise<void> {
   const isDemo = userId === LOCAL_DEMO_USER_ID;
+  if (isDemo) return;
   try {
     const list = getStoredAnalyses(userId);
     const item = list.find((a) => a.id === analysisId);

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import { Crosshair, Navigation, X } from 'lucide-react';
 import type { POI } from '../../types';
+import { ANALYSIS_RADIUS_METERS, EXTENDED_TRANSIT_RADIUS_METERS } from '../../services/osmApi';
 
 interface InteractiveMapProps {
   lat: number;
@@ -125,14 +126,13 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     const mainMarker = L.marker([lat, lon], { icon: customMainPin, zIndexOffset: 1000 }).addTo(map);
     mainPinMarkerRef.current = mainMarker;
 
-    // 3. Cercle de périmètre d'analyse (rayon réel de recherche = 850m)
-    // Remplace l'ancien polygone fictif qui ne correspondait à aucun quartier réel
+    // Cercle du périmètre principal d'analyse ; certaines gares SNCF peuvent apparaître au-delà.
     if (boundaryLayerRef.current) {
       boundaryLayerRef.current.remove();
     }
 
     const analysisCircle = L.circle([lat, lon], {
-      radius: 850, // mètres — correspond au rayon réel de fetchPOIsInRadius
+      radius: ANALYSIS_RADIUS_METERS,
       color: '#6aa382',
       weight: 2.5,
       opacity: 0.7,
@@ -151,9 +151,10 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
     markersGroup.clearLayers();
 
-    const filteredPOIs = selectedCategory
-      ? pois.filter((p) => p.category === selectedCategory)
-      : pois;
+    const filteredPOIs = pois.filter((poi) =>
+      poi.distanceMeters <= ANALYSIS_RADIUS_METERS ||
+      (poi.category === 'transports' && poi.distanceMeters <= EXTENDED_TRANSIT_RADIUS_METERS),
+    ).filter((poi) => !selectedCategory || poi.category === selectedCategory);
 
     const categoryColors: Record<string, string> = {
       transports: '#1d4ed8',
@@ -162,10 +163,15 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       sante: '#dc2626',
       espaces_verts: '#15803d',
       stationnement: '#475569',
+      loisirs: '#be185d',
     };
 
     // Couleur spécifique par sous-type (ex: pharmacies = vert croix distinctif)
     const getPoiColor = (poi: POI): string => {
+      const transportType = poi.subType.toLowerCase();
+      if (poi.category === 'transports' && (transportType.includes('gare') || transportType.includes('train'))) {
+        return '#c026d3'; // Gares en fuchsia, distinctes des arrêts de bus
+      }
       if (poi.category === 'sante' && poi.subType.toLowerCase().includes('pharmacie')) {
         return '#059669'; // Vert pharmacie (croix verte)
       }
@@ -203,6 +209,9 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       }
       if (category === 'stationnement') {
         return '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>';
+      }
+      if (category === 'loisirs') {
+        return '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6.5 6.5 11 11M17.5 6.5l-11 11"/><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/></svg>';
       }
       return '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9"/></svg>';
     };

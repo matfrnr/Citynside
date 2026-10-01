@@ -16,6 +16,7 @@ import { DEFAULT_REPORT_CUSTOMIZATION, fetchReportCustomization, saveReportCusto
 import { LOCAL_DEMO_USER_ID, type AuthUser, type NeighborhoodAnalysis } from '../../types';
 
 interface ReportViewProps {
+  isDemo: boolean;
   analysis: NeighborhoodAnalysis;
   onBackToEdit: () => void;
   user?: AuthUser | null;
@@ -38,6 +39,7 @@ const loadReportCustomization = (key: string): ReportCustomization => {
 };
 
 export const ReportView: React.FC<ReportViewProps> = ({
+  isDemo,
   analysis,
   onBackToEdit,
   user,
@@ -165,6 +167,15 @@ export const ReportView: React.FC<ReportViewProps> = ({
           });
           const pageHeightCss = 1122;
           const sheetTop = sheet.getBoundingClientRect().top;
+          const risks = sheet.querySelector('.report-risk-section') as HTMLElement | null;
+          if (risks) {
+            const risksRect = risks.getBoundingClientRect();
+            const risksTop = risksRect.top - sheetTop;
+            const risksBottom = risksRect.bottom - sheetTop;
+            if (risksTop < pageHeightCss && risksBottom > pageHeightCss && risksTop > 120) {
+              risks.style.marginTop = `${pageHeightCss + 34 - risksTop}px`;
+            }
+          }
           const observations = sheet.querySelector('.sheet-col-impressions') as HTMLElement | null;
           const observationsTop = observations ? observations.getBoundingClientRect().top - sheetTop : 0;
           const observationsNeedPageTwo = sheet.scrollHeight > pageHeightCss && observations;
@@ -177,7 +188,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
           } else {
             let pageStart = 0;
             const keepTogetherBlocks = [...sheet.querySelectorAll(
-              '.report-notes-strip, .report-cat-row, .impressions-report-card, .methodology-box, .guarantee-badge',
+              '.report-notes-strip, .report-cat-row, .report-risk-section, .impressions-report-card, .methodology-box, .guarantee-badge',
             )].map((block) => {
               const rect = (block as HTMLElement).getBoundingClientRect();
               return { top: rect.top - sheetTop, bottom: rect.bottom - sheetTop };
@@ -282,6 +293,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
 
   const appraisal = getScoreGrade(analysis.globalScore);
   const hasRightSections = includedSections.sources || includedSections.impressions;
+  const positiveRiskFindings = (analysis.riskAssessment?.findings ?? []).filter((finding) => !/pas de risque connu|non concern|aucun risque|absence de risque|non expose|non exposé/i.test(finding.addressStatus));
 
   const getAgentName = () => [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.name || "Agent Immobilier";
 
@@ -289,7 +301,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
 
   return (
     <div className="report-view-wrapper">
-      <div className="report-options no-print">
+      {!isDemo && <div className="report-options no-print">
         <button type="button" className="btn-outline" onClick={() => setShowReportOptions((open) => !open)} aria-expanded={showReportOptions}>
           Personnaliser le rapport
         </button>
@@ -298,6 +310,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
           <label><input type="checkbox" disabled={!customizationLoaded} checked={includedSections.scores} onChange={(e) => updateCustomization({ includedSections: { ...includedSections, scores: e.target.checked } })} /> Scores par catégorie</label>
           <label><input type="checkbox" disabled={!customizationLoaded} checked={includedSections.sources} onChange={(e) => updateCustomization({ includedSections: { ...includedSections, sources: e.target.checked } })} /> Transparence & méthodologie</label>
           <label><input type="checkbox" disabled={!customizationLoaded} checked={includedSections.impressions} onChange={(e) => updateCustomization({ includedSections: { ...includedSections, impressions: e.target.checked } })} /> Observations terrain</label>
+          <label><input type="checkbox" disabled={!customizationLoaded} checked={includedSections.risks} onChange={(e) => updateCustomization({ includedSections: { ...includedSections, risks: e.target.checked } })} /> Risques et nuisances</label>
           <div className="report-notes-fields">
             <label>Points forts<textarea disabled={!customizationLoaded} maxLength={160} value={strengths} onChange={(e) => updateCustomization({ strengths: e.target.value })} placeholder="Ex. Tram à proximité, commerces accessibles…" /></label>
             <label>Réserves<textarea disabled={!customizationLoaded} maxLength={160} value={reservations} onChange={(e) => updateCustomization({ reservations: e.target.value })} placeholder="Ex. Peu de stationnement, rue passante…" /></label>
@@ -311,15 +324,15 @@ export const ReportView: React.FC<ReportViewProps> = ({
               'Enregistré sur cet appareil (mode démo)'}
           </span>
         </div>}
-      </div>
+      </div>}
       {/* Top action bar (hidden during print) */}
       <div className="report-actions-bar no-print">
         <button className="btn-outline back-btn" onClick={onBackToEdit}>
           <ArrowLeft size={16} />
-          <span>Modifier l'analyse</span>
+          <span>{isDemo ? "Retour à la carte" : "Modifier l'analyse"}</span>
         </button>
 
-        <div className="actions-right">
+        {!isDemo && <div className="actions-right">
           <button 
             className="btn-outline print-action-btn" 
             onClick={handlePreviewPdf} 
@@ -351,7 +364,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
               </>
             )}
           </button>
-        </div>
+        </div>}
       </div>
 
       {/* Actual A4 Document Sheet */}
@@ -469,6 +482,28 @@ export const ReportView: React.FC<ReportViewProps> = ({
               })}
             </div>
           </div>}
+
+          {includedSections.risks && <section className="report-risk-section" aria-label="Risques et nuisances">
+            <h3 className="section-title">Risques et nuisances</h3>
+            <div className="report-risk-grid">
+              <article className="report-risk-card">
+                <strong>Risques recensés par Géorisques</strong>
+                {analysis.riskAssessment?.status === 'loading' && <p>Consultation en cours, informations indisponibles au moment de la création du rapport.</p>}
+                {analysis.riskAssessment?.status === 'unavailable' && <p>Les données Géorisques n’ont pas pu être récupérées pour cette analyse.</p>}
+                {analysis.riskAssessment?.status === 'available' && positiveRiskFindings.length === 0 && <p>Aucun signal positif n’a été renvoyé à cette adresse. Cela ne signifie pas qu’il n’existe aucun risque : consultez les informations officielles à jour.</p>}
+                {positiveRiskFindings.length > 0 && <ul>{positiveRiskFindings.map((finding) => <li key={finding.id}><span>{finding.label}</span><b>{finding.addressStatus}</b></li>)}</ul>}
+                {!analysis.riskAssessment && <p>Aucune donnée Géorisques n’est enregistrée pour cette analyse.</p>}
+                <small>Source : Géorisques · données indicatives à vérifier dans les documents réglementaires.</small>
+              </article>
+              <article className="report-risk-card">
+                <strong>Bruit et qualité de l’air</strong>
+                {(() => {
+                  const score = analysis.categories.find((category) => category.category === 'tranquillite');
+                  return score ? <><p><b>{score.score.toFixed(1)}/10</b> · {score.highlightText}</p><small>Estimation de l’environnement sonore et de la qualité de l’air ; ce n’est pas une mesure acoustique à l’adresse.</small></> : <p>Aucune estimation disponible pour cette analyse.</p>;
+                })()}
+              </article>
+            </div>
+          </section>}
 
           {/* Right Column: Agent Field Impressions */}
           {hasRightSections && <div className={`sheet-col-impressions ${includedSections.impressions ? 'has-impressions' : ''} ${includedSections.sources ? 'has-sources' : ''}`}>
@@ -926,6 +961,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
           grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 10px;
         }
+        .report-risk-section{grid-column:1/-1;min-width:0;margin-top:8px;break-inside:avoid;page-break-inside:avoid}.report-risk-section>.section-title{margin-bottom:10px}.report-risk-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.report-risk-card{min-width:0;padding:12px 14px;border:1px solid #e5e9e2;border-radius:8px;background:#fafbf9;break-inside:avoid;page-break-inside:avoid}.report-risk-card>strong{display:block;margin-bottom:7px;color:#24443c;font-size:.76rem}.report-risk-card p,.report-risk-card small{display:block;color:#5d6e68;font-size:.69rem;line-height:1.45;overflow-wrap:anywhere}.report-risk-card small{margin-top:7px;font-size:.62rem}.report-risk-card ul{display:grid;gap:5px;margin:0;padding:0;list-style:none}.report-risk-card li{display:flex;justify-content:space-between;gap:10px;padding-top:5px;border-top:1px solid #e9ede8;color:#354841;font-size:.68rem}.report-risk-card li b{flex:0 0 auto;color:#8b5415;text-align:right}
 
         .report-cat-row {
           min-width: 0;

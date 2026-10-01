@@ -1,30 +1,40 @@
-import { ArrowRight, Star, Search } from "lucide-react";
-import { useRef, useState } from "react";
+import { ArrowRight, FileText, Star, Search } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { fetchAirQuality } from "../../services/airQualityApi";
 import { reverseGeocode } from "../../services/banApi";
 import {
   fetchEducationPOIsInRadius,
   mergeEducationPOIs,
 } from "../../services/educationApi";
-import { fetchPOIsInRadius, calculateDistanceMeters } from "../../services/osmApi";
+import { ANALYSIS_RADIUS_METERS, EXTENDED_TRANSIT_RADIUS_METERS, fetchPOIsInRadius, calculateDistanceMeters } from "../../services/osmApi";
 import { calculateCategoryScores } from "../../services/scoringEngine";
 import { fetchSNCFStationsInRadius } from "../../services/sncfApi";
-import type { AddressResult, NeighborhoodAnalysis, POI } from "../../types";
+import type { AddressResult, NeighborhoodAnalysis, POI, RiskAssessment } from "../../types";
+import { fetchRiskAssessment } from "../../services/georisquesApi";
 import { InteractiveMap } from "../map/InteractiveMap";
 import { ScoresList } from "../scores/ScoresList";
+import { RiskNuisancePanel } from "../scores/RiskNuisancePanel";
 import { AddressSearchBar } from "../search/AddressSearchBar";
 
+const demoAnalysisRequests = new Map<string, Promise<{ pois: POI[]; categories: NeighborhoodAnalysis["categories"]; avg: number }>>();
+
 interface NewAnalysisViewProps {
+  isDemo: boolean;
   currentAnalysis: NeighborhoodAnalysis | null;
   onUpdateAnalysis: (analysis: NeighborhoodAnalysis) => void;
+  onUpdateRiskAssessment: (analysisId: string, assessment: RiskAssessment) => void;
   onToggleFavorite: (id: string) => void;
+  onGoToReport: () => void;
   onGoToImpressions: () => void;
 }
 
 export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
+  isDemo,
   currentAnalysis,
   onUpdateAnalysis,
+  onUpdateRiskAssessment,
   onToggleFavorite,
+  onGoToReport,
   onGoToImpressions,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -34,9 +44,9 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
   // Fonction résiliente et accélérée d'agrégation multi-API
   const runParallelAnalysis = async (lat: number, lon: number) => {
     const [osmRes, eduRes, sncfRes, airRes] = await Promise.allSettled([
-      fetchPOIsInRadius(lat, lon, 850),
-      fetchEducationPOIsInRadius(lat, lon, 850),
-      fetchSNCFStationsInRadius(lat, lon, 1200),
+      fetchPOIsInRadius(lat, lon, ANALYSIS_RADIUS_METERS),
+      fetchEducationPOIsInRadius(lat, lon, ANALYSIS_RADIUS_METERS),
+      fetchSNCFStationsInRadius(lat, lon, EXTENDED_TRANSIT_RADIUS_METERS),
       fetchAirQuality(lat, lon),
     ]);
 
@@ -100,8 +110,31 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
     return { pois: finalPOIs, categories, avg, airQuality };
   };
 
+  // Enrich each fixed demo example with the same public datasets used for a
+  // real analysis. The address stays fixed and App keeps this update in memory.
+  useEffect(() => {
+    if (!isDemo || !currentAnalysis) return;
+    let cancelled = false;
+    let request = demoAnalysisRequests.get(currentAnalysis.id);
+    if (!request) {
+      request = runParallelAnalysis(currentAnalysis.lat, currentAnalysis.lon);
+      demoAnalysisRequests.set(currentAnalysis.id, request);
+    }
+    setIsLoading(true);
+    request.then(({ pois, categories, avg }) => {
+      if (cancelled || pois.length === 0) return;
+      onUpdateAnalysis({ ...currentAnalysis, pois, categories, globalScore: avg });
+    }).catch((error) => {
+      console.warn("Enrichissement des données de démonstration indisponible :", error);
+    }).finally(() => {
+      if (!cancelled) setIsLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [isDemo, currentAnalysis?.id]);
+
   // When user selects an address in autocomplete or hits Analyser
   const handleSelectAddress = async (addr: AddressResult) => {
+    if (isDemo) return;
     const searchId = ++latestSearchId.current;
     setIsLoading(true);
     try {
@@ -124,9 +157,11 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
         categories,
         pois,
         impressions: currentAnalysis?.impressions,
+        riskAssessment: { status: "loading", findings: [], reportUrl: `https://georisques.gouv.fr/api/v1/rapport_pdf?latlon=${encodeURIComponent(`${addr.lon},${addr.lat}`)}` },
       };
 
       onUpdateAnalysis(updated);
+      void fetchRiskAssessment(addr.lat, addr.lon).then((assessment) => onUpdateRiskAssessment(updated.id, assessment));
     } catch (e) {
       console.error("Erreur analyse:", e);
     } finally {
@@ -136,6 +171,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
 
   // When user clicks anywhere on map
   const handleMapLocationSelect = async (lat: number, lon: number) => {
+    if (isDemo) return;
     const searchId = ++latestSearchId.current;
     setSelectedCategory(null);
     setIsLoading(true);
@@ -161,9 +197,11 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
         categories,
         pois,
         impressions: currentAnalysis?.impressions,
+        riskAssessment: { status: "loading", findings: [], reportUrl: `https://georisques.gouv.fr/api/v1/rapport_pdf?latlon=${encodeURIComponent(`${lon},${lat}`)}` },
       };
 
       onUpdateAnalysis(updated);
+      void fetchRiskAssessment(lat, lon).then((assessment) => onUpdateRiskAssessment(updated.id, assessment));
     } catch (e) {
       console.error("Erreur lors de la sélection de position:", e);
     } finally {
@@ -175,9 +213,9 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
     <div className="new-analysis-container">
       {/* Header section matching Mockup 2 */}
       <div className="analysis-page-header">
-        <h1 className="header-main-title">Nouvelle analyse</h1>
+        <h1 className="header-main-title">{isDemo ? "Exemple de quartier" : "Nouvelle analyse"}</h1>
         <p className="header-main-subtitle">
-          Recherchez et définissez une nouvelle zone à analyser
+          {isDemo ? "Explorez les données de démonstration de ce quartier." : "Recherchez et définissez une nouvelle zone à analyser"}
         </p>
       </div>
 
@@ -192,6 +230,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
           onSelectAddress={handleSelectAddress}
           onTriggerAnalysis={() => {}}
           isLoading={isLoading}
+          readOnly={isDemo}
         />
       </div>
 
@@ -206,7 +245,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
                 pois={currentAnalysis.pois}
                 selectedCategory={selectedCategory}
                 onSelectCategory={setSelectedCategory}
-                onSelectLocation={handleMapLocationSelect}
+                onSelectLocation={isDemo ? undefined : handleMapLocationSelect}
                 height="420px"
               />
             </div>
@@ -218,6 +257,13 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
               selectedCategory={selectedCategory}
               onSelectCategory={setSelectedCategory}
               addressName={`${currentAnalysis.address}, ${currentAnalysis.city}`}
+            />
+          </section>
+
+          <section className="analysis-risk-section">
+            <RiskNuisancePanel
+              assessment={currentAnalysis.riskAssessment}
+              tranquility={currentAnalysis.categories.find((category) => category.category === "tranquillite")}
             />
           </section>
         </div>
@@ -239,20 +285,24 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
       {/* Bottom CTA Buttons */}
       {currentAnalysis && (
         <div className="analysis-bottom-cta-wrap">
-          <button
+          <button className="btn-view-report" onClick={onGoToReport}>
+            <FileText size={18} />
+            <span>Voir le rapport</span>
+          </button>
+          {!isDemo && <button
             className={`btn-save-analysis ${currentAnalysis.isFavorite ? 'is-favorite' : ''}`}
             onClick={() => onToggleFavorite(currentAnalysis.id)}
           >
             <Star size={18} fill={currentAnalysis.isFavorite ? 'currentColor' : 'none'} />
             <span>{currentAnalysis.isFavorite ? 'Retirer des favoris' : 'Mettre en favori'}</span>
-          </button>
-          <button
+          </button>}
+          {!isDemo && <button
             className="btn-primary cta-impressions-btn"
             onClick={onGoToImpressions}
           >
             <span>Renseigner mes impressions</span>
             <ArrowRight size={20} strokeWidth={2.4} />
-          </button>
+          </button>}
         </div>
       )}
 
@@ -397,6 +447,29 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
         .btn-save-analysis:hover {
           background: var(--color-green-light);
           border-color: var(--color-green-hover);
+          transform: translateY(-2px);
+        }
+
+        .btn-view-report {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          padding: 14px 24px;
+          border-radius: var(--radius-full);
+          border: 1.5px solid var(--color-border);
+          background: #ffffff;
+          color: var(--color-primary);
+          font-family: var(--font-family-heading);
+          font-weight: 700;
+          font-size: 1rem;
+          cursor: pointer;
+          transition: var(--transition-smooth);
+        }
+
+        .btn-view-report:hover {
+          background: var(--color-green-light);
+          border-color: var(--color-green);
           transform: translateY(-2px);
         }
 

@@ -1,13 +1,13 @@
 import { supabase } from "./supabase";
 
 export interface ReportCustomization {
-  includedSections: { scores: boolean; sources: boolean; impressions: boolean };
+  includedSections: { scores: boolean; sources: boolean; impressions: boolean; risks: boolean };
   strengths: string;
   reservations: string;
 }
 
 export const DEFAULT_REPORT_CUSTOMIZATION: ReportCustomization = {
-  includedSections: { scores: true, sources: true, impressions: true },
+  includedSections: { scores: true, sources: true, impressions: true, risks: false },
   strengths: "",
   reservations: "",
 };

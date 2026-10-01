@@ -21,6 +21,7 @@ import {
 import { type AuthUser, LOCAL_DEMO_USER_ID } from "../../types";
 
 interface ProfileViewProps {
+  isDemo: boolean;
   analysesCount: number;
   favoritesCount: number;
   user: AuthUser;
@@ -45,6 +46,7 @@ const loadProfile = (user: AuthUser): ProfileDetails => {
 };
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
+  isDemo,
   analysesCount,
   favoritesCount,
   user,
@@ -71,6 +73,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   }, [user]);
 
   const updateField = (field: keyof ProfileDetails, value: string) => {
+    if (isDemo) return;
     setProfile((current) => ({ ...current, [field]: value }));
     setSaved(false);
     setSaveError("");
@@ -78,6 +81,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isDemo) return;
     setIsSaving(true);
     setSaveError("");
     setSaved(false);
@@ -198,7 +202,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <UserRound size={21} aria-hidden="true" />
           </div>
 
-          <div className="profile-fields">
+          {isDemo && <p className="profile-demo-note">Profil en lecture seule dans le compte découverte.</p>}
+
+          <fieldset className="profile-demo-fields" disabled={isDemo}><div className="profile-fields">
             <label className="profile-field">
               <span>Prénom</span>
               <input
@@ -300,7 +306,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </span>
               <span className="profile-field-note">Utilisée pour la veille des projets et évolutions locales.</span>
             </label>
-          </div>
+          </div></fieldset>
 
           <div className="profile-form-footer">
             <span
@@ -315,18 +321,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     ? "Enregistrement en cours..."
                     : "Vos modifications sont synchronisées avec votre compte."}
             </span>
-            <button
+            {!isDemo && <button
               type="submit"
               className="save-profile"
               disabled={isSaving}
             >
               <Save size={17} /> {isSaving ? "Enregistrement..." : "Enregistrer"}
-            </button>
+            </button>}
           </div>
         </form>
       </div>
 
-      <form className="password-form" onSubmit={async (event) => {
+      {!isDemo && <form className="password-form" onSubmit={async (event) => {
         event.preventDefault();
         setPasswordError(""); setPasswordMessage("");
         if (user.id === LOCAL_DEMO_USER_ID) { setPasswordError("Le compte de démonstration ne possède pas de mot de passe modifiable."); return; }
@@ -350,9 +356,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <label className="profile-field"><span>Confirmer le mot de passe</span><input type="password" autoComplete="new-password" minLength={8} required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>
         </div>
         <div className="password-footer"><span className={passwordError ? "password-error" : "password-success"} role="status">{passwordError || passwordMessage}</span><button className="save-profile" type="submit" disabled={isChangingPassword}><KeyRound size={16}/>{isChangingPassword ? "Modification…" : "Modifier le mot de passe"}</button></div>
-      </form>
+      </form>}
 
       <style>{`
+        .profile-demo-fields{min-width:0;margin:0;padding:0;border:0}.profile-demo-note{margin:12px 0;color:var(--color-text-muted);font-size:.8rem}
         .profile-page {
           max-width: 1040px;
           margin: 0 auto;

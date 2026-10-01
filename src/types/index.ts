@@ -18,7 +18,23 @@ export type POICategory =
   | "ecoles"
   | "sante"
   | "espaces_verts"
-  | "stationnement";
+  | "stationnement"
+  | "loisirs";
+
+export interface RiskFinding {
+  id: string;
+  label: string;
+  group: "natural" | "technological";
+  addressStatus: string;
+  communeStatus?: string;
+}
+
+export interface RiskAssessment {
+  status: "loading" | "available" | "unavailable";
+  findings: RiskFinding[];
+  reportUrl: string;
+  checkedAt?: string;
+}
 
 export interface POI {
   id: string;
@@ -84,6 +100,7 @@ export interface NeighborhoodAnalysis {
   pois: POI[];
   impressions?: FieldImpressions;
   isFavorite?: boolean;
+  riskAssessment?: RiskAssessment;
 }
 
 export const LOCAL_DEMO_USER_ID = "local-demo-user";

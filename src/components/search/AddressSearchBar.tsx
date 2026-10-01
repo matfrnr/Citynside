@@ -8,6 +8,7 @@ interface AddressSearchBarProps {
   onSelectAddress: (result: AddressResult) => void;
   onTriggerAnalysis?: () => void;
   isLoading?: boolean;
+  readOnly?: boolean;
 }
 
 export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
@@ -15,6 +16,7 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
   onSelectAddress,
   onTriggerAnalysis,
   isLoading = false,
+  readOnly = false,
 }) => {
   const [query, setQuery] = useState(initialValue);
   const [suggestions, setSuggestions] = useState<AddressResult[]>([]);
@@ -261,22 +263,25 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
             type="text"
             className="search-input"
             value={query}
+            readOnly={readOnly}
+            aria-readonly={readOnly}
+            title={readOnly ? "Adresse de l’exemple de démonstration" : undefined}
             role="combobox"
             aria-autocomplete="list"
             aria-expanded={isOpen}
             aria-controls="address-suggestions"
             aria-activedescendant={isOpen && suggestions[activeSuggestion] ? `address-option-${activeSuggestion}` : undefined}
-            onChange={handleInputChange}
+            onChange={readOnly ? undefined : handleInputChange}
             onFocus={() => {
               // Ne réaffiche que si l'utilisateur a déjà des suggestions et tape activement
               if (!isLoading && suggestions.length > 0 && query.trim().length >= 3) {
                 setIsOpen(true);
               }
             }}
-            onKeyDown={handleKeyDown}
-            placeholder="Rechercher une adresse (ex: 3 rue Galilée, Grenoble)..."
+            onKeyDown={readOnly ? undefined : handleKeyDown}
+            placeholder={readOnly ? "Adresse de l’exemple" : "Rechercher une adresse (ex: 3 rue Galilée, Grenoble)..."}
           />
-          {query.length > 0 && (
+          {!readOnly && query.length > 0 && (
             <button
               className="icon-btn"
               onClick={() => {
@@ -295,9 +300,9 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
           <button
             className="icon-btn"
             onClick={handleGeolocation}
-            disabled={isGeolocating || isLoading || isSearching}
+            disabled={readOnly || isGeolocating || isLoading || isSearching}
             aria-label="Me géolocaliser"
-            title="Me géolocaliser"
+            title={readOnly ? "Géolocalisation désactivée dans le compte démo" : "Me géolocaliser"}
             type="button"
           >
             {isGeolocating ? <Loader2 size={16} className="spin-icon" /> : <LocateFixed size={16} />}
@@ -307,7 +312,7 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
         <button
           className="btn-analyser"
           onClick={handleTrigger}
-          disabled={isLoading || isSearching}
+          disabled={readOnly || isLoading || isSearching}
         >
           {isLoading || isSearching ? (
             <>

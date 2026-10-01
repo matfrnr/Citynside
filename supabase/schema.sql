@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS public.analyses (
   categories JSONB NOT NULL DEFAULT '[]'::jsonb,
   pois JSONB NOT NULL DEFAULT '[]'::jsonb,
   impressions JSONB,
+  risk_assessment JSONB,
   is_favorite BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -77,6 +78,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   agency TEXT DEFAULT 'Agence immobilière',
   agency_city TEXT DEFAULT '',
   known_device_ids TEXT[] NOT NULL DEFAULT '{}',
+  home_quick_access TEXT[] NOT NULL DEFAULT ARRAY['new-analysis', 'history', 'favorites', 'comparison']::TEXT[],
   activation_notification_sent BOOLEAN NOT NULL DEFAULT false,
   role TEXT DEFAULT 'Agent immobilier',
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()

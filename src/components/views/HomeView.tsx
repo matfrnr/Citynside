@@ -1,16 +1,27 @@
-import React from 'react';
-import { Building2, ArrowRight, Map, Bell, FileText, Calendar, MapPin, History } from 'lucide-react';
-import type { AppView, NeighborhoodAnalysis } from '../../types';
+import React, { useEffect, useState } from 'react';
+import { Building2, ArrowRight, Map, Bell, FileText, Calendar, MapPin, History, Star, GitCompareArrows, Pencil, X, Check } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { LOCAL_DEMO_USER_ID, type AppView, type NeighborhoodAnalysis } from '../../types';
+import { DEFAULT_QUICK_ACCESS, fetchHomeQuickAccess, getLocalHomeQuickAccess, saveHomeQuickAccess, type QuickAccessId } from '../../services/homeQuickAccess';
+import { supabase } from '../../services/supabase';
 
 const MAX_RECENT = 3;
+const QUICK_ACCESS_OPTIONS: { id: QuickAccessId; label: string; description: string; icon: LucideIcon; iconClass: string; view?: AppView }[] = [
+  { id: 'new-analysis', label: 'Nouvelle analyse', description: 'Lancer une recherche de quartier', icon: Map, iconClass: 'quick-icon--map' },
+  { id: 'history', label: 'Historique', description: 'Retrouver les dernières analyses', icon: History, iconClass: 'quick-icon--fav', view: 'enregistrements' },
+  { id: 'favorites', label: 'Favoris', description: 'Accéder aux analyses étoilées', icon: Star, iconClass: 'quick-icon--fav', view: 'favoris' },
+  { id: 'comparison', label: 'Comparer', description: 'Mettre deux quartiers côte à côte', icon: GitCompareArrows, iconClass: 'quick-icon--map', view: 'comparison' },
+  { id: 'notifications', label: 'Notifications', description: 'Voir les dernières notifications', icon: Bell, iconClass: 'quick-icon--notif', view: 'notifications' },
+  { id: 'profile', label: 'Mon profil', description: 'Gérer vos informations personnelles', icon: FileText, iconClass: 'quick-icon--profile', view: 'profile' },
+];
 
 interface HomeViewProps {
   analyses: NeighborhoodAnalysis[];
   onSelectAnalysis: (analysis: NeighborhoodAnalysis) => void;
   onStartNewAnalysis: () => void;
-  onToggleFavorite: (id: string) => void;
   onNavigate: (view: AppView) => void;
   userName: string;
+  userId: string;
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
@@ -19,13 +30,68 @@ export const HomeView: React.FC<HomeViewProps> = ({
   onStartNewAnalysis,
   onNavigate,
   userName,
+  userId,
 }) => {
+  const [quickAccess, setQuickAccess] = useState<QuickAccessId[]>(() => getLocalHomeQuickAccess(userId) ?? DEFAULT_QUICK_ACCESS);
+  const [isEditingQuickAccess, setIsEditingQuickAccess] = useState(false);
+  const [draftQuickAccess, setDraftQuickAccess] = useState<QuickAccessId[]>(quickAccess);
+  const [quickAccessSaveError, setQuickAccessSaveError] = useState('');
+  const [isSavingQuickAccess, setIsSavingQuickAccess] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const choices = await fetchHomeQuickAccess(userId);
+        if (!cancelled) {
+          setQuickAccess(choices);
+        }
+      } catch (error) {
+        console.warn('Chargement des accès rapides synchronisés impossible :', error);
+      }
+    };
+    void load();
+
+    if (userId === LOCAL_DEMO_USER_ID) return () => { cancelled = true; };
+    const channel = supabase.channel(`home-quick-access-${userId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` }, async () => {
+        try {
+          const choices = await fetchHomeQuickAccess(userId);
+          if (!cancelled) {
+            setQuickAccess(choices);
+          }
+        } catch (error) {
+          console.warn('Synchronisation des accès rapides impossible :', error);
+        }
+      })
+      .subscribe();
+    return () => {
+      cancelled = true;
+      void supabase.removeChannel(channel);
+    };
+  }, [userId]);
   const firstName = userName.split(/\s+/)[0] || 'Agent';
-  const recentAnalyses = analyses.slice(0, MAX_RECENT);
+  const recentAnalyses = [...analyses]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, MAX_RECENT);
 
   // Determine greeting based on time of day
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Bonjour' : hour < 18 ? 'Bon après-midi' : 'Bonsoir';
+  const handleSaveQuickAccess = async () => {
+    setIsSavingQuickAccess(true);
+    setQuickAccessSaveError('');
+    setQuickAccess(draftQuickAccess);
+    try {
+      await saveHomeQuickAccess(userId, draftQuickAccess);
+      setIsEditingQuickAccess(false);
+    } catch (error) {
+      console.error('Enregistrement des accès rapides synchronisés impossible :', error);
+      setQuickAccessSaveError('Les raccourcis sont gardés sur cet appareil, mais la synchronisation a échoué. Réessayez plus tard.');
+    } finally {
+      setIsSavingQuickAccess(false);
+    }
+  };
 
   return (
     <div className="home-container">
@@ -34,40 +100,63 @@ export const HomeView: React.FC<HomeViewProps> = ({
         <div className="hero-text">
           <h1 className="hero-greeting">{greeting}, {firstName}</h1>
           <p className="hero-tagline">
-            Évaluez l'environnement d'un bien, enrichissez vos mandats avec des données terrain fiables.
+            {userId === LOCAL_DEMO_USER_ID
+              ? 'Découvrez Citynside avec trois exemples de quartiers. La recherche est réservée aux comptes connectés.'
+              : "Évaluez l'environnement d'un bien, enrichissez vos mandats avec des données terrain fiables."}
           </p>
         </div>
         <button className="hero-cta" onClick={onStartNewAnalysis}>
           <Map size={20} strokeWidth={2.2} />
-          <span>Nouvelle analyse</span>
+          <span>{userId === LOCAL_DEMO_USER_ID ? 'Explorer un exemple' : 'Nouvelle analyse'}</span>
           <ArrowRight size={18} />
         </button>
       </section>
 
       {/* Quick access cards */}
       <section className="home-quick-access">
-        <h2 className="section-title">Accès rapides</h2>
+        <div className="quick-access-heading">
+          <h2 className="section-title">Accès rapides</h2>
+          {userId !== LOCAL_DEMO_USER_ID && <button className="edit-quick-access" onClick={() => { setDraftQuickAccess(quickAccess); setQuickAccessSaveError(''); setIsEditingQuickAccess(true); }}>
+            <Pencil size={14} /> Modifier
+          </button>}
+        </div>
         <div className="quick-grid">
-          <button className="quick-card" onClick={onStartNewAnalysis}>
-            <div className="quick-icon quick-icon--map"><Map size={22} /></div>
-            <span className="quick-label">Analyser un quartier</span>
-          </button>
-          <button className="quick-card" onClick={() => onNavigate('enregistrements')}>
-            <div className="quick-icon quick-icon--fav"><History size={22} /></div>
-            <div className="quick-label-group">
-              <span className="quick-label">Historique</span>
-            </div>
-          </button>
-          <button className="quick-card" onClick={() => onNavigate('notifications')}>
-            <div className="quick-icon quick-icon--notif"><Bell size={22} /></div>
-            <span className="quick-label">Notifications</span>
-          </button>
-          <button className="quick-card" onClick={() => onNavigate('profile')}>
-            <div className="quick-icon quick-icon--profile"><FileText size={22} /></div>
-            <span className="quick-label">Mon profil</span>
-          </button>
+          {quickAccess.map((id) => {
+            const item = QUICK_ACCESS_OPTIONS.find((option) => option.id === id)!;
+            const Icon = item.icon;
+            return <button key={id} className="quick-card" onClick={id === 'new-analysis' ? onStartNewAnalysis : () => item.view && onNavigate(item.view)}>
+              <div className={`quick-icon ${item.iconClass}`}><Icon size={22} /></div>
+              <span className="quick-label">{userId === LOCAL_DEMO_USER_ID && id === 'new-analysis' ? 'Carte exemple' : item.label}</span>
+            </button>;
+          })}
         </div>
       </section>
+
+      {isEditingQuickAccess && <div className="quick-edit-backdrop" onClick={() => setIsEditingQuickAccess(false)}>
+        <section className="quick-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="quick-edit-title" onClick={(event) => event.stopPropagation()}>
+          <header className="quick-edit-header">
+            <div><h2 id="quick-edit-title">Personnaliser les accès rapides</h2><p>Choisissez les quatre raccourcis qui vous servent le plus.</p></div>
+            <button className="quick-edit-close" aria-label="Fermer" onClick={() => setIsEditingQuickAccess(false)}><X size={18} /></button>
+          </header>
+          <div className="quick-edit-options">
+            {QUICK_ACCESS_OPTIONS.map((option) => {
+              const selected = draftQuickAccess.includes(option.id);
+              const Icon = option.icon;
+              return <label key={option.id} className={`quick-edit-option ${selected ? 'selected' : ''}`}>
+                <input type="checkbox" checked={selected} disabled={!selected && draftQuickAccess.length >= 4} onChange={() => setDraftQuickAccess((current) => selected ? current.filter((id) => id !== option.id) : [...current, option.id])} />
+                <span className={`quick-icon ${option.iconClass}`}><Icon size={20} /></span>
+                <span className="quick-edit-copy"><strong>{option.label}</strong><small>{option.description}</small></span>
+                {selected && <Check size={17} className="quick-edit-check" />}
+              </label>;
+            })}
+          </div>
+          <footer className="quick-edit-footer">
+            <span>{draftQuickAccess.length}/4 sélectionnés</span>
+            <div><button className="quick-edit-cancel" disabled={isSavingQuickAccess} onClick={() => setIsEditingQuickAccess(false)}>Annuler</button><button className="quick-edit-save" disabled={draftQuickAccess.length !== 4 || isSavingQuickAccess} onClick={() => void handleSaveQuickAccess()}>{isSavingQuickAccess ? 'Synchronisation…' : 'Enregistrer'}</button></div>
+          </footer>
+          {quickAccessSaveError && <p className="quick-edit-error" role="alert">{quickAccessSaveError}</p>}
+        </section>
+      </div>}
 
       {/* Recent analyses */}
       {recentAnalyses.length > 0 && (
@@ -248,10 +337,37 @@ export const HomeView: React.FC<HomeViewProps> = ({
         /* ── Quick access ── */
         .quick-grid {
           display: grid;
-          grid-template-columns: repeat(4, 1fr);
+          grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
           gap: 14px;
           margin-top: 14px;
         }
+
+        .quick-access-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+        .edit-quick-access { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--color-text-muted); font: inherit; font-size: .8rem; font-weight: 650; cursor: pointer; }
+        .edit-quick-access:hover { color: var(--color-primary); }
+        .quick-edit-backdrop { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(15, 35, 31, .48); }
+        .quick-edit-dialog { width: min(100%, 520px); max-height: min(90vh, 720px); overflow-y: auto; padding: 24px; border: 1px solid var(--color-border); border-radius: 16px; background: #fff; box-shadow: 0 24px 80px rgba(0,0,0,.22); }
+        .quick-edit-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 18px; }
+        .quick-edit-header h2 { color: var(--color-primary); font-size: 1.15rem; }
+        .quick-edit-header p { margin-top: 5px; color: var(--color-text-muted); font-size: .82rem; }
+        .quick-edit-close { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 auto; border: 0; border-radius: 50%; background: #f2f5f1; color: var(--color-primary); cursor: pointer; }
+        .quick-edit-options { display: grid; gap: 9px; }
+        .quick-edit-option { display: flex; align-items: center; gap: 12px; padding: 11px 12px; border: 1px solid var(--color-border); border-radius: 10px; cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+        .quick-edit-option.selected { border-color: var(--color-green); background: #f4f8f2; }
+        .quick-edit-option input { width: 17px; height: 17px; accent-color: var(--color-primary); }
+        .quick-edit-option .quick-icon { width: 38px; height: 38px; flex: 0 0 auto; }
+        .quick-edit-copy { display: grid; gap: 3px; flex: 1; }
+        .quick-edit-copy strong { color: var(--color-primary); font-size: .86rem; }
+        .quick-edit-copy small { color: var(--color-text-muted); font-size: .74rem; }
+        .quick-edit-check { color: var(--color-green); }
+        .quick-edit-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; color: var(--color-text-muted); font-size: .78rem; }
+        .quick-edit-footer > div { display: flex; gap: 8px; }
+        .quick-edit-cancel,.quick-edit-save { padding: 9px 14px; border-radius: 8px; font: inherit; font-size: .8rem; font-weight: 650; cursor: pointer; }
+        .quick-edit-cancel { border: 1px solid var(--color-border); background: #fff; color: var(--color-primary); }
+        .quick-edit-cancel:disabled { opacity: .5; cursor: not-allowed; }
+        .quick-edit-save { border: 1px solid var(--color-primary); background: var(--color-primary); color: #fff; }
+        .quick-edit-save:disabled { opacity: .45; cursor: not-allowed; }
+        .quick-edit-error { margin-top: 12px; color: #ad493e; font-size: .78rem; line-height: 1.4; }
 
         .quick-card {
           display: flex;

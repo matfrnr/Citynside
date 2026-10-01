@@ -21,6 +21,7 @@ export function calculateCategoryScores(
   const sante = pois.filter((p) => p.category === "sante");
   const espacesVerts = pois.filter((p) => p.category === "espaces_verts");
   const stationnement = pois.filter((p) => p.category === "stationnement");
+  const loisirs = pois.filter((p) => p.category === "loisirs");
 
   // =========================================================================
   // 1. TRANSPORTS (Sur 10)
@@ -654,6 +655,35 @@ export function calculateCategoryScores(
   );
 
   // =========================================================================
+  // 9. SPORTS, CULTURE & LOISIRS (Sur 10)
+  // =========================================================================
+  const leisurePositive: ScoreFactor[] = [];
+  let leisureScore = 5.5; // score neutre en l'absence de données OSM suffisantes
+  const sportsPlaces = loisirs.filter((poi) => /sport|piscine|stade|terrain|golf|patinoire/i.test(poi.subType));
+  const culturePlaces = loisirs.filter((poi) => /bibliothèque|médiathèque|culturel|cinéma|théâtre|musée|socioculturel/i.test(poi.subType));
+  const closestLeisure = [...loisirs].sort((a, b) => a.distanceMeters - b.distanceMeters)[0];
+
+  if (sportsPlaces.length > 0) {
+    const closestSport = sportsPlaces[0];
+    const points = closestSport.distanceMeters <= 450 ? 1.7 : 1.0;
+    leisureScore += points;
+    leisurePositive.push({ label: `${closestSport.subType} à ${closestSport.distanceMeters}m`, points, impact: "positive", detail: "Équipement sportif ou de loisirs accessible à pied." });
+  }
+  if (culturePlaces.length > 0) {
+    const closestCulture = culturePlaces[0];
+    const points = closestCulture.distanceMeters <= 600 ? 1.7 : 1.0;
+    leisureScore += points;
+    leisurePositive.push({ label: `${closestCulture.subType} à ${closestCulture.distanceMeters}m`, points, impact: "positive", detail: "Équipement culturel ou de proximité présent dans le secteur." });
+  }
+  const leisureVariety = new Set(loisirs.map((poi) => poi.subType)).size;
+  if (leisureVariety >= 3) {
+    const points = Math.min(1.1, (leisureVariety - 2) * 0.35);
+    leisureScore += points;
+    leisurePositive.push({ label: `${leisureVariety} types d'équipements de loisirs`, points, impact: "positive", detail: "Plusieurs types d'activités sont recensés à proximité." });
+  }
+  const finalLeisureScore = Math.min(10, Math.round(leisureScore * 10) / 10);
+
+  // =========================================================================
   // 8. ACCESSIBILITÉ PMR & PIÉTONS (Sur 10)
   // =========================================================================
   const basePmr = 5.0;
@@ -921,6 +951,21 @@ export function calculateCategoryScores(
           lastUpdated: "2026",
         },
       ],
+    },
+    {
+      category: "loisirs",
+      label: "Sports, culture & loisirs",
+      score: finalLeisureScore,
+      maxScore: 10,
+      baseScore: 5.5,
+      iconName: "Sparkles",
+      highlightText: closestLeisure ? `${closestLeisure.name || closestLeisure.subType} (${closestLeisure.distanceMeters}m)` : "Aucun équipement recensé dans ce secteur",
+      poisFoundCount: loisirs.length,
+      positiveFactors: leisurePositive,
+      negativeFactors: [],
+      details: leisurePositive.map((factor) => `+${factor.points.toFixed(1)} pt : ${factor.label}`),
+      calculationExplanation: "Indicateur de proximité des équipements sportifs, culturels et socioculturels recensés dans OpenStreetMap. En l'absence de résultats, la note reste neutre car la couverture cartographique varie selon les communes.",
+      sources: [{ name: "OpenStreetMap", description: "Équipements sportifs, bibliothèques, cinémas, théâtres, musées et centres culturels", url: "https://www.openstreetmap.org/", lastUpdated: "Données collaboratives" }],
     },
     {
       category: "pmr",

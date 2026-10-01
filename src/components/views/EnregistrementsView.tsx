@@ -5,6 +5,7 @@ import type { NeighborhoodAnalysis } from '../../types';
 const ITEMS_PER_PAGE = 6;
 
 interface EnregistrementsViewProps {
+  isDemo: boolean;
   analyses: NeighborhoodAnalysis[];
   activeTab: 'history' | 'favorites';
   onSelectAnalysis: (analysis: NeighborhoodAnalysis) => void;
@@ -14,6 +15,7 @@ interface EnregistrementsViewProps {
 }
 
 export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
+  isDemo,
   analyses,
   activeTab,
   onSelectAnalysis,
@@ -144,27 +146,27 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
                     </div>
                   </div>
                   <div className="card-actions">
-                    <button
+                    {!isDemo && <button
                       className="rename-btn"
                       onClick={() => handleOpenRename(item)}
                       title="Renommer"
                     >
                       <Pencil size={14} />
-                    </button>
-                    <button
+                    </button>}
+                    {!isDemo ? <button
                       className={`fav-btn ${item.isFavorite ? 'favorited' : ''}`}
                       onClick={() => onToggleFavorite(item.id)}
                       title={item.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
                     >
                       <Star size={16} fill={item.isFavorite ? 'currentColor' : 'none'} />
-                    </button>
-                    <button
+                    </button> : <span className={`fav-btn ${item.isFavorite ? 'favorited' : ''}`} aria-label={item.isFavorite ? 'Favori d’exemple' : 'Exemple non favori'}><Star size={16} fill={item.isFavorite ? 'currentColor' : 'none'} /></span>}
+                    {!isDemo && <button
                       className="delete-btn"
                       onClick={() => setDeleteConfirmId(item.id)}
                       title="Supprimer cette analyse"
                     >
                       <Trash2 size={15} />
-                    </button>
+                    </button>}
                   </div>
                 </div>
 

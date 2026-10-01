@@ -34,12 +34,14 @@ interface CacheEntry {
 
 const poisMemoryCache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes
+export const ANALYSIS_RADIUS_METERS = 850;
+export const EXTENDED_TRANSIT_RADIUS_METERS = 1200;
 
 function getCacheKey(lat: number, lon: number, radius: number): string {
   // Arrondir à ~11m de précision (0.0001°) pour éviter de mélanger les résultats de deux adresses proches
   const roundedLat = Math.round(lat * 10000) / 10000;
   const roundedLon = Math.round(lon * 10000) / 10000;
-  return `cyt_pois_${roundedLat}_${roundedLon}_${radius}`;
+  return `cyt_pois_v3_${roundedLat}_${roundedLon}_${radius}`;
 }
 
 function getCachedPOIs(key: string): POI[] | null {
@@ -128,14 +130,20 @@ export async function fetchPOIsInRadius(
       node(around:${radiusMeters},${lat},${lon})["amenity"~"pharmacy|doctors|clinic|hospital|dentist"];
       node(around:${radiusMeters},${lat},${lon})["amenity"~"school|kindergarten|college|university"];
       node(around:${radiusMeters},${lat},${lon})["leisure"~"park|garden|playground"];
+      node(around:${radiusMeters},${lat},${lon})["leisure"~"sports_centre|fitness_centre|swimming_pool|pitch|stadium|ice_rink|golf_course"];
+      node(around:${radiusMeters},${lat},${lon})["amenity"~"library|arts_centre|cinema|theatre|community_centre"];
+      node(around:${radiusMeters},${lat},${lon})["tourism"="museum"];
       way(around:${radiusMeters},${lat},${lon})["amenity"~"parking|pharmacy|hospital|clinic|school|college|university"];
       way(around:${radiusMeters},${lat},${lon})["shop"~"bakery|supermarket|convenience"];
       way(around:${radiusMeters},${lat},${lon})["leisure"~"park|garden|playground"];
+      way(around:${radiusMeters},${lat},${lon})["leisure"~"sports_centre|fitness_centre|swimming_pool|pitch|stadium|ice_rink|golf_course"];
+      way(around:${radiusMeters},${lat},${lon})["amenity"~"library|arts_centre|cinema|theatre|community_centre"];
+      way(around:${radiusMeters},${lat},${lon})["tourism"="museum"];
     );
     out center qt 200;
   `;
 
-  const pois = await fetchFastFromOverpass(overpassQuery, lat, lon);
+  const pois = await fetchFastFromOverpass(overpassQuery, lat, lon, radiusMeters);
 
   if (pois.length > 0) {
     setCachedPOIs(cacheKey, pois);
@@ -159,6 +167,7 @@ async function fetchFastFromOverpass(
   query: string,
   centerLat: number,
   centerLon: number,
+  radiusMeters: number,
 ): Promise<POI[]> {
   const mirrorsPerBatch = 3;
   const requestTimeoutMs = 10000;
@@ -180,7 +189,7 @@ async function fetchFastFromOverpass(
         });
         if (!response.ok) throw new Error(`Overpass indisponible (${response.status})`);
         const data = await response.json();
-        const results = parseOverpassResponse(data, centerLat, centerLon);
+        const results = parseOverpassResponse(data, centerLat, centerLon, radiusMeters);
         if (results.length === 0) throw new Error("Aucun résultat sur ce miroir Overpass");
         return results;
       } finally {
@@ -210,6 +219,7 @@ function parseOverpassResponse(
   data: any,
   centerLat: number,
   centerLon: number,
+  radiusMeters: number,
 ): POI[] {
   if (!data?.elements?.length) {
     return [];
@@ -227,9 +237,10 @@ function parseOverpassResponse(
     // Validation basique des coordonnées : elles doivent être dans un rayon raisonnable
     if (Math.abs(pLat) > 90 || Math.abs(pLon) > 180) continue;
 
-    // Vérifier que le POI est bien dans un rayon raisonnable (2x le rayon demandé, car Overpass peut déborder)
+    // Les ways peuvent être sélectionnés via un nœud proche alors que leur centre est plus loin.
+    // On conserve seulement ceux dont le point réellement affiché reste dans le rayon demandé.
     const distCheck = calculateDistanceMeters(centerLat, centerLon, pLat, pLon);
-    if (distCheck > 2000) continue; // Ignorer les résultats aberrants à >2km
+    if (distCheck > radiusMeters) continue;
 
     const tags = el.tags || {};
     const { category, subType, name } = classifyOSMElement(tags);
@@ -481,6 +492,35 @@ function classifyOSMElement(tags: Record<string, string>): {
   if (tags.landuse === "recreation_ground") {
     return { category: "espaces_verts", subType: "Terrain de loisirs", name };
   }
+
+  // Sports, culture et équipements de loisirs
+  if (tags.leisure === "swimming_pool") {
+    const access = String(tags.access ?? "").toLowerCase();
+    const restrictedAccess = ["private", "no"].includes(access) || /^(private|no)(\s|$)/i.test(String(tags["access:conditional"] ?? ""));
+    const publicEvidence = ["yes", "permissive", "designated"].includes(access) || Boolean(name) || Boolean(tags.operator) || tags.sport === "swimming";
+    // Les piscines de jardin sont souvent cartographiées comme leisure=swimming_pool.
+    // Ne garder que celles qui ne sont pas explicitement privées et ont un indice d'usage collectif.
+    if (restrictedAccess || !publicEvidence) return { category: null, subType: "", name };
+  }
+  const leisureTypes: Record<string, string> = {
+    sports_centre: "Centre sportif",
+    fitness_centre: "Salle de sport",
+    swimming_pool: "Piscine",
+    pitch: "Terrain de sport",
+    stadium: "Stade",
+    ice_rink: "Patinoire",
+    golf_course: "Golf",
+  };
+  if (leisureTypes[tags.leisure]) return { category: "loisirs", subType: leisureTypes[tags.leisure], name };
+  const cultureTypes: Record<string, string> = {
+    library: "Bibliothèque / médiathèque",
+    arts_centre: "Centre culturel",
+    cinema: "Cinéma",
+    theatre: "Théâtre",
+    community_centre: "Centre socioculturel",
+  };
+  if (cultureTypes[tags.amenity]) return { category: "loisirs", subType: cultureTypes[tags.amenity], name };
+  if (tags.tourism === "museum") return { category: "loisirs", subType: "Musée", name };
 
   return { category: null, subType: "", name: "" };
 }
