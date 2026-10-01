@@ -58,13 +58,15 @@ export default async (request) => {
       if (recent && Date.now() - recent.timestamp < CACHE_TTL_MS) return recent.body;
 
       const failures = [];
-      const deadline = Date.now() + 8_500;
+      // Netlify's current synchronous function limit is 60 s; reserve margin
+      // to serialize mirror retries without the platform killing the request.
+      const deadline = Date.now() + 52_000;
       for (const endpoint of OVERPASS_ENDPOINTS) {
         const remainingMs = deadline - Date.now();
         if (remainingMs < 300) break;
 
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), Math.min(2_400, remainingMs));
+        const timeout = setTimeout(() => controller.abort(), Math.min(12_000, remainingMs));
         try {
           const response = await fetch(endpoint, {
             method: "POST",

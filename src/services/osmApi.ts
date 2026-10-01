@@ -124,18 +124,24 @@ export async function fetchPOIsInRadius(
   // Requête optimisée combinée — utilise `out center qt` pour obtenir les coordonnées du centre
   // des ways (bâtiments) plutôt que d'avoir besoin de résoudre les nœuds constitutifs
   const overpassQuery = `
-    [out:json][timeout:8];
+    [out:json][timeout:12];
     (
       node(around:${radiusMeters},${lat},${lon})["highway"="bus_stop"];
       node(around:${radiusMeters},${lat},${lon})["railway"~"tram_stop|station|halt"];
       node(around:${radiusMeters},${lat},${lon})["station"="subway"];
-      node(around:${radiusMeters},${lat},${lon})["amenity"~"bicycle_rental|parking|pharmacy|doctors|clinic|hospital|dentist|school|kindergarten|college|university|library|arts_centre|cinema|theatre|community_centre"];
+      node(around:${radiusMeters},${lat},${lon})["amenity"="bicycle_rental"];
+      node(around:${radiusMeters},${lat},${lon})["amenity"="parking"];
       node(around:${radiusMeters},${lat},${lon})["shop"~"bakery|supermarket|convenience|butcher|greengrocer"];
-      node(around:${radiusMeters},${lat},${lon})["leisure"~"park|garden|playground|sports_centre|fitness_centre|swimming_pool|pitch|stadium|ice_rink|golf_course"];
+      node(around:${radiusMeters},${lat},${lon})["amenity"~"pharmacy|doctors|clinic|hospital|dentist"];
+      node(around:${radiusMeters},${lat},${lon})["amenity"~"school|kindergarten|college|university"];
+      node(around:${radiusMeters},${lat},${lon})["leisure"~"park|garden|playground"];
+      node(around:${radiusMeters},${lat},${lon})["leisure"~"sports_centre|fitness_centre|swimming_pool|pitch|stadium|ice_rink|golf_course"];
+      node(around:${radiusMeters},${lat},${lon})["amenity"~"library|arts_centre|cinema|theatre|community_centre"];
       node(around:${radiusMeters},${lat},${lon})["tourism"="museum"];
       way(around:${radiusMeters},${lat},${lon})["amenity"~"parking|pharmacy|hospital|clinic|school|college|university"];
       way(around:${radiusMeters},${lat},${lon})["shop"~"bakery|supermarket|convenience"];
-      way(around:${radiusMeters},${lat},${lon})["leisure"~"park|garden|playground|sports_centre|fitness_centre|swimming_pool|pitch|stadium|ice_rink|golf_course"];
+      way(around:${radiusMeters},${lat},${lon})["leisure"~"park|garden|playground"];
+      way(around:${radiusMeters},${lat},${lon})["leisure"~"sports_centre|fitness_centre|swimming_pool|pitch|stadium|ice_rink|golf_course"];
       way(around:${radiusMeters},${lat},${lon})["amenity"~"library|arts_centre|cinema|theatre|community_centre"];
       way(around:${radiusMeters},${lat},${lon})["tourism"="museum"];
     );
@@ -170,7 +176,7 @@ async function fetchFastFromOverpass(
   externalSignal?: AbortSignal,
 ): Promise<POI[]> {
   const mirrorsPerBatch = 3;
-  const requestTimeoutMs = import.meta.env.PROD ? 47000 : 10000;
+  const requestTimeoutMs = import.meta.env.PROD ? 56000 : 10000;
 
   // Les miroirs Overpass servent la même base. Les interroger par petits groupes
   // évite d'attendre plusieurs délais de 10 s en série si un serveur est lent.
