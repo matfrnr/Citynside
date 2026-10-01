@@ -90,12 +90,16 @@ function setCachedPOIs(key: string, pois: POI[]): void {
 // Miroirs Overpass fiables et performants
 // ─────────────────────────────────────────────────────────────────────────────
 const OVERPASS_MIRRORS = [
-  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-  "https://overpass.private.coffee/api/interpreter",
-  "https://overpass-api.de/api/interpreter",
-  "https://lz4.overpass-api.de/api/interpreter",
-  "https://z.overpass-api.de/api/interpreter",
-  "https://overpass.kumi.systems/api/interpreter",
+  ...(import.meta.env.PROD
+    ? ["/.netlify/functions/overpass"]
+    : [
+        "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+        "https://overpass.private.coffee/api/interpreter",
+        "https://overpass-api.de/api/interpreter",
+        "https://lz4.overpass-api.de/api/interpreter",
+        "https://z.overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+      ]),
 ];
 
 /**
@@ -109,6 +113,7 @@ export async function fetchPOIsInRadius(
   lat: number,
   lon: number,
   radiusMeters: number = 800,
+  signal?: AbortSignal,
 ): Promise<POI[]> {
   const cacheKey = getCacheKey(lat, lon, radiusMeters);
   const cached = getCachedPOIs(cacheKey);
@@ -119,7 +124,7 @@ export async function fetchPOIsInRadius(
   // Requête optimisée combinée — utilise `out center qt` pour obtenir les coordonnées du centre
   // des ways (bâtiments) plutôt que d'avoir besoin de résoudre les nœuds constitutifs
   const overpassQuery = `
-    [out:json][timeout:12];
+    [out:json][timeout:8];
     (
       node(around:${radiusMeters},${lat},${lon})["highway"="bus_stop"];
       node(around:${radiusMeters},${lat},${lon})["railway"~"tram_stop|station|halt"];
@@ -143,7 +148,7 @@ export async function fetchPOIsInRadius(
     out center qt 200;
   `;
 
-  const pois = await fetchFastFromOverpass(overpassQuery, lat, lon, radiusMeters);
+  const pois = await fetchFastFromOverpass(overpassQuery, lat, lon, radiusMeters, signal);
 
   if (pois.length > 0) {
     setCachedPOIs(cacheKey, pois);
@@ -168,18 +173,22 @@ async function fetchFastFromOverpass(
   centerLat: number,
   centerLon: number,
   radiusMeters: number,
+  externalSignal?: AbortSignal,
 ): Promise<POI[]> {
   const mirrorsPerBatch = 3;
-  const requestTimeoutMs = 10000;
+  const requestTimeoutMs = import.meta.env.PROD ? 47000 : 10000;
 
   // Les miroirs Overpass servent la même base. Les interroger par petits groupes
   // évite d'attendre plusieurs délais de 10 s en série si un serveur est lent.
   for (let start = 0; start < OVERPASS_MIRRORS.length; start += mirrorsPerBatch) {
+    if (externalSignal?.aborted) return [];
     const mirrors = OVERPASS_MIRRORS.slice(start, start + mirrorsPerBatch);
     const controllers = mirrors.map(() => new AbortController());
     const attempts = mirrors.map(async (mirrorUrl, index) => {
       const controller = controllers[index];
       const timeoutId = setTimeout(() => controller.abort(), requestTimeoutMs);
+      const abortFromSearch = () => controller.abort();
+      externalSignal?.addEventListener("abort", abortFromSearch, { once: true });
       try {
         const response = await fetch(mirrorUrl, {
           method: "POST",
@@ -194,6 +203,7 @@ async function fetchFastFromOverpass(
         return results;
       } finally {
         clearTimeout(timeoutId);
+        externalSignal?.removeEventListener("abort", abortFromSearch);
       }
     });
 
@@ -203,6 +213,7 @@ async function fetchFastFromOverpass(
       return results;
     } catch {
       controllers.forEach((controller) => controller.abort());
+      if (externalSignal?.aborted) return [];
       // Si les trois serveurs sont indisponibles, le groupe suivant est essayé.
     }
   }

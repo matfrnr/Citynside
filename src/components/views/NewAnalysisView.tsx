@@ -40,11 +40,12 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const latestSearchId = useRef(0);
+  const activeOsmRequest = useRef<AbortController | null>(null);
 
   // Fonction résiliente et accélérée d'agrégation multi-API
-  const runParallelAnalysis = async (lat: number, lon: number) => {
+  const runParallelAnalysis = async (lat: number, lon: number, osmSignal?: AbortSignal) => {
     const [osmRes, eduRes, sncfRes, airRes] = await Promise.allSettled([
-      fetchPOIsInRadius(lat, lon, ANALYSIS_RADIUS_METERS),
+      fetchPOIsInRadius(lat, lon, ANALYSIS_RADIUS_METERS, osmSignal),
       fetchEducationPOIsInRadius(lat, lon, ANALYSIS_RADIUS_METERS),
       fetchSNCFStationsInRadius(lat, lon, EXTENDED_TRANSIT_RADIUS_METERS),
       fetchAirQuality(lat, lon),
@@ -137,11 +138,15 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
     if (isDemo) return;
     setSelectedCategory(null);
     const searchId = ++latestSearchId.current;
+    activeOsmRequest.current?.abort();
+    const osmController = new AbortController();
+    activeOsmRequest.current = osmController;
     setIsLoading(true);
     try {
       const { pois, categories, avg } = await runParallelAnalysis(
         addr.lat,
         addr.lon,
+        osmController.signal,
       );
       if (searchId !== latestSearchId.current) return;
 
@@ -174,12 +179,15 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
   const handleMapLocationSelect = async (lat: number, lon: number) => {
     if (isDemo) return;
     const searchId = ++latestSearchId.current;
+    activeOsmRequest.current?.abort();
+    const osmController = new AbortController();
+    activeOsmRequest.current = osmController;
     setSelectedCategory(null);
     setIsLoading(true);
     try {
       const [rev, analysisData] = await Promise.all([
         reverseGeocode(lat, lon),
-        runParallelAnalysis(lat, lon),
+        runParallelAnalysis(lat, lon, osmController.signal),
       ]);
       if (searchId !== latestSearchId.current) return;
 
