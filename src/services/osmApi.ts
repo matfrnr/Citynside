@@ -91,7 +91,17 @@ function setCachedPOIs(key: string, pois: POI[]): void {
 // ─────────────────────────────────────────────────────────────────────────────
 const OVERPASS_MIRRORS = [
   ...(import.meta.env.PROD
-    ? ["/.netlify/functions/overpass"]
+    ? [
+        // En production aussi, appeler d'abord depuis le navigateur de l'agent.
+        // Overpass applique les quotas à l'IP d'origine et autorise le CORS
+        // pour les réponses réussies lorsque le navigateur envoie Origin.
+        "https://overpass.private.coffee/api/interpreter",
+        "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass-api.de/api/interpreter",
+        // Relais Netlify uniquement en dernier recours : son IP serveur est mutualisée.
+        "/.netlify/functions/overpass",
+      ]
     : [
         "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
         "https://overpass.private.coffee/api/interpreter",
@@ -176,7 +186,7 @@ async function fetchFastFromOverpass(
   externalSignal?: AbortSignal,
 ): Promise<POI[]> {
   const mirrorsPerBatch = 3;
-  const requestTimeoutMs = import.meta.env.PROD ? 56000 : 10000;
+  const requestTimeoutMs = import.meta.env.PROD ? 12000 : 10000;
 
   // Les miroirs Overpass servent la même base. Les interroger par petits groupes
   // évite d'attendre plusieurs délais de 10 s en série si un serveur est lent.
