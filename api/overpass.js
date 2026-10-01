@@ -68,11 +68,15 @@ export default async (request) => {
       ];
 
       for (const batch of batches) {
+        if (request.signal.aborted) throw new Error("Client aborted");
         const remainingMs = globalDeadline - Date.now();
         if (remainingMs < 500) break;
 
         const batchController = new AbortController();
         const batchTimeout = setTimeout(() => batchController.abort(), remainingMs);
+        
+        const clientAbortHandler = () => batchController.abort();
+        request.signal.addEventListener("abort", clientAbortHandler);
 
         try {
           const attempts = batch.map(async (endpoint) => {
@@ -119,6 +123,7 @@ export default async (request) => {
           }
         } finally {
           clearTimeout(batchTimeout);
+          request.signal.removeEventListener("abort", clientAbortHandler);
           batchController.abort();
         }
       }
