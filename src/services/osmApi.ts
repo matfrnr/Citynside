@@ -142,7 +142,7 @@ export async function fetchPOIsInRadius(
       way(around:${radiusMeters},${lat},${lon})["leisure"~"^(park|garden|playground|sports_centre|fitness_centre|swimming_pool|pitch|stadium|ice_rink|golf_course)$"];
       way(around:${radiusMeters},${lat},${lon})["tourism"="museum"];
     );
-    out center qt 200;
+    out center qt;
   `;
 
   const pois = await fetchFastFromOverpass(overpassQuery, lat, lon, radiusMeters, signal);
