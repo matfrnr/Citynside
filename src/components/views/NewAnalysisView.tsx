@@ -6,7 +6,7 @@ import {
   fetchEducationPOIsInRadius,
   mergeEducationPOIs,
 } from "../../services/educationApi";
-import { fetchPOIsInRadius } from "../../services/osmApi";
+import { fetchPOIsInRadius, calculateDistanceMeters } from "../../services/osmApi";
 import { calculateCategoryScores } from "../../services/scoringEngine";
 import { fetchSNCFStationsInRadius } from "../../services/sncfApi";
 import type { AddressResult, NeighborhoodAnalysis, POI } from "../../types";
@@ -63,13 +63,42 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
       }
     }
 
-    allPOIs.sort((a, b) => a.distanceMeters - b.distanceMeters);
-    const categories = calculateCategoryScores(allPOIs, airQuality);
+    // Déduplication finale de sécurité sur l'ensemble des POIs combinés (OSM + Éducation + SNCF)
+    const finalPOIs: POI[] = [];
+    for (const p of allPOIs) {
+      const isDup = finalPOIs.some((existing) => {
+        if (existing.category !== p.category) return false;
+        const d = calculateDistanceMeters(existing.lat, existing.lon, p.lat, p.lon);
+        if (p.category === "ecoles") {
+          // Deux écoles à moins de 45m sont le même site
+          if (d <= 45) return true;
+          // Même nom patronymique à moins de 90m
+          if (
+            existing.name &&
+            p.name &&
+            existing.name.toLowerCase().trim() === p.name.toLowerCase().trim() &&
+            d <= 90
+          ) {
+            return true;
+          }
+          return false;
+        }
+        // Pour les autres catégories : même sous-type à moins de 25m
+        return existing.subType === p.subType && d <= 25;
+      });
+
+      if (!isDup) {
+        finalPOIs.push(p);
+      }
+    }
+
+    finalPOIs.sort((a, b) => a.distanceMeters - b.distanceMeters);
+    const categories = calculateCategoryScores(finalPOIs, airQuality);
 
     const sum = categories.reduce((acc, curr) => acc + curr.score, 0);
     const avg = Math.round((sum / categories.length) * 10) / 10;
 
-    return { pois: allPOIs, categories, avg, airQuality };
+    return { pois: finalPOIs, categories, avg, airQuality };
   };
 
   // When user selects an address in autocomplete or hits Analyser
@@ -191,15 +220,6 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
                 onSelectLocation={handleMapLocationSelect}
                 height="420px"
               />
-              <div className="map-caption-bar">
-                <span className="map-caption-text">
-                  <MapPin
-                    size={13}
-                    style={{ display: "inline", marginRight: "4px" }}
-                  />
-                  Navigation libre : glissez et zoomez sans risque • Bouton « Déplacer l'adresse » (ou double-clic) pour repositionner
-                </span>
-              </div>
             </div>
           </section>
 

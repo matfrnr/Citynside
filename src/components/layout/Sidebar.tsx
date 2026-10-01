@@ -5,6 +5,7 @@ import {
   Map,
   PanelLeftClose,
   PanelLeftOpen,
+  GitCompareArrows,
 } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import type { AppView } from "../../types";
@@ -16,6 +17,7 @@ interface SidebarProps {
   displayName: string;
   onNavigate: (view: AppView) => void;
   favoritesCount: number;
+  importantNotificationsCount: number;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -23,6 +25,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   displayName,
   onNavigate,
   favoritesCount,
+  importantNotificationsCount,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     try {
@@ -110,7 +113,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Star,
       badge: favoritesCount,
     },
-    { id: "notifications" as AppView, label: "Notifications", icon: Bell },
+    { id: "comparison" as AppView, label: "Comparer", icon: GitCompareArrows },
+    { id: "notifications" as AppView, label: "Notifications", icon: Bell, badge: importantNotificationsCount },
   ];
 
   return (

@@ -75,6 +75,9 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   full_name TEXT DEFAULT '',
   phone TEXT DEFAULT '',
   agency TEXT DEFAULT 'Agence immobilière',
+  agency_city TEXT DEFAULT '',
+  known_device_ids TEXT[] NOT NULL DEFAULT '{}',
+  activation_notification_sent BOOLEAN NOT NULL DEFAULT false,
   role TEXT DEFAULT 'Agent immobilier',
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -98,3 +101,55 @@ GRANT ALL ON TABLE public.profiles TO anon;
 GRANT ALL ON TABLE public.profiles TO service_role;
 
 ALTER PUBLICATION supabase_realtime ADD TABLE public.profiles;
+
+-- Notifications persistantes par utilisateur
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id TEXT PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  kind TEXT NOT NULL CHECK (kind IN ('analysis', 'report', 'territory', 'system')),
+  importance TEXT NOT NULL DEFAULT 'normal' CHECK (importance IN ('normal', 'attention', 'important')),
+  source_url TEXT,
+  is_read BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS notifications_user_created_idx ON public.notifications(user_id, created_at DESC);
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view own notifications" ON public.notifications;
+CREATE POLICY "Users can view own notifications" ON public.notifications FOR SELECT TO authenticated USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can insert own notifications" ON public.notifications;
+CREATE POLICY "Users can insert own notifications" ON public.notifications FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can update own notifications" ON public.notifications;
+CREATE POLICY "Users can update own notifications" ON public.notifications FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+GRANT SELECT, INSERT, UPDATE ON TABLE public.notifications TO authenticated;
+DROP POLICY IF EXISTS "Users can delete own notifications" ON public.notifications;
+CREATE POLICY "Users can delete own notifications" ON public.notifications FOR DELETE TO authenticated USING (auth.uid() = user_id);
+GRANT DELETE ON TABLE public.notifications TO authenticated;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'notifications') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
+  END IF;
+END $$;
+
+-- Personnalisation des rapports, persistée par utilisateur et par analyse
+CREATE TABLE IF NOT EXISTS public.report_customizations (
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  analysis_id TEXT NOT NULL REFERENCES public.analyses(id) ON DELETE CASCADE,
+  included_sections JSONB NOT NULL DEFAULT '{"scores":true,"sources":true,"impressions":true}'::jsonb,
+  strengths TEXT NOT NULL DEFAULT '',
+  reservations TEXT NOT NULL DEFAULT '',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, analysis_id)
+);
+CREATE INDEX IF NOT EXISTS report_customizations_analysis_id_idx ON public.report_customizations(analysis_id);
+ALTER TABLE public.report_customizations ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view own report customizations" ON public.report_customizations;
+CREATE POLICY "Users can view own report customizations" ON public.report_customizations FOR SELECT TO authenticated USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can insert own report customizations" ON public.report_customizations;
+CREATE POLICY "Users can insert own report customizations" ON public.report_customizations FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id AND EXISTS (SELECT 1 FROM public.analyses a WHERE a.id = analysis_id AND a.user_id = auth.uid()));
+DROP POLICY IF EXISTS "Users can update own report customizations" ON public.report_customizations;
+CREATE POLICY "Users can update own report customizations" ON public.report_customizations FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can delete own report customizations" ON public.report_customizations;
+CREATE POLICY "Users can delete own report customizations" ON public.report_customizations FOR DELETE TO authenticated USING (auth.uid() = user_id);
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.report_customizations TO authenticated;

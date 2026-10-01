@@ -255,38 +255,88 @@ function parseOverpassResponse(
   return deduped;
 }
 
+function cleanNameForDedup(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, " ")
+    .replace(
+      /\b(ecole|primaire|elementaire|maternelle|college|lycee|groupe|scolaire|public|publique|prive|privee|de|du|des|la|le|les|d|l)\b/g,
+      " ",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /**
  * Déduplique les POIs identiques ou très proches.
- * Souvent un même équipement est cartographié à la fois comme node ET way dans OSM.
+ * Souvent un même équipement est cartographié à la fois comme node ET way dans OSM (ex: porte d'entrée + polygone toit).
  */
 function deduplicatePOIs(pois: POI[]): POI[] {
   const result: POI[] = [];
 
   for (const poi of pois) {
-    const isDuplicate = result.some(
-      (existing) =>
-        existing.category === poi.category &&
-        existing.subType === poi.subType &&
-        calculateDistanceMeters(existing.lat, existing.lon, poi.lat, poi.lon) <
-          20,
-    );
+    const isDuplicate = result.some((existing) => {
+      if (existing.category !== poi.category) return false;
+      const dist = calculateDistanceMeters(
+        existing.lat,
+        existing.lon,
+        poi.lat,
+        poi.lon,
+      );
+
+      // Pour les écoles : un campus ou bâtiment s'étend sur 30-70m
+      if (poi.category === "ecoles") {
+        if (dist <= 45) return true;
+        const n1 = cleanNameForDedup(existing.name);
+        const n2 = cleanNameForDedup(poi.name);
+        if (
+          n1.length >= 3 &&
+          n2.length >= 3 &&
+          (n1 === n2 || n1.includes(n2) || n2.includes(n1))
+        ) {
+          return dist <= 120;
+        }
+        return false;
+      }
+
+      // Même sous-type à moins de 28m
+      if (existing.subType === poi.subType && dist <= 28) {
+        return true;
+      }
+
+      // Même nom exact ou très approchant à moins de 40m
+      if (existing.name && poi.name) {
+        const eName = existing.name.toLowerCase().trim();
+        const pName = poi.name.toLowerCase().trim();
+        if (eName === pName && dist <= 40) {
+          return true;
+        }
+      }
+
+      return false;
+    });
 
     if (!isDuplicate) {
       result.push(poi);
     } else {
-      // Si le doublon a un nom et pas l'existant, remplacer
+      // Si le doublon a un nom plus informatif, le conserver
       const existingIndex = result.findIndex(
         (existing) =>
           existing.category === poi.category &&
-          existing.subType === poi.subType &&
           calculateDistanceMeters(
             existing.lat,
             existing.lon,
             poi.lat,
             poi.lon,
-          ) < 20,
+          ) <= 50,
       );
-      if (existingIndex >= 0 && !result[existingIndex].name && poi.name) {
+      if (
+        existingIndex >= 0 &&
+        (!result[existingIndex].name ||
+          result[existingIndex].name.length < poi.name.length)
+      ) {
         result[existingIndex] = poi;
       }
     }

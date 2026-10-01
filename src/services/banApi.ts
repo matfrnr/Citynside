@@ -161,7 +161,7 @@ export async function reverseGeocode(lat: number, lon: number): Promise<AddressR
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 4000);
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
 
   try {
     const url = `${BAN_BASE_URL}/reverse/?lon=${lon}&lat=${lat}&type=housenumber`;
@@ -202,7 +202,7 @@ export async function reverseGeocode(lat: number, lon: number): Promise<AddressR
 async function reverseGeocodeStreet(lat: number, lon: number): Promise<AddressResult | null> {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
     const url = `${BAN_BASE_URL}/reverse/?lon=${lon}&lat=${lat}`;
     const response = await fetch(url, { signal: controller.signal });
@@ -217,4 +217,35 @@ async function reverseGeocodeStreet(lat: number, lon: number): Promise<AddressRe
   } catch {
     return null;
   }
+}
+
+/**
+ * Géolocalisation de secours par adresse IP si le GPS / navigateur échoue
+ */
+export async function getApproximateLocationByIp(): Promise<{ lat: number; lon: number; city?: string } | null> {
+  try {
+    const res = await fetch('https://ipwho.is/', { signal: AbortSignal.timeout(4500) });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success && typeof data.latitude === 'number' && typeof data.longitude === 'number') {
+        return { lat: data.latitude, lon: data.longitude, city: data.city };
+      }
+    }
+  } catch (e) {
+    console.warn('Fallback IP #1 échoué:', e);
+  }
+
+  try {
+    const res = await fetch('https://freeipapi.com/api/json', { signal: AbortSignal.timeout(4500) });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && typeof data.latitude === 'number' && typeof data.longitude === 'number') {
+        return { lat: data.latitude, lon: data.longitude, city: data.cityName };
+      }
+    }
+  } catch (e) {
+    console.warn('Fallback IP #2 échoué:', e);
+  }
+
+  return null;
 }

@@ -2,13 +2,18 @@ import React, { useEffect, useState } from "react";
 import { Sidebar } from "./components/layout/Sidebar";
 import { AuthView } from "./components/views/AuthView";
 import { EnregistrementsView } from "./components/views/EnregistrementsView";
+import { ComparisonView } from "./components/views/ComparisonView";
 import { HomeView } from "./components/views/HomeView";
 import { ImpressionsView } from "./components/views/ImpressionsView";
 import { NewAnalysisView } from "./components/views/NewAnalysisView";
 import { NotificationsView } from "./components/views/NotificationsView";
 import { ProfileView } from "./components/views/ProfileView";
 import { ReportView } from "./components/views/ReportView";
+import { ReleaseNotesModal } from "./components/release/ReleaseNotesModal";
+import { clearReleaseNotesContinueState } from "./config/releaseNotes";
 import { fetchUserProfile } from "./services/profile";
+import { createNotification, fetchNotifications } from "./services/notifications";
+import { registerCurrentDevice } from "./services/deviceSession";
 import {
   deleteAnalysis,
   fetchAnalyses,
@@ -28,6 +33,43 @@ import {
 
 const LOCAL_DEMO_SESSION_KEY = "citynside_demo_session";
 
+const notifyAccountActivated = async (userId: string) => {
+  if (userId === LOCAL_DEMO_USER_ID) return;
+  const fallbackKey = `citynside_activation_notified_${userId}`;
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("activation_notification_sent")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (profileError?.code === "PGRST204") {
+    if (localStorage.getItem(fallbackKey) === "true") return;
+  } else if (profileError) {
+    throw profileError;
+  } else if (profile?.activation_notification_sent) {
+    return;
+  }
+
+  const activatedAt = new Date();
+  await createNotification(userId, {
+    id: `account_activated_${userId}`,
+    title: "Votre compte a bien été activé",
+    description: `Activation confirmée le ${new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeStyle: "short" }).format(activatedAt)}.`,
+    kind: "system",
+    importance: "important",
+  });
+
+  if (profileError?.code === "PGRST204") {
+    localStorage.setItem(fallbackKey, "true");
+    return;
+  }
+  const { error: saveError } = await supabase.from("profiles").upsert(
+    { id: userId, activation_notification_sent: true },
+    { onConflict: "id" },
+  );
+  if (saveError) throw saveError;
+};
+
 export const App: React.FC = () => {
   const [analyses, setAnalyses] = useState<NeighborhoodAnalysis[]>([]);
   const [currentView, setCurrentView] = useState<AppView>("home");
@@ -35,6 +77,21 @@ export const App: React.FC = () => {
     useState<NeighborhoodAnalysis | null>(null);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [authChecking, setAuthChecking] = useState(true);
+  const [importantNotificationsCount, setImportantNotificationsCount] = useState(0);
+
+  const refreshImportantNotificationsCount = async (userId: string) => {
+    try {
+      const items = await fetchNotifications(userId);
+      setImportantNotificationsCount(items.filter((item) => item.importance === "important" && !item.read).length);
+    } catch (error) {
+      console.warn("Compteur de notifications indisponible :", error);
+    }
+  };
+
+  useEffect(() => {
+    if (!authUser) { setImportantNotificationsCount(0); return; }
+    void refreshImportantNotificationsCount(authUser.id);
+  }, [authUser?.id]);
 
   const loadUserAnalyses = async (userId: string, isInitial = false) => {
     // 1. Instatané depuis le cache local (vide pour un nouveau compte réel)
@@ -90,6 +147,9 @@ export const App: React.FC = () => {
         if (session?.user && !error) {
           const user = await fetchUserProfile(session.user);
           setAuthUser(user);
+          await notifyAccountActivated(user.id).catch((err) => console.warn("Notification d’activation non enregistrée :", err));
+          await registerCurrentDevice(user.id).catch((err) => console.warn("Vérification du nouvel appareil impossible :", err));
+          await refreshImportantNotificationsCount(user.id);
           await loadUserAnalyses(user.id, true);
         }
         setAuthChecking(false);
@@ -112,6 +172,7 @@ export const App: React.FC = () => {
         setAuthUser(user);
         await loadUserAnalyses(user.id, false);
       } else {
+        clearReleaseNotesContinueState();
         setAuthUser(null);
         setAnalyses([]);
         setActiveAnalysis(null);
@@ -161,12 +222,16 @@ export const App: React.FC = () => {
     } else {
       const freshUser = await fetchUserProfile(user);
       setAuthUser(freshUser);
+      await notifyAccountActivated(freshUser.id).catch((err) => console.warn("Notification d’activation non enregistrée :", err));
+      await registerCurrentDevice(freshUser.id).catch((err) => console.warn("Vérification du nouvel appareil impossible :", err));
+      await refreshImportantNotificationsCount(freshUser.id);
     }
     await loadUserAnalyses(user.id, true);
     setCurrentView("home");
   };
 
   const handleLogout = async () => {
+    if (authUser) clearReleaseNotesContinueState(authUser.id);
     if (authUser?.id === LOCAL_DEMO_USER_ID) {
       localStorage.removeItem(LOCAL_DEMO_SESSION_KEY);
     } else {
@@ -196,6 +261,14 @@ export const App: React.FC = () => {
   // Met à jour l'analyse active en mémoire SANS sauvegarder dans le localStorage
   const handleUpdateAnalysis = (updated: NeighborhoodAnalysis) => {
     setActiveAnalysis(updated);
+    if (authUser) {
+      void createNotification(authUser.id, {
+        id: `analysis_${updated.id}`,
+        title: "Analyse terminée · sources consultées",
+        description: `L’analyse de ${updated.address}, ${updated.city} vient d’être calculée à partir des sources disponibles.`,
+        kind: "analysis",
+      }).catch((error) => console.warn("Notification d’analyse non enregistrée :", error));
+    }
   };
 
   // Sauvegarde explicite avec nom personnalisé
@@ -310,6 +383,7 @@ export const App: React.FC = () => {
           setCurrentView(view);
         }}
         favoritesCount={favoritesCount}
+        importantNotificationsCount={importantNotificationsCount}
       />
 
       {/* Main Tablet Content Area */}
@@ -347,6 +421,14 @@ export const App: React.FC = () => {
             <ReportView
               analysis={activeAnalysis}
               user={authUser}
+              onReportGenerated={() => {
+                void createNotification(authUser.id, {
+                  id: `report_${activeAnalysis.id}_${Date.now()}`,
+                  title: "Rapport PDF généré",
+                  description: `Le rapport pour ${activeAnalysis.address}, ${activeAnalysis.city} a été téléchargé.`,
+                  kind: "report",
+                }).catch((error) => console.warn("Notification de rapport non enregistrée :", error));
+              }}
               onBackToEdit={() => setCurrentView("new-analysis")}
             />
           )}
@@ -361,7 +443,9 @@ export const App: React.FC = () => {
             />
           )}
 
-          {currentView === "notifications" && <NotificationsView />}
+          {currentView === "comparison" && <ComparisonView analyses={analyses} />}
+
+          {currentView === "notifications" && <NotificationsView user={authUser} onImportantUnreadChange={setImportantNotificationsCount} />}
 
           {currentView === "profile" && (
             <ProfileView
@@ -370,10 +454,31 @@ export const App: React.FC = () => {
               user={authUser}
               onLogout={handleLogout}
               onUpdateUser={(updated) => setAuthUser(updated)}
+              onProfileSaved={() => {
+                void createNotification(authUser.id, {
+                  id: `profile_${authUser.id}_${Date.now()}`,
+                  title: "Profil modifié",
+                  description: "Les informations de votre profil ont été enregistrées.",
+                  kind: "system",
+                  importance: "important",
+                }).then(() => refreshImportantNotificationsCount(authUser.id)).catch((error) => console.warn("Notification de profil non enregistrée :", error));
+              }}
+              onPasswordChanged={() => {
+                const changedAt = new Date();
+                void createNotification(authUser.id, {
+                  id: `password_changed_${authUser.id}_${changedAt.getTime()}`,
+                  title: "Mot de passe modifié",
+                  description: `Votre mot de passe a été modifié le ${new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeStyle: "short" }).format(changedAt)}.`,
+                  kind: "system",
+                  importance: "important",
+                }).then(() => refreshImportantNotificationsCount(authUser.id)).catch((error) => console.warn("Notification de sécurité non enregistrée :", error));
+              }}
             />
           )}
         </div>
       </main>
+
+      <ReleaseNotesModal userId={authUser.id} />
 
       <style>{`
         .cyt-app-layout {

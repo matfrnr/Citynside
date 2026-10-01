@@ -67,6 +67,13 @@ export const ScoresList: React.FC<ScoresListProps> = ({
     return "#dc2626";
   };
 
+  const getScoreLevel = (score: number) => {
+    if (score >= 9) return "Très favorable";
+    if (score >= 7) return "Favorable";
+    if (score >= 5) return "À améliorer";
+    return "Point de vigilance";
+  };
+
   return (
     <div className="scores-list-container">
       <div className="scores-header">
@@ -77,7 +84,7 @@ export const ScoresList: React.FC<ScoresListProps> = ({
           )}
         </div>
         <p className="scores-subtitle">
-          Données calculées en temps réel • Découvrez précisément ce qui fait gagner ou perdre des points
+          Chaque note sur 10 est accompagnée d’un repère clair : très favorable, favorable, à améliorer ou point de vigilance.
         </p>
       </div>
 
@@ -130,11 +137,13 @@ export const ScoresList: React.FC<ScoresListProps> = ({
                   <div
                     className="score-badge"
                     style={{ color: scoreColor, borderColor: scoreColor }}
+                    aria-label={`Note ${cat.score.toFixed(1)} sur 10, ${getScoreLevel(cat.score)}`}
                   >
                     <span className="score-val">{cat.score.toFixed(1)}</span>
                     <span className="score-max">/10</span>
                   </div>
                 </div>
+                <span className="score-level" style={{ color: scoreColor }}>{getScoreLevel(cat.score)}</span>
 
                 <p className="highlight-text">{cat.highlightText}</p>
 
@@ -730,6 +739,13 @@ export const ScoresList: React.FC<ScoresListProps> = ({
           font-size: 0.70rem;
           opacity: 0.7;
           margin-left: 2px;
+        }
+
+        .score-level {
+          display: block;
+          margin-top: -6px;
+          font-size: .72rem;
+          font-weight: 700;
         }
 
         .highlight-text {

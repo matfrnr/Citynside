@@ -7,6 +7,7 @@ export interface ProfileDetails {
   email: string;
   phone: string;
   agency: string;
+  agencyCity: string;
   role: string;
 }
 
@@ -80,6 +81,7 @@ export async function saveUserProfile(
     lastName: details.lastName,
     phone: cleanPhone,
     agency: details.agency,
+    agencyCity: details.agencyCity,
     role: details.role,
   };
 
@@ -93,6 +95,7 @@ export async function saveUserProfile(
         full_name: fullName,
         phone: details.phone,
         agency: details.agency,
+        agency_city: details.agencyCity,
         role: details.role,
       },
     });
@@ -114,6 +117,7 @@ export async function saveUserProfile(
         full_name: fullName,
         phone: details.phone,
         agency: details.agency,
+        agency_city: details.agencyCity,
         role: details.role,
         updated_at: new Date().toISOString(),
       },
@@ -127,4 +131,12 @@ export async function saveUserProfile(
   }
 
   return updated;
+}
+
+export async function changeUserPassword(newPassword: string): Promise<void> {
+  if (newPassword.length < 8) {
+    throw new Error("Le mot de passe doit contenir au moins 8 caractères.");
+  }
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw error;
 }

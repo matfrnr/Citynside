@@ -44,6 +44,7 @@ export function mapSupabaseUser(user: {
     lastName: lastName || name.split(" ").slice(1).join(" ") || "",
     phone: (metadata.phone as string) || "",
     agency: (metadata.agency as string) || "Agence immobilière",
+    agencyCity: (metadata.agency_city as string) || "",
     role: (metadata.role as string) || "Agent immobilier",
   };
 }
@@ -69,6 +70,7 @@ export function mapProfileRowToAuthUser(
     lastName: lastName || name.split(" ").slice(1).join(" ") || "",
     phone: (row.phone as string) || "",
     agency: (row.agency as string) || "Agence immobilière",
+    agencyCity: (row.agency_city as string) || "",
     role: (row.role as string) || "Agent immobilier",
   };
 }

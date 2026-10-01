@@ -5,6 +5,7 @@ import {
   Building2,
   ChartNoAxesColumnIncreasing,
   LogOut,
+  KeyRound,
   Mail,
   Phone,
   Save,
@@ -15,6 +16,7 @@ import {
   type ProfileDetails,
   isValidPhoneNumber,
   saveUserProfile,
+  changeUserPassword,
 } from "../../services/profile";
 import { type AuthUser, LOCAL_DEMO_USER_ID } from "../../types";
 
@@ -24,6 +26,8 @@ interface ProfileViewProps {
   user: AuthUser;
   onLogout: () => void;
   onUpdateUser?: (updated: AuthUser) => void;
+  onProfileSaved?: () => void;
+  onPasswordChanged?: () => void;
 }
 
 const loadProfile = (user: AuthUser): ProfileDetails => {
@@ -35,6 +39,7 @@ const loadProfile = (user: AuthUser): ProfileDetails => {
     email: user.email,
     phone: user.phone || "",
     agency: user.agency || "Agence immobilière",
+    agencyCity: user.agencyCity || "",
     role: user.role || "Agent immobilier",
   };
 };
@@ -45,6 +50,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   user,
   onLogout,
   onUpdateUser,
+  onProfileSaved,
+  onPasswordChanged,
 }) => {
   const [profile, setProfile] = useState<ProfileDetails>(() =>
     loadProfile(user),
@@ -52,6 +59,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordMessage, setPasswordMessage] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   // Re-synchronise si user change (ex: modification reçue en direct depuis un autre appareil)
   useEffect(() => {
@@ -89,8 +101,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       lastName: profile.lastName,
       phone: cleanPhone,
       agency: profile.agency,
+      agencyCity: profile.agencyCity,
       role: profile.role,
     };
+    const profileChanged =
+      updatedUser.firstName !== user.firstName ||
+      updatedUser.lastName !== user.lastName ||
+      updatedUser.phone !== (user.phone || "") ||
+      updatedUser.agency !== (user.agency || "Agence immobilière") ||
+      updatedUser.role !== (user.role || "Agent immobilier") ||
+      updatedUser.agencyCity !== (user.agencyCity || "");
 
     try {
       if (user.id !== LOCAL_DEMO_USER_ID) {
@@ -103,6 +123,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         onUpdateUser?.(updatedUser);
       }
 
+      if (profileChanged) onProfileSaved?.();
       setSaved(true);
     } catch (err: any) {
       console.error(err);
@@ -267,6 +288,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 />
               </span>
             </label>
+            <label className="profile-field field-with-icon">
+              <span>Ville de l’agence</span>
+              <span className="input-wrap">
+                <Building2 size={17} />
+                <input
+                  value={profile.agencyCity}
+                  placeholder="Grenoble"
+                  onChange={(event) => updateField("agencyCity", event.target.value)}
+                />
+              </span>
+              <span className="profile-field-note">Utilisée pour la veille des projets et évolutions locales.</span>
+            </label>
           </div>
 
           <div className="profile-form-footer">
@@ -292,6 +325,32 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </div>
         </form>
       </div>
+
+      <form className="password-form" onSubmit={async (event) => {
+        event.preventDefault();
+        setPasswordError(""); setPasswordMessage("");
+        if (user.id === LOCAL_DEMO_USER_ID) { setPasswordError("Le compte de démonstration ne possède pas de mot de passe modifiable."); return; }
+        if (newPassword !== confirmPassword) { setPasswordError("Les deux mots de passe ne correspondent pas."); return; }
+        setIsChangingPassword(true);
+        try {
+          await changeUserPassword(newPassword);
+          setNewPassword(""); setConfirmPassword("");
+          setPasswordMessage("Votre mot de passe a été modifié.");
+          onPasswordChanged?.();
+        } catch (err) {
+          setPasswordError(err instanceof Error ? err.message : "Impossible de modifier le mot de passe.");
+        } finally { setIsChangingPassword(false); }
+      }}>
+        <div className="form-heading">
+          <div><h2>Mot de passe</h2><p>Une notification de sécurité sera ajoutée après chaque modification.</p></div>
+          <KeyRound size={21} aria-hidden="true" />
+        </div>
+        <div className="password-fields">
+          <label className="profile-field"><span>Nouveau mot de passe</span><input type="password" autoComplete="new-password" minLength={8} required value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="8 caractères minimum" /></label>
+          <label className="profile-field"><span>Confirmer le mot de passe</span><input type="password" autoComplete="new-password" minLength={8} required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>
+        </div>
+        <div className="password-footer"><span className={passwordError ? "password-error" : "password-success"} role="status">{passwordError || passwordMessage}</span><button className="save-profile" type="submit" disabled={isChangingPassword}><KeyRound size={16}/>{isChangingPassword ? "Modification…" : "Modifier le mot de passe"}</button></div>
+      </form>
 
       <style>{`
         .profile-page {
@@ -452,6 +511,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
         .profile-form { padding: 24px 26px 20px; }
 
+        .password-form { margin-top: 20px; padding: 24px 26px 20px; background: #fff; border: 1px solid var(--color-border); border-radius: 8px; box-shadow: var(--shadow-subtle); }
+        .password-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 17px 18px; padding: 22px 0; }
+        .password-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+        .password-error { color: #a12d27; font-size: .78rem; }
+        .password-success { color: #276646; font-size: .78rem; }
+
         .form-heading {
           display: flex;
           align-items: flex-start;
@@ -569,6 +634,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           .stat-icon { width: 30px; height: 30px; }
           .profile-form { padding: 20px 16px 16px; }
           .profile-fields { grid-template-columns: 1fr; gap: 14px; padding: 18px 0; }
+          .password-fields { grid-template-columns: 1fr; gap: 14px; padding: 18px 0; }
+          .password-footer { align-items: flex-start; flex-direction: column; }
           .profile-form-footer { align-items: stretch; flex-direction: column; }
           .save-profile { width: 100%; }
         }

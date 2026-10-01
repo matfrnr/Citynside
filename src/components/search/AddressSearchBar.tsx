@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, MapPin, ArrowRight, X, Loader2, LocateFixed } from 'lucide-react';
-import { searchAddress, reverseGeocode } from '../../services/banApi';
+import { Search, MapPin, ArrowRight, X, Loader2, LocateFixed, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { searchAddress, reverseGeocode, getApproximateLocationByIp } from '../../services/banApi';
 import type { AddressResult } from '../../types';
 
 interface AddressSearchBarProps {
@@ -18,11 +18,21 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
 }) => {
   const [query, setQuery] = useState(initialValue);
   const [suggestions, setSuggestions] = useState<AddressResult[]>([]);
+  const [activeSuggestion, setActiveSuggestion] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [isGeolocating, setIsGeolocating] = useState(false);
+  const [geoFeedback, setGeoFeedback] = useState<{ type: 'info' | 'error' | 'success'; text: string } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceTimerRef = useRef<any>(null);
+
+  // Auto-effacement du message de feedback après 6 secondes
+  useEffect(() => {
+    if (geoFeedback) {
+      const timer = setTimeout(() => setGeoFeedback(null), 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [geoFeedback]);
 
   // Sync with initialValue when analysis changes: DO NOT SEARCH, keep dropdown closed
   useEffect(() => {
@@ -71,6 +81,7 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
     if (val.trim().length < 3) {
       setSuggestions([]);
       setIsOpen(false);
+      setActiveSuggestion(0);
       return;
     }
 
@@ -79,7 +90,8 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
       const results = await searchAddress(val);
       setIsSearching(false);
       setSuggestions(results);
-      setIsOpen(results.length > 0);
+      setActiveSuggestion(0);
+      setIsOpen(true);
     }, 220);
   };
 
@@ -91,37 +103,112 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
     onSelectAddress(item);
   };
 
-  const handleGeolocation = () => {
-    if (!navigator.geolocation) {
-      alert("La géolocalisation n'est pas supportée par votre navigateur.");
+  /**
+   * Géolocalisation résiliente :
+   * 1. Tentative haute précision (timeout 10s au lieu de 5s pour éviter l'échec au premier clic sur PC/Windows)
+   * 2. En cas de timeout/indisponibilité GPS, bascule automatique et instantanée en précision standard (Wi-Fi/réseau)
+   * 3. Si le navigateur ou Windows bloque, fallback automatique par localisation IP
+   */
+  const handleGeolocation = async () => {
+    if (isGeolocating || isLoading) return;
+
+    setGeoFeedback(null);
+    setIsGeolocating(true);
+
+    const getPosition = (opts: PositionOptions): Promise<GeolocationPosition> => {
+      return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject(new Error('GEOLOCATION_UNSUPPORTED'));
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(resolve, reject, opts);
+      });
+    };
+
+    let coords: { latitude: number; longitude: number } | null = null;
+    let isApproximate = false;
+
+    try {
+      // 1ère tentative : Haute précision avec timeout étendu (10s) et cache toléré (2 min)
+      try {
+        const pos = await getPosition({ enableHighAccuracy: true, timeout: 10000, maximumAge: 120000 });
+        coords = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+      } catch (err: any) {
+        // Code 3 = TIMEOUT, Code 2 = POSITION_UNAVAILABLE
+        // Si la haute précision échoue, tenter immédiatement sans attendre en précision standard
+        if (err?.code === 3 || err?.code === 2) {
+          console.warn('Haute précision indisponible/délai dépassé, tentative précision standard...');
+          const pos = await getPosition({ enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 });
+          coords = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+        } else {
+          throw err;
+        }
+      }
+    } catch (err: any) {
+      console.warn('Géolocalisation navigateur indisponible, essai fallback IP réseau...', err);
+      // Tentative de localisation IP
+      const ipLoc = await getApproximateLocationByIp();
+      if (ipLoc) {
+        coords = { latitude: ipLoc.lat, longitude: ipLoc.lon };
+        isApproximate = true;
+      } else {
+        if (err?.code === 1) {
+          setGeoFeedback({
+            type: 'error',
+            text: "Localisation refusée : autorisez l'accès dans votre navigateur (cadenas 🔒 en haut à gauche)."
+          });
+        } else {
+          setGeoFeedback({
+            type: 'error',
+            text: 'Impossible de récupérer votre position. Veuillez taper votre adresse directement.'
+          });
+        }
+        setIsGeolocating(false);
+        return;
+      }
+    }
+
+    if (!coords) {
+      setIsGeolocating(false);
       return;
     }
 
-    setIsGeolocating(true);
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        try {
-          const { latitude, longitude } = position.coords;
-          const result = await reverseGeocode(latitude, longitude);
-          if (result) {
-            handleSelect(result);
-          } else {
-            alert("Impossible de trouver une adresse pour cette position.");
-          }
-        } catch (error) {
-          console.error("Erreur de géolocalisation:", error);
-          alert("Erreur lors de la récupération de l'adresse.");
-        } finally {
-          setIsGeolocating(false);
+    try {
+      const result = await reverseGeocode(coords.latitude, coords.longitude);
+      if (result) {
+        handleSelect(result);
+        if (isApproximate) {
+          setGeoFeedback({
+            type: 'info',
+            text: `Position approximative réseau (${result.city || 'secteur'}). Précisez l'adresse si besoin.`
+          });
         }
-      },
-      (error) => {
-        console.error("Erreur de géolocalisation:", error);
-        alert("Impossible de récupérer votre position.");
-        setIsGeolocating(false);
-      },
-      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-    );
+      } else {
+        // Si l'adresse exacte n'est pas identifiée par la BAN, créer une position exploitable
+        const fallbackResult: AddressResult = {
+          id: `${coords.latitude}_${coords.longitude}`,
+          label: `Position détectée (${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)})`,
+          name: 'Position détectée',
+          postcode: '',
+          citycode: '',
+          city: '',
+          context: 'France',
+          type: 'locality',
+          coordinates: [coords.longitude, coords.latitude],
+          lon: coords.longitude,
+          lat: coords.latitude,
+        };
+        handleSelect(fallbackResult);
+      }
+    } catch (error) {
+      console.error('Erreur lors du géocodage inverse:', error);
+      setGeoFeedback({
+        type: 'error',
+        text: "Erreur lors de la récupération de l'adresse pour cette position."
+      });
+    } finally {
+      setIsGeolocating(false);
+    }
   };
 
   const handleTrigger = async () => {
@@ -130,7 +217,7 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
     setSuggestions([]);
 
     if (suggestions.length > 0) {
-      handleSelect(suggestions[0]);
+      handleSelect(suggestions[activeSuggestion] || suggestions[0]);
     } else if (query.trim().length >= 3) {
       setIsSearching(true);
       const results = await searchAddress(query);
@@ -146,7 +233,17 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'ArrowDown' && suggestions.length > 0) {
+      e.preventDefault();
+      setIsOpen(true);
+      setActiveSuggestion((current) => (current + 1) % suggestions.length);
+    } else if (e.key === 'ArrowUp' && suggestions.length > 0) {
+      e.preventDefault();
+      setActiveSuggestion((current) => (current - 1 + suggestions.length) % suggestions.length);
+    } else if (e.key === 'Enter' && isOpen && suggestions[activeSuggestion]) {
+      e.preventDefault();
+      handleSelect(suggestions[activeSuggestion]);
+    } else if (e.key === 'Enter') {
       e.preventDefault();
       handleTrigger();
     } else if (e.key === 'Escape') {
@@ -164,6 +261,11 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
             type="text"
             className="search-input"
             value={query}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={isOpen}
+            aria-controls="address-suggestions"
+            aria-activedescendant={isOpen && suggestions[activeSuggestion] ? `address-option-${activeSuggestion}` : undefined}
             onChange={handleInputChange}
             onFocus={() => {
               // Ne réaffiche que si l'utilisateur a déjà des suggestions et tape activement
@@ -182,6 +284,7 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
                 setQuery('');
                 setSuggestions([]);
                 setIsOpen(false);
+                setActiveSuggestion(0);
               }}
               aria-label="Effacer"
               type="button"
@@ -220,16 +323,43 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
         </button>
       </div>
 
+      {/* Message de statut / retour géolocalisation non intrusif */}
+      {geoFeedback && (
+        <div className={`geo-feedback-banner ${geoFeedback.type}`}>
+          <div className="geo-feedback-content">
+            {geoFeedback.type === 'error' ? (
+              <AlertCircle size={15} className="geo-icon" />
+            ) : (
+              <CheckCircle2 size={15} className="geo-icon" />
+            )}
+            <span className="geo-text">{geoFeedback.text}</span>
+          </div>
+          <button
+            type="button"
+            className="geo-close-btn"
+            onClick={() => setGeoFeedback(null)}
+            aria-label="Fermer"
+          >
+            <X size={13} />
+          </button>
+        </div>
+      )}
+
       {/* Autocomplete Dropdown */}
-      {!isLoading && isOpen && suggestions.length > 0 && (
+      {!isLoading && isOpen && query.trim().length >= 3 && (
         <div className="autocomplete-dropdown">
-          <div className="dropdown-header">Base Adresse Nationale (BAN)</div>
-          <ul className="suggestions-list">
-            {suggestions.map((item: AddressResult) => (
+          <div className="dropdown-header">{isSearching ? 'Recherche d’adresse…' : 'Adresses correspondantes'}</div>
+          {isSearching ? <p className="search-empty-state">Recherche dans la Base Adresse Nationale…</p> : suggestions.length === 0 ? <p className="search-empty-state">Aucune adresse trouvée. Essayez avec un numéro, une rue ou une autre commune.</p> : null}
+          <ul className="suggestions-list" id="address-suggestions" role="listbox">
+            {suggestions.map((item: AddressResult, index) => (
               <li
                 key={item.id}
-                className="suggestion-item"
+                id={`address-option-${index}`}
+                role="option"
+                aria-selected={index === activeSuggestion}
+                className={`suggestion-item ${index === activeSuggestion ? 'active' : ''}`}
                 onClick={() => handleSelect(item)}
+                onMouseEnter={() => setActiveSuggestion(index)}
               >
                 <div className="item-pin-wrap">
                   <MapPin size={16} />
@@ -421,6 +551,9 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
           background-color: var(--color-green-subtle);
         }
 
+        .suggestion-item.active { background-color: var(--color-green-subtle); }
+        .search-empty-state { padding: 14px 18px; color: var(--color-text-muted); font-size: .82rem; line-height: 1.45; }
+
         /* Icône pin en vert de la charte */
         .item-pin-wrap {
           width: 32px;
@@ -451,6 +584,80 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
           font-family: var(--font-family-body);
           font-size: 0.78rem;
           color: var(--color-text-muted);
+        }
+
+        /* Bannière de statut géolocalisation */
+        .geo-feedback-banner {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          margin-top: 10px;
+          padding: 8px 14px;
+          border-radius: 12px;
+          font-size: 0.84rem;
+          font-family: var(--font-family-body);
+          animation: slideDownFade 0.25s ease-out;
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+        }
+
+        .geo-feedback-banner.error {
+          background: rgba(230, 57, 70, 0.12);
+          border: 1px solid rgba(230, 57, 70, 0.3);
+          color: #c92a2a;
+        }
+
+        .geo-feedback-banner.info,
+        .geo-feedback-banner.success {
+          background: rgba(42, 157, 143, 0.14);
+          border: 1px solid rgba(42, 157, 143, 0.3);
+          color: #1b635c;
+        }
+
+        .geo-feedback-content {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex: 1;
+        }
+
+        .geo-icon {
+          flex-shrink: 0;
+        }
+
+        .geo-text {
+          line-height: 1.35;
+        }
+
+        .geo-close-btn {
+          background: none;
+          border: none;
+          cursor: pointer;
+          opacity: 0.65;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 3px;
+          border-radius: 4px;
+          transition: opacity 0.15s ease;
+          color: inherit;
+        }
+
+        .geo-close-btn:hover {
+          opacity: 1;
+        }
+
+        @keyframes slideDownFade {
+          from {
+            opacity: 0;
+            transform: translateY(-6px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
       `}</style>
     </div>

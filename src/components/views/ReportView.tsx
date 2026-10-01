@@ -9,25 +9,129 @@ import {
   Printer,
   Eye,
 } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import type { AuthUser, NeighborhoodAnalysis } from '../../types';
+import { DEFAULT_REPORT_CUSTOMIZATION, fetchReportCustomization, saveReportCustomization, type ReportCustomization } from '../../services/reportCustomization';
+import { LOCAL_DEMO_USER_ID, type AuthUser, type NeighborhoodAnalysis } from '../../types';
 
 interface ReportViewProps {
   analysis: NeighborhoodAnalysis;
   onBackToEdit: () => void;
   user?: AuthUser | null;
+  onReportGenerated?: () => void;
 }
+
+const loadReportCustomization = (key: string): ReportCustomization => {
+  try {
+    const saved = localStorage.getItem(key);
+    if (!saved) return DEFAULT_REPORT_CUSTOMIZATION;
+    const parsed = JSON.parse(saved) as Partial<ReportCustomization>;
+    return {
+      ...DEFAULT_REPORT_CUSTOMIZATION,
+      ...parsed,
+      includedSections: { ...DEFAULT_REPORT_CUSTOMIZATION.includedSections, ...parsed.includedSections },
+    };
+  } catch {
+    return DEFAULT_REPORT_CUSTOMIZATION;
+  }
+};
 
 export const ReportView: React.FC<ReportViewProps> = ({
   analysis,
   onBackToEdit,
   user,
+  onReportGenerated,
 }) => {
   const reportRef = useRef<HTMLDivElement>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
+  const [showReportOptions, setShowReportOptions] = useState(false);
+  const isServerUser = Boolean(user?.id && user.id !== LOCAL_DEMO_USER_ID);
+  const customizationKey = `citynside_report_customization_${user?.id || 'local'}_${analysis.id}`;
+  const [customization, setCustomization] = useState(() => ({ key: customizationKey, value: loadReportCustomization(customizationKey) }));
+  const [customizationLoaded, setCustomizationLoaded] = useState(!isServerUser);
+  const [customizationDirty, setCustomizationDirty] = useState(false);
+  const [customizationSyncState, setCustomizationSyncState] = useState<'loading' | 'saving' | 'ready' | 'saved' | 'error' | 'local'>(isServerUser ? 'loading' : 'local');
+  const customizationRef = useRef(customization);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  customizationRef.current = customization;
+  const customizationValue = customization.key === customizationKey ? customization.value : DEFAULT_REPORT_CUSTOMIZATION;
+  const { includedSections, strengths, reservations } = customizationValue;
+
+  useEffect(() => {
+    let cancelled = false;
+    setCustomizationLoaded(!isServerUser);
+    setCustomizationDirty(false);
+    if (!isServerUser || !user?.id) {
+      setCustomization({ key: customizationKey, value: loadReportCustomization(customizationKey) });
+      setCustomizationSyncState('local');
+      setCustomizationLoaded(true);
+      return () => { cancelled = true; };
+    }
+
+    setCustomizationSyncState('loading');
+    void fetchReportCustomization(user.id, analysis.id).then((saved) => {
+      if (cancelled) return;
+      const localValue = loadReportCustomization(customizationKey);
+      setCustomization({ key: customizationKey, value: saved || localValue });
+      setCustomizationLoaded(true);
+      if (saved) {
+        setCustomizationSyncState('saved');
+      } else if (localStorage.getItem(customizationKey)) {
+        // Reprise des préférences locales précédentes et migration automatique vers Supabase.
+        setCustomizationDirty(true);
+        setCustomizationSyncState('saving');
+      } else {
+        setCustomizationSyncState('ready');
+      }
+    }).catch((error) => {
+      if (cancelled) return;
+      console.warn('Chargement des préférences de rapport depuis Supabase impossible :', error);
+      setCustomization({ key: customizationKey, value: loadReportCustomization(customizationKey) });
+      setCustomizationLoaded(true);
+      setCustomizationSyncState('error');
+    });
+    return () => { cancelled = true; };
+  }, [analysis.id, customizationKey, isServerUser, user?.id]);
+
+  useEffect(() => {
+    if (!customizationLoaded || customization.key !== customizationKey) return;
+    try { localStorage.setItem(customizationKey, JSON.stringify(customization.value)); } catch { /* Le rapport reste utilisable si le stockage local est indisponible. */ }
+    if (!isServerUser || !user?.id) {
+      setCustomizationSyncState('local');
+      return;
+    }
+    if (!customizationDirty) return;
+
+    setCustomizationSyncState('saving');
+    const snapshot = customization;
+    const timer = window.setTimeout(() => {
+      saveQueueRef.current = saveQueueRef.current.catch(() => undefined).then(() =>
+        saveReportCustomization(user.id, analysis.id, snapshot.value),
+      );
+      void saveQueueRef.current.then(() => {
+        const latest = customizationRef.current;
+        if (latest.key === customizationKey && JSON.stringify(latest.value) === JSON.stringify(snapshot.value)) {
+          setCustomizationDirty(false);
+          setCustomizationSyncState('saved');
+        }
+      }).catch((error) => {
+        console.warn('Enregistrement des préférences de rapport dans Supabase impossible :', error);
+        setCustomizationSyncState('error');
+      });
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [analysis.id, customization, customizationDirty, customizationKey, customizationLoaded, isServerUser, user?.id]);
+
+  const updateCustomization = (value: Partial<ReportCustomization>) => {
+    if (!customizationLoaded) return;
+    setCustomization((current) => ({
+      key: customizationKey,
+      value: { ...(current.key === customizationKey ? current.value : loadReportCustomization(customizationKey)), ...value },
+    }));
+    setCustomizationDirty(true);
+  };
 
   const generatePdfInstance = async () => {
     const element = reportRef.current;
@@ -37,7 +141,8 @@ export const ReportView: React.FC<ReportViewProps> = ({
       await document.fonts.ready;
     }
 
-    // 1. Rendu canvas haute définition avec espacement des polices préservé
+    // Capture le document complet ; le PDF sera ensuite réparti sur autant de pages A4 que nécessaire.
+    const pageBreaks: number[] = [];
     const canvas = await html2canvas(element, {
       scale: 2,
       useCORS: true,
@@ -46,6 +151,10 @@ export const ReportView: React.FC<ReportViewProps> = ({
       onclone: (clonedDoc: Document) => {
         const sheet = clonedDoc.querySelector('.printable-report-sheet') as HTMLElement;
         if (sheet) {
+          sheet.style.height = 'auto';
+          sheet.style.maxHeight = 'none';
+          sheet.style.overflow = 'visible';
+          sheet.style.width = '794px';
           sheet.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
           sheet.style.letterSpacing = '0px';
           const allElements = sheet.querySelectorAll('*');
@@ -54,25 +163,39 @@ export const ReportView: React.FC<ReportViewProps> = ({
             htmlEl.style.letterSpacing = '0px';
             htmlEl.style.fontVariantLigatures = 'none';
           });
-          const agentWords = sheet.querySelectorAll('.agent-name-word');
-          agentWords.forEach((w, idx) => {
-            const wordEl = w as HTMLElement;
-            if (idx < agentWords.length - 1) {
-              wordEl.style.marginRight = '6px';
-            }
-          });
-          const docWords = sheet.querySelectorAll('.doc-word');
-          docWords.forEach((w) => {
-            const wordEl = w as HTMLElement;
-            if (wordEl.style.marginRight && wordEl.style.marginRight !== '0px') {
-              wordEl.style.display = 'inline-block';
-            }
-          });
+          const pageHeightCss = 1122;
+          const sheetTop = sheet.getBoundingClientRect().top;
+          const observations = sheet.querySelector('.sheet-col-impressions') as HTMLElement | null;
+          const observationsTop = observations ? observations.getBoundingClientRect().top - sheetTop : 0;
+          const observationsNeedPageTwo = sheet.scrollHeight > pageHeightCss && observations;
+          if (observationsNeedPageTwo && observations) {
+            const pageTopInset = 34;
+            const gap = Math.max(0, pageHeightCss + pageTopInset - observationsTop);
+            sheet.style.setProperty('--observations-page-gap', `${gap}px`);
+            // Start page two with a small top inset so its heading does not touch the page edge.
+            pageBreaks.push(pageHeightCss);
+          } else {
+            let pageStart = 0;
+            const keepTogetherBlocks = [...sheet.querySelectorAll(
+              '.report-notes-strip, .report-cat-row, .impressions-report-card, .methodology-box, .guarantee-badge',
+            )].map((block) => {
+              const rect = (block as HTMLElement).getBoundingClientRect();
+              return { top: rect.top - sheetTop, bottom: rect.bottom - sheetTop };
+            }).sort((a, b) => a.top - b.top);
+            keepTogetherBlocks.forEach(({ top, bottom }) => {
+              if (bottom - pageStart > pageHeightCss && top > pageStart + 120) {
+                pageBreaks.push(top);
+                pageStart = top;
+              }
+            });
+          }
+          // Keep the remaining card breakpoints ordered before canvas slicing.
+          pageBreaks.sort((a, b) => a - b);
         }
       },
     });
 
-    // 2. Création directe du PDF A4 (exactement 1 seule page, sans saut ni page blanche)
+    // 2. Découpe sur des limites de cartes pour éviter les scores coupés entre deux pages.
     const pdf = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
@@ -80,9 +203,30 @@ export const ReportView: React.FC<ReportViewProps> = ({
       compress: true,
     });
 
-    const imgData = canvas.toDataURL('image/jpeg', 0.98);
-    // Format A4 portrait : 210 x 297 mm
-    pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+    const pageHeightPx = Math.floor(canvas.width * 297 / 210);
+    const scale = canvas.width / 794;
+    const breaks = [0, ...pageBreaks.map((point) => Math.round(point * scale)), canvas.height];
+    const pageSlices: Array<[number, number]> = [];
+    for (let index = 0; index < breaks.length - 1; index++) {
+      let start = breaks[index];
+      const end = breaks[index + 1];
+      while (end - start > pageHeightPx) {
+        pageSlices.push([start, start + pageHeightPx]);
+        start += pageHeightPx;
+      }
+      if (end > start) pageSlices.push([start, end]);
+    }
+    pageSlices.forEach(([start, end], index) => {
+      if (index > 0) pdf.addPage();
+      const pageCanvas = document.createElement('canvas');
+      pageCanvas.width = canvas.width;
+      pageCanvas.height = end - start;
+      const context = pageCanvas.getContext('2d');
+      if (!context) return;
+      context.drawImage(canvas, 0, start, canvas.width, end - start, 0, 0, canvas.width, end - start);
+      const imageHeightMm = pageCanvas.height * 210 / canvas.width;
+      pdf.addImage(pageCanvas.toDataURL('image/jpeg', 0.96), 'JPEG', 0, 0, 210, imageHeightMm, undefined, 'FAST');
+    });
     return pdf;
   };
 
@@ -116,6 +260,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
       const filename = `Rapport_Citynside_${cleanCity}${cleanPostcode ? `_${cleanPostcode}` : ''}.pdf`;
 
       pdf.save(filename);
+      onReportGenerated?.();
     } catch (error) {
       console.error('Erreur lors de la génération du PDF:', error);
       alert('Une erreur est survenue lors du téléchargement du PDF. Vous pouvez également cliquer sur Imprimer.');
@@ -136,29 +281,37 @@ export const ReportView: React.FC<ReportViewProps> = ({
   };
 
   const appraisal = getScoreGrade(analysis.globalScore);
+  const hasRightSections = includedSections.sources || includedSections.impressions;
 
-  const getAgentNameParts = () => {
-    const full = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.name || "Agent Immobilier";
-    return full.trim().split(/\s+/).filter(Boolean);
-  };
+  const getAgentName = () => [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.name || "Agent Immobilier";
 
-  const renderSpacedText = (text: string, spacePx = 4) => {
-    return text.trim().split(/\s+/).map((word, idx, arr) => (
-      <span
-        key={idx}
-        className="doc-word"
-        style={{
-          display: 'inline-block',
-          marginRight: idx < arr.length - 1 ? `${spacePx}px` : '0px',
-        }}
-      >
-        {word}
-      </span>
-    ));
-  };
+  const renderSpacedText = (text: string) => text;
 
   return (
     <div className="report-view-wrapper">
+      <div className="report-options no-print">
+        <button type="button" className="btn-outline" onClick={() => setShowReportOptions((open) => !open)} aria-expanded={showReportOptions}>
+          Personnaliser le rapport
+        </button>
+        {showReportOptions && <div className="report-options-panel">
+          <strong>Sections à inclure</strong>
+          <label><input type="checkbox" disabled={!customizationLoaded} checked={includedSections.scores} onChange={(e) => updateCustomization({ includedSections: { ...includedSections, scores: e.target.checked } })} /> Scores par catégorie</label>
+          <label><input type="checkbox" disabled={!customizationLoaded} checked={includedSections.sources} onChange={(e) => updateCustomization({ includedSections: { ...includedSections, sources: e.target.checked } })} /> Transparence & méthodologie</label>
+          <label><input type="checkbox" disabled={!customizationLoaded} checked={includedSections.impressions} onChange={(e) => updateCustomization({ includedSections: { ...includedSections, impressions: e.target.checked } })} /> Observations terrain</label>
+          <div className="report-notes-fields">
+            <label>Points forts<textarea disabled={!customizationLoaded} maxLength={160} value={strengths} onChange={(e) => updateCustomization({ strengths: e.target.value })} placeholder="Ex. Tram à proximité, commerces accessibles…" /></label>
+            <label>Réserves<textarea disabled={!customizationLoaded} maxLength={160} value={reservations} onChange={(e) => updateCustomization({ reservations: e.target.value })} placeholder="Ex. Peu de stationnement, rue passante…" /></label>
+          </div>
+          <span className={`report-save-hint ${customizationSyncState === 'error' ? 'error' : ''}`} aria-live="polite">
+            {customizationSyncState === 'loading' ? 'Chargement des préférences depuis le serveur…' :
+              customizationSyncState === 'saving' ? 'Synchronisation avec le serveur…' :
+              customizationSyncState === 'ready' ? 'Sauvegarde serveur prête' :
+              customizationSyncState === 'saved' ? 'Enregistré sur le serveur' :
+              customizationSyncState === 'error' ? 'Serveur indisponible : copie locale conservée' :
+              'Enregistré sur cet appareil (mode démo)'}
+          </span>
+        </div>}
+      </div>
       {/* Top action bar (hidden during print) */}
       <div className="report-actions-bar no-print">
         <button className="btn-outline back-btn" onClick={onBackToEdit}>
@@ -238,11 +391,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
 
           <div className="header-agent-badge">
             <span className="agent-agency">
-              {getAgentNameParts().map((part, idx) => (
-                <span key={idx} className="agent-name-word">
-                  {part}
-                </span>
-              ))}
+              {getAgentName()}
             </span>
             <span className="agent-rep">{user?.agency ? user.agency : "Agent certifié Citynside"}</span>
             <span className="agent-date">
@@ -250,7 +399,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
                 size={12}
                 style={{ display: "inline", marginRight: "4px" }}
               />
-              {`Édité le ${new Date().toLocaleDateString("fr-FR")}`}
+              {`Analyse réalisée le ${new Date(analysis.createdAt).toLocaleDateString("fr-FR")}`}
             </span>
           </div>
         </header>
@@ -286,51 +435,48 @@ export const ReportView: React.FC<ReportViewProps> = ({
           </div>
         </section>
 
+        {(strengths.trim() || reservations.trim()) && <section className="report-notes-strip">
+          {strengths.trim() && <div><strong>Points forts</strong><p>{strengths.trim()}</p></div>}
+          {reservations.trim() && <div><strong>Réserves</strong><p>{reservations.trim()}</p></div>}
+        </section>}
+
         {/* Dual Column: Categories Breakdown + Agent Impressions */}
-        <div className="sheet-grid-content">
+        <div className="sheet-grid-content single-column">
           {/* Left Column: Calculated Data Scores */}
-          <div className="sheet-col-scores">
+          {includedSections.scores && <div className="sheet-col-scores">
             <h3 className="section-title">
               Indicateurs Objectifs & Données Publiques
             </h3>
             <div className="report-categories-list">
-              {analysis.categories.map((cat) => (
-                <div key={cat.category} className="report-cat-row">
+              {analysis.categories.map((cat) => {
+                const nearestFactor = cat.positiveFactors?.find((factor) => /\d+\s*m/i.test(factor.label));
+                const factorPlace = nearestFactor?.label.replace(/\s+à\s+\d+\s*m.*$/i, "").trim();
+                const placeAlreadyMentioned = Boolean(factorPlace && cat.highlightText.toLocaleLowerCase("fr").includes(factorPlace.toLocaleLowerCase("fr")));
+                return <div key={cat.category} className="report-cat-row">
                   <div className="cat-row-left">
                     <span className="cat-title-text">{cat.label}</span>
                     <span className="cat-highlight">{cat.highlightText}</span>
+                    {nearestFactor && !placeAlreadyMentioned && <span className="cat-distance">Distance : {nearestFactor.label.match(/\d+\s*m/i)?.[0].replace(/m/i, ' m')}</span>}
                   </div>
                   <div className="cat-row-right">
                     <span className="cat-score-pill">
                       <b>{cat.score.toFixed(1)}</b>/10
                     </span>
+                    <span className="report-score-level">{cat.score >= 9 ? "Très favorable" : cat.score >= 7 ? "Favorable" : cat.score >= 5 ? "À améliorer" : "Vigilance"}</span>
                   </div>
-                </div>
-              ))}
+                  <div className="report-score-track" role="img" aria-label={`${cat.score.toFixed(1)} sur 10`}><span style={{ width: `${Math.max(0, Math.min(10, cat.score)) * 10}%` }} /></div>
+                </div>;
+              })}
             </div>
-
-            {/* Methodology Note */}
-            <div className="methodology-box">
-              <div className="meth-header">
-                <ShieldCheck size={16} />
-                <span>{renderSpacedText("Transparence & Méthodologie", 5)}</span>
-              </div>
-              <p className="meth-text">
-                {renderSpacedText("Les scores sont calculés par algorithme multi-critères selon l'accessibilité piétonne (rayons de 300 à 900 m), la variété des équipements et l'exposition sonore.", 4)}
-              </p>
-              <div className="sources-tags-cloud">
-                <span>Base Adresse Nationale</span>
-                <span>OpenStreetMap</span>
-                <span>INSEE BPE</span>
-                <span>Cerema Bruit</span>
-              </div>
-            </div>
-          </div>
+          </div>}
 
           {/* Right Column: Agent Field Impressions */}
-          <div className="sheet-col-impressions">
+          {hasRightSections && <div className={`sheet-col-impressions ${includedSections.impressions ? 'has-impressions' : ''} ${includedSections.sources ? 'has-sources' : ''}`}>
+            {includedSections.impressions && <>
             <h3 className="section-title">Observations Terrain de l'Agent</h3>
             <div className="impressions-report-card">
+              {!analysis.impressions && <p className="imp-no-data">Aucune observation terrain renseignée pour cette analyse.</p>}
+              {analysis.impressions && <>
               <div className="imp-block">
                 <span className="imp-label">Atmosphère & Sécurité</span>
                 <p className="imp-text">
@@ -404,6 +550,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
                   </p>
                 )}
               </div>
+              </>}
             </div>
 
             {/* Client Guarantee Badge */}
@@ -411,18 +558,23 @@ export const ReportView: React.FC<ReportViewProps> = ({
               <Award size={28} className="award-icon" />
               <div>
                 <p className="g-desc">
-                  {renderSpacedText("Document remis dans le cadre du devoir de conseil de l'agent immobilier.", 4)}
+                  {renderSpacedText("Document remis dans le cadre du devoir de conseil de l'agent immobilier.")}
                 </p>
               </div>
             </div>
-          </div>
+            </>}
+            {includedSections.sources && <div className="methodology-box">
+              <div className="meth-header">
+                <ShieldCheck size={16} />
+                <span>{renderSpacedText("Transparence & Méthodologie")}</span>
+              </div>
+              <p className="meth-text">
+                {renderSpacedText("Les scores sont calculés à partir de plusieurs sources publiques fiables et de critères liés à l'environnement du quartier.")}
+              </p>
+            </div>}
+          </div>}
         </div>
 
-        {/* Sheet Footer */}
-        <footer className="sheet-footer">
-          <span>Citynside — L'expert de l'analyse immobilière</span>
-          <span>Page 1 / 1</span>
-        </footer>
       </div>
 
       <style>{`
@@ -447,6 +599,20 @@ export const ReportView: React.FC<ReportViewProps> = ({
           width: 100%;
           max-width: 794px;
         }
+
+        .report-options { width: 100%; max-width: 794px; margin: 0 auto -8px; }
+        .report-options-panel { margin-top: 10px; padding: 16px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 18px; background: #fff; border: 1px solid var(--color-border); border-radius: 10px; }
+        .report-options-panel>strong { grid-column: 1 / -1; color: var(--color-primary); }
+        .report-options-panel>label { display: flex; align-items: center; gap: 8px; color: var(--color-text-main); font-size: .82rem; }
+        .report-notes-fields { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .report-notes-fields label { display: grid; gap: 6px; color: var(--color-primary); font-size: .8rem; font-weight: 650; }
+        .report-notes-fields textarea { min-height: 64px; padding: 9px 11px; resize: vertical; border: 1px solid var(--color-border); border-radius: 7px; font: inherit; font-weight: 400; }
+        .report-save-hint { grid-column: 1 / -1; color: var(--color-text-muted); font-size: .72rem; }
+        .report-notes-strip { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0 10px; }
+        .report-notes-strip>div { padding: 9px 11px; border-radius: 6px; background: #f3f7f2; }
+        .report-notes-strip>div+div { background: #fff7ed; }
+        .report-notes-strip strong { font-size: .67rem; text-transform: uppercase; color: var(--color-primary); }
+        .report-notes-strip p { margin: 3px 0 0; font-size: .72rem; line-height: 1.35; color: #34433b; overflow-wrap: anywhere; }
 
         /* Actions en haut de page */
         .actions-right {
@@ -522,11 +688,12 @@ export const ReportView: React.FC<ReportViewProps> = ({
           background-image: radial-gradient(circle at 100% 0%, rgba(46,125,50,0.03) 0%, transparent 40%),
                             radial-gradient(circle at 0% 100%, rgba(46,125,50,0.03) 0%, transparent 40%);
           position: relative;
-          overflow: hidden;
-          /* A4 dimensions for perfect single-page capture */
+          overflow: visible;
+          /* Keep A4 width but let long reports continue below the first screen page. */
           width: 794px;
-          height: 1120px;
-          max-height: 1120px;
+          min-height: 1120px;
+          height: auto;
+          max-height: none;
           box-sizing: border-box;
           flex-shrink: 0;
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
@@ -731,6 +898,8 @@ export const ReportView: React.FC<ReportViewProps> = ({
           gap: 28px;
           margin-top: 4px;
         }
+        .sheet-grid-content.single-column { grid-template-columns: 1fr; }
+        .sheet-grid-content.two-columns { grid-template-columns: 1.15fr .85fr; }
 
         .section-title {
           font-size: 0.9rem;
@@ -753,15 +922,18 @@ export const ReportView: React.FC<ReportViewProps> = ({
         }
 
         .report-categories-list {
-          display: flex;
-          flex-direction: column;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 10px;
         }
 
         .report-cat-row {
-          display: flex;
+          min-width: 0;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          grid-template-areas: "left right" "track track";
+          row-gap: 6px;
           align-items: center;
-          justify-content: space-between;
           padding: 12px 16px;
           background: #ffffff;
           border: 1px solid rgba(0,0,0,0.06);
@@ -770,8 +942,11 @@ export const ReportView: React.FC<ReportViewProps> = ({
         }
 
         .cat-row-left {
+          grid-area: left;
+          min-width: 0;
           display: flex;
           flex-direction: column;
+          overflow-wrap: anywhere;
         }
 
         .cat-title-text {
@@ -780,13 +955,17 @@ export const ReportView: React.FC<ReportViewProps> = ({
           font-weight: 700;
           color: var(--color-text-main);
           margin-bottom: 2px;
+          overflow-wrap: anywhere;
         }
 
         .cat-highlight {
           font-family: var(--font-family-body);
           font-size: 0.76rem;
           color: var(--color-text-muted);
+          overflow-wrap: anywhere;
+          white-space: normal;
         }
+        .cat-distance { margin-top: 3px; color: #48634f; font-size: .66rem; line-height: 1.3; overflow-wrap: anywhere; white-space: normal; }
 
         /* Pill score en vert */
         .cat-score-pill {
@@ -798,6 +977,11 @@ export const ReportView: React.FC<ReportViewProps> = ({
           border-radius: 99px;
           font-weight: 700;
         }
+
+        .cat-row-right { grid-area: right; min-width: 68px; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; align-self: start; }
+        .report-score-level { color: #52665b; font-size: .62rem; font-weight: 700; }
+        .report-score-track { grid-area: track; width: 100%; height: 4px; overflow: hidden; border-radius: 99px; background: #e7eee8; }
+        .report-score-track span { display: block; height: 100%; border-radius: inherit; background: #5c8a65; }
 
         .methodology-box {
           margin-top: 18px;
@@ -826,6 +1010,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
           color: var(--color-text-muted);
           line-height: 1.45;
           margin: 0;
+          overflow-wrap: anywhere;
         }
 
         .sources-tags-cloud {
@@ -849,8 +1034,9 @@ export const ReportView: React.FC<ReportViewProps> = ({
 
         /* Colonne impressions */
         .impressions-report-card {
-          display: flex;
-          flex-direction: column;
+          grid-column: 1 / -1;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 16px;
           background: #ffffff;
           border: 1px solid rgba(0, 0, 0, 0.06);
@@ -858,6 +1044,14 @@ export const ReportView: React.FC<ReportViewProps> = ({
           border-radius: 8px;
           padding: 20px;
         }
+
+        .imp-no-data { margin: 0; color: #52665b; font-size: .78rem; line-height: 1.5; }
+        .sheet-col-impressions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; margin-top: var(--observations-page-gap, 0px); }
+        .sheet-col-impressions>.section-title { grid-column: 1 / -1; margin-bottom: 0; }
+        .sheet-col-impressions>.methodology-box { grid-column: 2; margin-top: 0; }
+        .sheet-col-impressions:not(.has-impressions)>.methodology-box,
+        .sheet-col-impressions:not(.has-sources)>.guarantee-badge { grid-column: 1 / -1; }
+        .impressions-report-card .imp-no-data { grid-column: 1 / -1; }
 
         .imp-block {
           display: flex;
@@ -885,6 +1079,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
           color: var(--color-text-main);
           margin: 0;
           font-weight: 500;
+          overflow-wrap: anywhere;
         }
 
         .imp-sub {
@@ -892,6 +1087,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
           font-size: 0.78rem;
           color: var(--color-text-muted);
           margin: 0;
+          overflow-wrap: anywhere;
         }
 
         .imp-subquote {
@@ -904,6 +1100,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
           padding: 8px 12px;
           border-radius: 0 4px 4px 0;
           margin: 4px 0 0 0;
+          overflow-wrap: anywhere;
         }
 
         .pill-tags-list {
@@ -966,7 +1163,6 @@ export const ReportView: React.FC<ReportViewProps> = ({
           opacity: 0.95;
           margin: 0;
           line-height: 1.4;
-          word-spacing: 4px;
         }
 
         .sheet-footer {
@@ -1004,15 +1200,17 @@ export const ReportView: React.FC<ReportViewProps> = ({
             padding: 15mm 20mm !important;
             width: 100% !important;
             height: auto !important;
-            max-height: 297mm !important;
-            page-break-after: avoid !important;
-            break-after: avoid !important;
+            max-height: none !important;
+            overflow: visible !important;
+            page-break-after: auto !important;
+            break-after: auto !important;
           }
           @page {
             size: A4 portrait;
             margin: 0;
           }
         }
+        @media(max-width:700px){.report-options-panel{grid-template-columns:1fr}.report-notes-fields,.report-categories-list,.impressions-report-card,.sheet-col-impressions{grid-template-columns:1fr}.sheet-col-impressions>.methodology-box,.sheet-col-impressions:not(.has-impressions)>.methodology-box{grid-column:1}.report-cat-row{grid-template-columns:minmax(0,1fr) auto}}
       `}</style>
     </div>
   );

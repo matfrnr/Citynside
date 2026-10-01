@@ -96,6 +96,7 @@ export interface AuthUser {
   lastName?: string;
   phone?: string;
   agency?: string;
+  agencyCity?: string;
   role?: string;
 }
 
@@ -105,5 +106,6 @@ export type AppView =
   | "impressions"
   | "report"
   | "enregistrements"
+  | "comparison"
   | "notifications"
   | "profile";

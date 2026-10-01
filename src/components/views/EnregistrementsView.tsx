@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Search, Building2, ArrowRight, Calendar, Star, Trash2, Pencil } from 'lucide-react';
 import type { NeighborhoodAnalysis } from '../../types';
 
@@ -21,19 +21,32 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
 }) => {
   const [filterQuery, setFilterQuery] = useState('');
   const [onlyFavorites, setOnlyFavorites] = useState(false);
+  const [selectedCity, setSelectedCity] = useState('all');
+  const [minimumScore, setMinimumScore] = useState('all');
+  const [sortOrder, setSortOrder] = useState('recent');
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameName, setRenameName] = useState('');
 
+  const cities = [...new Set(analyses.map((item) => item.city.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
   const filtered = analyses.filter((item) => {
+    const query = filterQuery.trim().toLocaleLowerCase('fr');
     const matchesSearch =
-      (item.neighborhoodName || '').toLowerCase().includes(filterQuery.toLowerCase()) ||
-      item.city.toLowerCase().includes(filterQuery.toLowerCase()) ||
-      item.address.toLowerCase().includes(filterQuery.toLowerCase());
+      (item.neighborhoodName || '').toLocaleLowerCase('fr').includes(query) ||
+      item.city.toLocaleLowerCase('fr').includes(query) ||
+      item.address.toLocaleLowerCase('fr').includes(query);
     const matchesFav = onlyFavorites ? item.isFavorite : true;
-    return matchesSearch && matchesFav;
+    const matchesCity = selectedCity === 'all' || item.city === selectedCity;
+    const matchesScore = minimumScore === 'all' || item.globalScore >= Number(minimumScore);
+    return matchesSearch && matchesFav && matchesCity && matchesScore;
+  }).sort((a, b) => {
+    if (sortOrder === 'score-desc') return b.globalScore - a.globalScore;
+    if (sortOrder === 'score-asc') return a.globalScore - b.globalScore;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
+
+  useEffect(() => setVisibleCount(ITEMS_PER_PAGE), [filterQuery, onlyFavorites, selectedCity, minimumScore, sortOrder]);
 
   const displayed = filtered.slice(0, visibleCount);
   const hasMore = filtered.length > visibleCount;
@@ -68,7 +81,7 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
 
       {/* Filter and search bar */}
       <div className="enreg-toolbar">
-        <div className="search-filter-box">
+        <div className="search-filter-box toolbar-search">
           <Search size={16} className="s-icon" />
           <input
             type="text"
@@ -79,12 +92,27 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
         </div>
 
         <button
-          className={`filter-btn ${onlyFavorites ? 'active' : ''}`}
+          className={`filter-btn toolbar-favorites ${onlyFavorites ? 'active' : ''}`}
           onClick={() => setOnlyFavorites(!onlyFavorites)}
         >
           <Star size={15} fill={onlyFavorites ? 'currentColor' : 'none'} />
           <span>Favoris uniquement ({analyses.filter((a) => a.isFavorite).length})</span>
         </button>
+        <select className="enreg-select toolbar-city" value={selectedCity} onChange={(e) => setSelectedCity(e.target.value)} aria-label="Filtrer par ville">
+          <option value="all">Toutes les villes</option>
+          {cities.map((city) => <option key={city} value={city}>{city}</option>)}
+        </select>
+        <select className="enreg-select toolbar-score" value={minimumScore} onChange={(e) => setMinimumScore(e.target.value)} aria-label="Filtrer par score minimum">
+          <option value="all">Tous les scores</option>
+          <option value="5">5/10 et plus</option>
+          <option value="7">7/10 et plus</option>
+          <option value="8">8/10 et plus</option>
+        </select>
+        <select className="enreg-select toolbar-sort" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} aria-label="Trier les analyses">
+          <option value="recent">Plus récentes</option>
+          <option value="score-desc">Meilleures notes</option>
+          <option value="score-asc">Notes les plus basses</option>
+        </select>
       </div>
 
       {/* Counter */}
@@ -263,12 +291,14 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
         }
 
         .enreg-toolbar {
-          display: flex;
+          display: grid;
+          grid-template-columns: repeat(6, minmax(0, 1fr));
           align-items: center;
-          justify-content: space-between;
-          gap: 16px;
-          flex-wrap: wrap;
+          gap: 12px 14px;
         }
+
+        .toolbar-search, .toolbar-favorites, .toolbar-city { grid-column: span 2; width: 100%; min-width: 0; }
+        .toolbar-score, .toolbar-sort { grid-column: span 3; width: 100%; min-width: 0; }
 
         /* Barre de recherche en fond blanc */
         .search-filter-box {
@@ -279,8 +309,7 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
           border: 1px solid var(--color-border);
           border-radius: var(--radius-full);
           padding: 9px 18px;
-          flex: 1;
-          max-width: 420px;
+          max-width: none;
           transition: border-color 0.15s ease;
         }
 
@@ -323,6 +352,15 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
           color: var(--color-primary-dark);
           border-color: var(--color-green);
           font-weight: 700;
+        }
+
+        .enreg-select { min-height: 40px; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-full); background: #fff; color: var(--color-primary); font: inherit; font-size: .82rem; }
+
+        @media (max-width: 800px) {
+          .enreg-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+          .toolbar-search, .toolbar-favorites { grid-column: span 2; }
+          .toolbar-city, .toolbar-score { grid-column: span 1; }
+          .toolbar-sort { grid-column: span 2; }
         }
 
         .enreg-count {
