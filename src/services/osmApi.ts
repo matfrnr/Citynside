@@ -173,7 +173,7 @@ async function fetchFastFromOverpass(
   externalSignal?: AbortSignal,
 ): Promise<POI[]> {
   const mirrorsPerBatch = 3;
-  const requestTimeoutMs = import.meta.env.PROD ? 12000 : 10000;
+  const requestTimeoutMs = import.meta.env.PROD ? 25000 : 10000;
 
   // Les miroirs Overpass servent la même base. Les interroger par petits groupes
   // évite d'attendre plusieurs délais de 10 s en série si un serveur est lent.
@@ -183,8 +183,8 @@ async function fetchFastFromOverpass(
     const controllers = mirrors.map(() => new AbortController());
     const attempts = mirrors.map(async (mirrorUrl, index) => {
       const controller = controllers[index];
-      const timeoutId = setTimeout(() => controller.abort(), requestTimeoutMs);
-      const abortFromSearch = () => controller.abort();
+      const timeoutId = setTimeout(() => controller.abort(new Error("Timeout client dépassé (25s)")), requestTimeoutMs);
+      const abortFromSearch = () => controller.abort(new Error("Recherche annulée par l'utilisateur"));
       externalSignal?.addEventListener("abort", abortFromSearch, { once: true });
       try {
         const response = await fetch(mirrorUrl, {

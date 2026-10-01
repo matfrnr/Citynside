@@ -3,12 +3,12 @@ export const config = {
 };
 
 const OVERPASS_ENDPOINTS = [
-  "https://overpass.private.coffee/api/interpreter",
-  "https://overpass.kumi.systems/api/interpreter",
-  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
   "https://overpass-api.de/api/interpreter",
   "https://lz4.overpass-api.de/api/interpreter",
   "https://z.overpass-api.de/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 ];
 
 const responseCache = new Map();
@@ -60,7 +60,7 @@ export default async (request) => {
       if (recent && Date.now() - recent.timestamp < CACHE_TTL_MS) return recent.body;
 
       const failures = [];
-      const globalDeadline = Date.now() + 15000; // Vercel has 15s+ for hobby, edge functions are longer, let's use 15s
+      const globalDeadline = Date.now() + 20000;
       
       const batches = [
         OVERPASS_ENDPOINTS.slice(0, 3),
@@ -71,28 +71,39 @@ export default async (request) => {
         const remainingMs = globalDeadline - Date.now();
         if (remainingMs < 500) break;
 
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), remainingMs);
+        const batchController = new AbortController();
+        const batchTimeout = setTimeout(() => batchController.abort(), remainingMs);
 
         try {
           const attempts = batch.map(async (endpoint) => {
-            const response = await fetch(endpoint, {
-              method: "POST",
-              headers: {
-                "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-                accept: "application/json",
-                "user-agent": "Citynside/1.0",
-              },
-              body: new URLSearchParams({ data: encodedQuery }),
-              signal: controller.signal,
-            });
-            if (!response.ok) throw new Error(`HTTP ${response.status} from ${endpoint}`);
-
-            const responseBody = await response.text();
-            const parsed = JSON.parse(responseBody);
-            if (!parsed || !Array.isArray(parsed.elements)) throw new Error(`Réponse JSON invalide de ${endpoint}`);
+            const reqController = new AbortController();
+            const reqTimeout = setTimeout(() => reqController.abort(), 6500); // 6.5s per request max
             
-            return { body: responseBody, endpoint };
+            const abortFromBatch = () => reqController.abort();
+            batchController.signal.addEventListener("abort", abortFromBatch);
+
+            try {
+              const response = await fetch(endpoint, {
+                method: "POST",
+                headers: {
+                  "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+                  accept: "application/json",
+                  "user-agent": "Citynside/1.0",
+                },
+                body: new URLSearchParams({ data: encodedQuery }),
+                signal: reqController.signal,
+              });
+              if (!response.ok) throw new Error(`HTTP ${response.status} from ${endpoint}`);
+
+              const responseBody = await response.text();
+              const parsed = JSON.parse(responseBody);
+              if (!parsed || !Array.isArray(parsed.elements)) throw new Error(`Réponse JSON invalide de ${endpoint}`);
+              
+              return { body: responseBody, endpoint };
+            } finally {
+              clearTimeout(reqTimeout);
+              batchController.signal.removeEventListener("abort", abortFromBatch);
+            }
           });
 
           const result = await Promise.any(attempts);
@@ -107,8 +118,8 @@ export default async (request) => {
             failures.push(`Timeout or error: ${error.message}`);
           }
         } finally {
-          clearTimeout(timeout);
-          controller.abort();
+          clearTimeout(batchTimeout);
+          batchController.abort();
         }
       }
 
