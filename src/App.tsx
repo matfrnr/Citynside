@@ -23,7 +23,7 @@ import {
   saveAnalysis,
   toggleFavorite,
 } from "./services/storage";
-import { mapProfileRowToAuthUser, supabase } from "./services/supabase";
+import { mapProfileRowToAuthUser, mapSupabaseUser, supabase } from "./services/supabase";
 import {
   type AppView,
   type AuthUser,
@@ -183,12 +183,22 @@ export const App: React.FC = () => {
       .then(async ({ data: { session }, error }) => {
         if (cancelled) return;
         if (session?.user && !error) {
-          const user = await fetchUserProfile(session.user);
+          // Afficher tout de suite l'application avec les informations déjà
+          // disponibles dans la session. Les appels Supabase secondaires ne
+          // doivent pas bloquer le premier affichage après un rechargement.
+          const user = mapSupabaseUser(session.user);
           setAuthUser(user);
-          await notifyAccountActivated(user.id).catch((err) => console.warn("Notification d’activation non enregistrée :", err));
-          await registerCurrentDevice(user.id).catch((err) => console.warn("Vérification du nouvel appareil impossible :", err));
-          await refreshImportantNotificationsCount(user.id);
-          await loadUserAnalyses(user.id, true);
+          void loadUserAnalyses(user.id, true);
+          setAuthChecking(false);
+
+          void Promise.allSettled([
+            fetchUserProfile(session.user).then((profile) => {
+              if (!cancelled) setAuthUser(profile);
+            }),
+            notifyAccountActivated(user.id),
+            registerCurrentDevice(user.id),
+          ]);
+          return;
         }
         setAuthChecking(false);
       })
@@ -204,6 +214,9 @@ export const App: React.FC = () => {
 
       // Ne jamais écraser l'écran ou l'analyse en cours lors d'un simple rafraîchissement de token (ex: Alt+Tab)
       if (event === "TOKEN_REFRESHED") return;
+      // La restauration initiale est gérée par getSession ci-dessus, sans
+      // bloquer l'affichage sur les appels de profil et d'historique.
+      if (event === "INITIAL_SESSION") return;
 
       if (session?.user) {
         const user = await fetchUserProfile(session.user);
