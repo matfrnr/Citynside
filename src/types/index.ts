@@ -19,7 +19,8 @@ export type POICategory =
   | "sante"
   | "espaces_verts"
   | "stationnement"
-  | "loisirs";
+  | "loisirs"
+  | "tranquillite";
 
 export interface RiskFinding {
   id: string;

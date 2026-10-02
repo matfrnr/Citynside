@@ -153,7 +153,9 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
     const filteredPOIs = pois.filter((poi) =>
       poi.distanceMeters <= ANALYSIS_RADIUS_METERS ||
-      (poi.category === 'transports' && poi.distanceMeters <= EXTENDED_TRANSIT_RADIUS_METERS),
+      (poi.category === 'transports' &&
+        /gare ferroviaire|arrêt ferroviaire/i.test(poi.subType) &&
+        poi.distanceMeters <= EXTENDED_TRANSIT_RADIUS_METERS),
     ).filter((poi) => !selectedCategory || poi.category === selectedCategory);
 
     const categoryColors: Record<string, string> = {
@@ -164,6 +166,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       espaces_verts: '#15803d',
       stationnement: '#475569',
       loisirs: '#be185d',
+      tranquillite: '#0f766e',
     };
 
     // Couleur spécifique par sous-type (ex: pharmacies = vert croix distinctif)

@@ -39,8 +39,25 @@ export async function fetchNationalTransitStops(
           if (!Number.isFinite(pLat) || !Number.isFinite(pLon) || distanceMeters > radiusMeters) return null;
           const name = String(props.stop_name || props.name || "").trim();
           if (!name) return null;
-          const agency = String(props.agency_name || props.dataset_organisation || "").trim();
-          return { id: `gtfs_${props.di_id || props.stop_id || `${pLat}_${pLon}`}`, name, category: "transports" as const, subType: agency ? `Arrêt de transport · ${agency}` : "Arrêt de transport", lat: pLat, lon: pLon, distanceMeters };
+          const source = String(props.dataset_title || props.d_title || props.agency_name || "").trim();
+          const modeText = `${source} ${name}`.toLowerCase();
+          const sourceText = source.toLowerCase();
+          const stopText = name.toLowerCase();
+          const isGareRoutiere = /\bgare routi[èe]re\b/.test(stopText);
+          const hasStreetAddress = /\b(rue|avenue|av|boulevard|bd|bvd|place|pl|route|pont|chemin)\b.*(\bgare\b|\bsncf\b|\bter\b)/.test(stopText);
+          const isBusOrCar = /\b(bus|car|cars|autocar|autocars)\b/.test(modeText);
+          const explicitRail = !isGareRoutiere && !hasStreetAddress && !isBusOrCar && (
+            /(\bgare\b|\bsncf\b|\bter\b|ferroviaire)/.test(stopText) ||
+            /(\bsncf\b|\bter\b|ferroviaire)/.test(sourceText)
+          );
+          const subType = /tram|light rail|métro|metro/.test(modeText)
+            ? "Arrêt de tramway / métro"
+            : explicitRail
+              ? "Gare / arrêt ferroviaire"
+              : isBusOrCar
+                ? "Arrêt de car"
+                : "Arrêt de transport";
+          return { id: `gtfs_${props.di_id || props.stop_id || `${pLat}_${pLon}`}`, name, category: "transports" as const, subType, lat: pLat, lon: pLon, distanceMeters };
         }).filter(Boolean) as POI[];
         if (pois.length) return pois;
       } catch { /* repli Mapbox */ }

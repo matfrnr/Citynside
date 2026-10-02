@@ -22,6 +22,7 @@ export function calculateCategoryScores(
   const espacesVerts = pois.filter((p) => p.category === "espaces_verts");
   const stationnement = pois.filter((p) => p.category === "stationnement");
   const loisirs = pois.filter((p) => p.category === "loisirs");
+  const security = pois.filter((p) => p.category === "tranquillite");
 
   // =========================================================================
   // 1. TRANSPORTS (Sur 10)
@@ -39,6 +40,9 @@ export function calculateCategoryScores(
   );
   const closestBus = transports.find((p) =>
     p.subType.toLowerCase().includes("bus"),
+  );
+  const closestGenericStop = transports.find((p) =>
+    p.subType.toLowerCase().includes("arrêt de transport"),
   );
   const bikeRental = transports.find((p) =>
     p.subType.toLowerCase().includes("vélo"),
@@ -98,6 +102,15 @@ export function calculateCategoryScores(
         detail: "Desserte de quartier accessible.",
       });
     }
+  } else if (closestGenericStop) {
+    const points = closestGenericStop.distanceMeters <= 200 ? 1.1 : 0.7;
+    transportScore += points;
+    transportPositive.push({
+      label: `${closestGenericStop.name || "Arrêt de transport"} à ${closestGenericStop.distanceMeters}m`,
+      points,
+      impact: "positive",
+      detail: "Arrêt de transport recensé à proximité ; le mode précis n'est pas fourni par la source.",
+    });
   } else {
     transportScore -= 1.0;
     transportNegative.push({
@@ -121,6 +134,9 @@ export function calculateCategoryScores(
   const busCount = transports.filter((p) =>
     p.subType.toLowerCase().includes("bus"),
   ).length;
+  const genericStopCount = transports.filter((p) =>
+    p.subType.toLowerCase().includes("arrêt de transport"),
+  ).length;
   if (busCount >= 3) {
     transportScore += 0.7;
     transportPositive.push({
@@ -128,6 +144,15 @@ export function calculateCategoryScores(
       points: 0.7,
       impact: "positive",
       detail: "Multiples lignes alternatives disponibles.",
+    });
+  }
+  if (genericStopCount >= 3) {
+    transportScore += 0.4;
+    transportPositive.push({
+      label: `Desserte locale recensée (${genericStopCount} arrêts)`,
+      points: 0.4,
+      impact: "positive",
+      detail: "Plusieurs arrêts sont recensés, sans extrapoler leur mode de transport.",
     });
   }
 
@@ -628,6 +653,18 @@ export function calculateCategoryScores(
     });
   }
 
+  const closestSecurity = [...security].sort((a, b) => a.distanceMeters - b.distanceMeters)[0];
+  if (closestSecurity) {
+    const points = closestSecurity.distanceMeters <= 800 ? 0.8 : 0.4;
+    tranquilityScore += points;
+    tranquilityPositive.push({
+      label: `${closestSecurity.subType} à ${closestSecurity.distanceMeters}m`,
+      points,
+      impact: "positive",
+      detail: "Service de sécurité publique recensé à proximité.",
+    });
+  }
+
   // Prise en compte de la qualité de l'air réelle si disponible
   if (airQuality) {
     if (airQuality.scoreImpact > 0) {
@@ -929,7 +966,7 @@ export function calculateCategoryScores(
           : finalTranquilityScore >= 7.5
             ? "Environnement calme estimé"
             : "Ambiance modérée",
-      poisFoundCount: 0,
+      poisFoundCount: security.length,
       positiveFactors: tranquilityPositive,
       negativeFactors: tranquilityNegative,
       details: [

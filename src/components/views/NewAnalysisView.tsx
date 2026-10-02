@@ -96,6 +96,17 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
           }
           return false;
         }
+        // Deux arrêts proches ne sont fusionnés que si leur nom est
+        // strictement identique : deux arrêts différents peuvent partager le
+        // même type et se trouver sur le même quai ou dans la même rue.
+        if (p.category === "transports") {
+          const sameRail = /gare ferroviaire|arrêt ferroviaire/i.test(existing.subType) &&
+            /gare ferroviaire|arrêt ferroviaire/i.test(p.subType);
+          if (sameRail && d <= 120) return true;
+          return Boolean(existing.name && p.name) &&
+            existing.name!.trim().toLowerCase() === p.name!.trim().toLowerCase() &&
+            d <= 30;
+        }
         // Pour les autres catégories : même sous-type à moins de 25m
         return existing.subType === p.subType && d <= 25;
       });
