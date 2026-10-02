@@ -1,8 +1,5 @@
 import type { POI, POICategory } from "../types";
 
-/**
- * Calcul de la distance haversine en mètres entre deux coordonnées géographiques
- */
 export function calculateDistanceMeters(
   lat1: number,
   lon1: number,
@@ -39,14 +36,12 @@ export const EXTENDED_TRANSIT_RADIUS_METERS = 1200;
 function getCacheKey(lat: number, lon: number, radius: number): string {
   const roundedLat = Math.round(lat * 10000) / 10000;
   const roundedLon = Math.round(lon * 10000) / 10000;
-  return `cyt_pois_mapbox_${roundedLat}_${roundedLon}_${radius}`;
+  return `cyt_mapbox_v5_${roundedLat}_${roundedLon}_${radius}`;
 }
 
 function getCachedPOIs(key: string): POI[] | null {
   const memEntry = poisMemoryCache.get(key);
-  if (memEntry && Date.now() - memEntry.timestamp < CACHE_TTL_MS) {
-    return memEntry.pois;
-  }
+  if (memEntry && Date.now() - memEntry.timestamp < CACHE_TTL_MS) return memEntry.pois;
   try {
     const raw = sessionStorage.getItem(key);
     if (raw) {
@@ -64,28 +59,26 @@ function getCachedPOIs(key: string): POI[] | null {
 function setCachedPOIs(key: string, pois: POI[]): void {
   const entry: CacheEntry = { pois, timestamp: Date.now() };
   poisMemoryCache.set(key, entry);
-  try {
-    sessionStorage.setItem(key, JSON.stringify(entry));
-  } catch {}
-  if (poisMemoryCache.size > 80) {
-    const oldestKey = poisMemoryCache.keys().next().value;
-    if (oldestKey) poisMemoryCache.delete(oldestKey);
-  }
+  try { sessionStorage.setItem(key, JSON.stringify(entry)); } catch {}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Mapbox API Integration
+// Mapbox API Integration - Requêtes éclatées avec "Batching" (Évite l'erreur 429)
 // ─────────────────────────────────────────────────────────────────────────────
-const MAPBOX_TOKEN = "pk.eyJ1IjoiYnJhZGxleWJhcmNvbGExMjMiLCJhIjoiY211cW5vaWZoMDl5MDJ3cXJ0ZDA1d2x0MyJ9.n9X52WtZlPQjBY_4aA0A5g";
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
-const MAPBOX_QUERIES = [
-  { group: "transports", categories: "bus,train_station,subway,tram" },
-  { group: "commerces", categories: "bakery,supermarket,grocery,butcher" },
-  { group: "sante", categories: "pharmacy,hospital,doctor,dentist" },
-  { group: "ecoles", categories: "school,kindergarten,college,university" },
-  { group: "espaces_verts", categories: "park,playground" },
-  { group: "stationnement", categories: "parking" },
-  { group: "loisirs", categories: "museum,cinema,theater,sports" }
+const MAPBOX_CATEGORIES: { id: string; baseCategory: POICategory }[] = [
+  { id: "bus_stop,bus_station", baseCategory: "transports" },
+  { id: "tram,tram_stop,tram_station,light_rail", baseCategory: "transports" },
+  { id: "train_station,train,commuter_train", baseCategory: "transports" },
+  { id: "subway_station,subway", baseCategory: "transports" },
+  { id: "ferry_terminal,bicycle_rental", baseCategory: "transports" },
+  { id: "bakery,supermarket,grocery,butcher", baseCategory: "commerces" },
+  { id: "pharmacy,hospital,doctor,dentist", baseCategory: "sante" },
+  { id: "school,kindergarten,college,university", baseCategory: "ecoles" },
+  { id: "park,playground,garden", baseCategory: "espaces_verts" },
+  { id: "parking", baseCategory: "stationnement" },
+  { id: "museum,cinema,theater,theatre,performing_arts,arts_centre,sports,fitness_center,swimming_pool,library,stadium", baseCategory: "loisirs" },
 ];
 
 export async function fetchPOIsInRadius(
@@ -96,37 +89,56 @@ export async function fetchPOIsInRadius(
 ): Promise<POI[]> {
   const cacheKey = getCacheKey(lat, lon, radiusMeters);
   const cached = getCachedPOIs(cacheKey);
-  if (cached) {
-    return cached;
+  if (cached) return cached;
+
+  if (!MAPBOX_TOKEN) {
+    console.error("VITE_MAPBOX_TOKEN is missing!");
+    return [];
   }
 
   try {
-    const fetchPromises = MAPBOX_QUERIES.map(async (queryConfig) => {
-      const url = `https://api.mapbox.com/search/searchbox/v1/category/${queryConfig.categories}?access_token=${MAPBOX_TOKEN}&proximity=${lon},${lat}&limit=25`;
-      
-      const response = await fetch(url, { signal });
-      if (!response.ok) return [];
-      
-      const data = await response.json();
-      if (!data.features) return [];
-      
-      return parseMapboxFeatures(data.features, queryConfig.group as POICategory, lat, lon, radiusMeters);
-    });
+    const allPois: POI[] = [];
+    const BATCH_SIZE = 1;
 
-    const results = await Promise.all(fetchPromises);
-    const allPois = results.flat();
-    
-    const cleanPois = deduplicatePOIs(allPois);
-    cleanPois.sort((a, b) => a.distanceMeters - b.distanceMeters);
+    for (let i = 0; i < MAPBOX_CATEGORIES.length; i += BATCH_SIZE) {
+      if (signal?.aborted) break;
+      const batch = MAPBOX_CATEGORIES.slice(i, i + BATCH_SIZE);
 
-    if (cleanPois.length > 0) {
-      setCachedPOIs(cacheKey, cleanPois);
+      const batchPromises = batch.map(async (queryConfig) => {
+        const url = `https://api.mapbox.com/search/searchbox/v1/category/${queryConfig.id}?access_token=${MAPBOX_TOKEN}&proximity=${lon},${lat}&limit=25`;
+        try {
+          const response = await fetch(url, { signal });
+          if (!response.ok) return [];
+          const data = await response.json();
+          if (!data.features) return [];
+          const queryRadius = queryConfig.baseCategory === "transports"
+            ? Math.max(radiusMeters, EXTENDED_TRANSIT_RADIUS_METERS)
+            : radiusMeters;
+          return parseMapboxFeatures(data.features, queryConfig.baseCategory, lat, lon, queryRadius);
+        } catch {
+          return [];
+        }
+      });
+
+      const batchResults = await Promise.all(batchPromises);
+      allPois.push(...batchResults.flat());
+
+      // Petite pause entre chaque lot pour laisser respirer l'API Mapbox
+      if (i + BATCH_SIZE < MAPBOX_CATEGORIES.length) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
     }
-    
-    return cleanPois;
-  } catch (error) {
-    if (signal?.aborted) return [];
-    console.error("Mapbox API Error:", error);
+
+    const deduped = deduplicatePOIs(allPois);
+    deduped.sort((a, b) => a.distanceMeters - b.distanceMeters);
+
+    if (deduped.length > 0) {
+      setCachedPOIs(cacheKey, deduped);
+    }
+    return deduped;
+
+  } catch (err) {
+    console.error("Mapbox POI fetch failed:", err);
     return [];
   }
 }
@@ -141,19 +153,28 @@ function parseMapboxFeatures(
   const parsedPois: POI[] = [];
 
   for (const f of features) {
-    const pLon = f.geometry?.coordinates?.[0];
-    const pLat = f.geometry?.coordinates?.[1];
-    
-    if (!pLat || !pLon) continue;
+    const coords = f.geometry?.coordinates;
+    if (!coords || coords.length < 2) continue;
+
+    const pLon = coords[0];
+    const pLat = coords[1];
 
     const dist = calculateDistanceMeters(centerLat, centerLon, pLat, pLon);
     if (dist > radiusMeters) continue;
 
-    const name = f.properties?.name || "";
+    const name = String(f.properties?.name || f.properties?.full_address || "").trim();
+    if (!name) continue;
     const poiTypes = f.properties?.poi_category_ids || [];
-    
-    const { category, subType } = mapboxTypeToCytinside(poiTypes, name, baseCategory);
-    
+
+    // Mapbox peut renvoyer des résultats de catégorie trop larges (et parfois
+    // sans type). Pour les écoles et transports, l'identifiant de catégorie est
+    // obligatoire : un simple nom ressemblant à une école/une ligne de bus ne
+    // suffit pas à créer un point fiable.
+    if ((baseCategory === "ecoles" || baseCategory === "transports") && poiTypes.length === 0) {
+      continue;
+    }
+
+    const { category, subType } = mapboxTypeToCytinside(poiTypes, name, baseCategory, f.properties?.maki);
     if (!category) continue;
 
     parsedPois.push({
@@ -166,115 +187,105 @@ function parseMapboxFeatures(
       distanceMeters: dist
     });
   }
-
   return parsedPois;
 }
 
 function mapboxTypeToCytinside(
-  types: string[], 
-  name: string, 
-  fallbackCategory: POICategory
+  types: string[],
+  name: string,
+  fallbackCategory: POICategory,
+  maki?: string
 ): { category: POICategory | null; subType: string } {
-  const tSet = new Set(types);
+  const tSet = new Set([...types, maki].filter(Boolean));
   const nameLower = name.toLowerCase();
 
-  // Transports
-  if (tSet.has("subway") || tSet.has("subway_station") || nameLower.includes("métro") || nameLower.includes("metro")) 
+  // Ne jamais laisser le nom d'un résultat changer la famille demandée.
+  // Exemple : « Parking du Bus » reste un parking, pas un arrêt de bus.
+  if (fallbackCategory === "stationnement") {
+    return tSet.has("parking") || nameLower.includes("parking")
+      ? { category: "stationnement", subType: "Parking public" }
+      : { category: null, subType: "" };
+  }
+
+  if (tSet.has("subway") || tSet.has("subway_station") || nameLower.includes("métro") || nameLower.includes("metro"))
     return { category: "transports", subType: "Station de métro" };
-  if (tSet.has("tram") || tSet.has("tram_stop") || nameLower.includes("tramway") || nameLower.includes("tram")) 
+  if (tSet.has("tram") || tSet.has("tram_stop") || nameLower.includes("tramway") || nameLower.includes("tram") || tSet.has("light_rail"))
     return { category: "transports", subType: "Arrêt de tramway" };
-  if (tSet.has("train_station") || nameLower.includes("gare")) 
+  if (tSet.has("train_station") || tSet.has("train") || tSet.has("commuter_train") || nameLower.includes("gare"))
     return { category: "transports", subType: "Gare ferroviaire" };
-  if (tSet.has("bus") || tSet.has("bus_station")) 
+  if (tSet.has("bus") || tSet.has("bus_stop") || tSet.has("bus_station") || tSet.has("transportation") || nameLower.includes("bus") || nameLower.includes("arrêt"))
     return { category: "transports", subType: "Arrêt de bus" };
-  
-  // Commerces
+  if (tSet.has("ferry_terminal") || nameLower.includes("port") || nameLower.includes("ferry"))
+    return { category: "transports", subType: "Ferry / Port" };
+  if (tSet.has("bicycle_rental") || nameLower.includes("vélo") || nameLower.includes("velov") || nameLower.includes("metrovélo"))
+    return { category: "transports", subType: "Station vélo" };
+
+  if (fallbackCategory === "transports") return { category: null, subType: "" };
+
   if (tSet.has("bakery") || nameLower.includes("boulangerie")) return { category: "commerces", subType: "Boulangerie" };
-  if (tSet.has("grocery") || tSet.has("supermarket") || nameLower.includes("carrefour") || nameLower.includes("franprix")) 
-    return { category: "commerces", subType: "Supermarché" };
+  if (tSet.has("grocery") || tSet.has("convenience") || nameLower.includes("épicerie")) return { category: "commerces", subType: "Épicerie / Supérette" };
+  if (tSet.has("supermarket") || nameLower.includes("supermarché") || nameLower.includes("carrefour") || nameLower.includes("franprix") || nameLower.includes("auchan")) return { category: "commerces", subType: "Supermarché" };
   if (tSet.has("butcher") || nameLower.includes("boucherie")) return { category: "commerces", subType: "Boucherie" };
+  if (tSet.has("greengrocer")) return { category: "commerces", subType: "Primeur" };
 
-  // Santé
   if (tSet.has("pharmacy") || nameLower.includes("pharmacie")) return { category: "sante", subType: "Pharmacie" };
-  if (tSet.has("hospital") || nameLower.includes("hôpital") || nameLower.includes("hopital") || nameLower.includes("clinique")) 
-    return { category: "sante", subType: "Hôpital" };
+  if (tSet.has("hospital") || tSet.has("clinic") || nameLower.includes("hôpital") || nameLower.includes("clinique")) return { category: "sante", subType: "Hôpital / Clinique" };
   if (tSet.has("dentist") || nameLower.includes("dentiste")) return { category: "sante", subType: "Dentiste" };
-  if (tSet.has("doctor") || tSet.has("health_services") || nameLower.includes("médecin")) return { category: "sante", subType: "Cabinet médical" };
+  if (tSet.has("doctor") || tSet.has("medical") || nameLower.includes("médecin")) return { category: "sante", subType: "Cabinet médical" };
 
-  // Ecoles
-  if (tSet.has("kindergarten") || nameLower.includes("maternelle") || nameLower.includes("crèche")) 
-    return { category: "ecoles", subType: "Maternelle" };
-  if (tSet.has("middle_school") || nameLower.includes("collège") || nameLower.includes("college")) 
-    return { category: "ecoles", subType: "Collège" };
-  if (tSet.has("high_school") || nameLower.includes("lycée") || nameLower.includes("lycee")) 
-    return { category: "ecoles", subType: "Lycée" };
-  if (tSet.has("elementary_school") || nameLower.includes("primaire") || nameLower.includes("élémentaire") || nameLower.includes("elementaire")) 
-    return { category: "ecoles", subType: "École primaire" };
-  if (tSet.has("university") || tSet.has("college") || nameLower.includes("université") || nameLower.includes("institut")) 
-    return { category: "ecoles", subType: "École supérieure" };
-  if (tSet.has("school") || tSet.has("education") || nameLower.includes("école") || nameLower.includes("ecole")) return { category: "ecoles", subType: "École" };
+  if (tSet.has("kindergarten") || nameLower.includes("maternelle") || nameLower.includes("crèche")) return { category: "ecoles", subType: "Maternelle / Crèche" };
+  if (tSet.has("college") || tSet.has("university") || nameLower.includes("université") || nameLower.includes("campus") || nameLower.includes("lycée")) return { category: "ecoles", subType: "École supérieure / Lycée" };
+  if (tSet.has("school") || nameLower.includes("école")) return { category: "ecoles", subType: "École" };
 
-  // Espaces verts
-  if (tSet.has("playground") || nameLower.includes("jeux")) return { category: "espaces_verts", subType: "Aire de jeux" };
-  if (tSet.has("park") || tSet.has("outdoors") || nameLower.includes("parc") || nameLower.includes("jardin") || nameLower.includes("square")) 
-    return { category: "espaces_verts", subType: "Parc / Jardin" };
+  if (tSet.has("park") || tSet.has("garden") || nameLower.includes("parc") || nameLower.includes("jardin") || nameLower.includes("square")) return { category: "espaces_verts", subType: "Parc / Jardin" };
+  if (tSet.has("playground")) return { category: "espaces_verts", subType: "Aire de jeux" };
 
-  // Stationnement
-  if (tSet.has("parking") || nameLower.includes("parking")) return { category: "stationnement", subType: "Parking public" };
-
-  // Loisirs
   if (tSet.has("swimming_pool") || nameLower.includes("piscine")) return { category: "loisirs", subType: "Piscine" };
-  if (tSet.has("sports_club") || tSet.has("fitness_center") || tSet.has("sports") || nameLower.includes("gym") || nameLower.includes("sport")) return { category: "loisirs", subType: "Centre sportif" };
-  if (tSet.has("museum") || nameLower.includes("musée") || nameLower.includes("musee")) return { category: "loisirs", subType: "Musée" };
-  if (tSet.has("cinema") || tSet.has("movie_theater") || nameLower.includes("cinéma") || nameLower.includes("cinema")) return { category: "loisirs", subType: "Cinéma" };
-  if (tSet.has("theater") || nameLower.includes("théâtre") || nameLower.includes("theatre")) return { category: "loisirs", subType: "Théâtre" };
-  if (tSet.has("library") || nameLower.includes("bibliothèque") || nameLower.includes("mediatheque")) return { category: "loisirs", subType: "Bibliothèque" };
+  if (tSet.has("cinema") || nameLower.includes("cinéma")) return { category: "loisirs", subType: "Cinéma" };
+  if (tSet.has("theater") || tSet.has("theatre") || tSet.has("performing_arts") || tSet.has("arts_centre") || nameLower.includes("théâtre") || nameLower.includes("theatre") || nameLower.includes("scène nationale") || nameLower.includes("spectacle")) return { category: "loisirs", subType: "Théâtre / Spectacle" };
+  if (tSet.has("museum") || nameLower.includes("musée")) return { category: "loisirs", subType: "Musée" };
+  if (tSet.has("library") || nameLower.includes("bibliothèque")) return { category: "loisirs", subType: "Bibliothèque" };
+  if (tSet.has("fitness_center") || tSet.has("sports") || tSet.has("stadium") || nameLower.includes("stade") || nameLower.includes("gym")) return { category: "loisirs", subType: "Centre sportif" };
 
-  const fallbackMap: Record<POICategory, string> = {
+  if (tSet.has("parking") || nameLower.includes("parking")) return { category: "stationnement", subType: "Parking" };
+
+  // Category searches can omit `poi_category_ids`; keep the result with a
+  // human label, never with a raw provider type such as an internal ID.
+  const fallbackLabels: Record<POICategory, string> = {
     transports: "Arrêt de transport",
     commerces: "Commerce",
     sante: "Professionnel de santé",
     ecoles: "Établissement scolaire",
-    espaces_verts: "Espace vert",
+    espaces_verts: "Parc / Jardin",
     stationnement: "Parking",
-    loisirs: "Loisir"
+    loisirs: "Lieu de loisirs",
   };
-
-  return { category: fallbackCategory, subType: fallbackMap[fallbackCategory] };
+  return { category: fallbackCategory, subType: fallbackLabels[fallbackCategory] };
 }
 
 function deduplicatePOIs(pois: POI[]): POI[] {
   const result: POI[] = [];
-
   for (const poi of pois) {
     const isDuplicate = result.some((existing) => {
       if (existing.category !== poi.category) return false;
-      const dist = calculateDistanceMeters(
-        existing.lat,
-        existing.lon,
-        poi.lat,
-        poi.lon,
-      );
-
-      if (existing.subType === poi.subType && dist <= 20) {
-        return true;
-      }
-
+      const dist = calculateDistanceMeters(existing.lat, existing.lon, poi.lat, poi.lon);
+      if (existing.subType === poi.subType && dist <= 28) return true;
       if (existing.name && poi.name) {
         const eName = existing.name.toLowerCase().trim();
         const pName = poi.name.toLowerCase().trim();
-        if ((eName === pName || eName.includes(pName) || pName.includes(eName)) && dist <= 50) {
-          return true;
-        }
+        if (eName === pName && dist <= 40) return true;
       }
-
       return false;
     });
 
     if (!isDuplicate) {
       result.push(poi);
+    } else {
+      const existingIndex = result.findIndex(existing => existing.category === poi.category && calculateDistanceMeters(existing.lat, existing.lon, poi.lat, poi.lon) <= 50);
+      if (existingIndex >= 0 && (!result[existingIndex].name || result[existingIndex].name.length < poi.name.length)) {
+        result[existingIndex] = poi;
+      }
     }
   }
-
   return result;
 }

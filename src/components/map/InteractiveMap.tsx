@@ -51,16 +51,16 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         attributionControl: false,
       }).setView([lat, lon], zoom);
 
-      // Si une clé CARTO est définie, on utilise CartoDB Voyager ; sinon on bascule sur OpenStreetMap standard (sans filigrane "API key")
-      const cartoKey = import.meta.env.VITE_CARTO_API_KEY?.trim();
-      const tileUrl = cartoKey
-        ? `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=${cartoKey}`
+      const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
+      const tileUrl = mapboxToken
+        ? `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${mapboxToken}`
         : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
       L.tileLayer(tileUrl, {
         maxZoom: 19,
-        subdomains: cartoKey ? 'abcd' : 'abc',
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' + (cartoKey ? ' &copy; CARTO' : ''),
+        attribution: mapboxToken 
+          ? '© <a href="https://www.mapbox.com/about/maps/">Mapbox</a> © <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       }).addTo(map);
 
       // Dedicated layer for POIs

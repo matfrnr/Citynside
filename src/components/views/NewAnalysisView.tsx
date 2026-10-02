@@ -9,6 +9,7 @@ import {
 import { ANALYSIS_RADIUS_METERS, EXTENDED_TRANSIT_RADIUS_METERS, fetchPOIsInRadius, calculateDistanceMeters } from "../../services/osmApi";
 import { calculateCategoryScores } from "../../services/scoringEngine";
 import { fetchSNCFStationsInRadius } from "../../services/sncfApi";
+import { fetchNationalTransitStops } from "../../services/gtfsStopsApi";
 import type { AddressResult, NeighborhoodAnalysis, POI, RiskAssessment } from "../../types";
 import { fetchRiskAssessment } from "../../services/georisquesApi";
 import { InteractiveMap } from "../map/InteractiveMap";
@@ -44,21 +45,23 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
 
   // Fonction résiliente et accélérée d'agrégation multi-API
   const runParallelAnalysis = async (lat: number, lon: number, osmSignal?: AbortSignal) => {
-    const [osmRes, eduRes, sncfRes, airRes] = await Promise.allSettled([
+    const [osmRes, eduRes, sncfRes, gtfsRes, airRes] = await Promise.allSettled([
       fetchPOIsInRadius(lat, lon, ANALYSIS_RADIUS_METERS, osmSignal),
       fetchEducationPOIsInRadius(lat, lon, ANALYSIS_RADIUS_METERS),
       fetchSNCFStationsInRadius(lat, lon, EXTENDED_TRANSIT_RADIUS_METERS),
+      fetchNationalTransitStops(lat, lon, EXTENDED_TRANSIT_RADIUS_METERS),
       fetchAirQuality(lat, lon),
     ]);
 
     const osmPOIs: POI[] = osmRes.status === "fulfilled" ? osmRes.value : [];
     const eduPOIs: POI[] = eduRes.status === "fulfilled" ? eduRes.value : [];
     const sncfPOIs: POI[] = sncfRes.status === "fulfilled" ? sncfRes.value : [];
+    const gtfsPOIs: POI[] = gtfsRes.status === "fulfilled" ? gtfsRes.value : [];
     const airQuality = airRes.status === "fulfilled" ? airRes.value : null;
 
     // Fusionner et dédupliquer les POIs officiels SNCF + Éducation + OSM
     const mergedSchools = mergeEducationPOIs(osmPOIs, eduPOIs);
-    const allPOIs = [...mergedSchools];
+    const allPOIs = [...mergedSchools, ...gtfsPOIs];
 
     // Ajouter les gares SNCF si pas déjà présentes à < 50m
     for (const sncf of sncfPOIs) {

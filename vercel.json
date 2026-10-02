@@ -1,0 +1,6 @@
+{
+  "devCommand": "vite --host 0.0.0.0",
+  "rewrites": [
+    { "source": "/api/gtfs-stops", "destination": "/api/gtfs-stops.js" }
+  ]
+}

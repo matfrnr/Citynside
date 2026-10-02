@@ -66,58 +66,19 @@ export async function fetchEducationPOIsInRadius(
   }
 }
 
-function cleanSchoolName(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]/g, " ")
-    .replace(
-      /\b(ecole|primaire|elementaire|maternelle|college|lycee|groupe|scolaire|public|publique|prive|privee|de|du|des|la|le|les|d|l)\b/g,
-      " ",
-    )
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function isSameSchool(osmPOI: POI, eduPOI: POI): boolean {
-  if (osmPOI.category !== "ecoles" || eduPOI.category !== "ecoles") return false;
-
-  const dist = calculateDistanceMeters(
-    osmPOI.lat,
-    osmPOI.lon,
-    eduPOI.lat,
-    eduPOI.lon,
-  );
-
-  // 1. Distance rapprochée (un campus scolaire ou bâtiment fait 30-70m de large)
-  // L'adresse officielle BAN et le portail OSM sont très souvent distants de 20 à 50m.
-  if (dist <= 60) {
-    return true;
-  }
-
-  // 2. Distance moyenne (jusqu'à 140m) si les noms patronymiques correspondent
-  const n1 = cleanSchoolName(osmPOI.name);
-  const n2 = cleanSchoolName(eduPOI.name);
-  if (n1.length >= 3 && n2.length >= 3) {
-    if (n1 === n2 || n1.includes(n2) || n2.includes(n1)) {
-      return dist <= 140;
-    }
-  }
-
-  return false;
-}
-
 export function mergeEducationPOIs(
   osmPOIs: POI[],
   educationPOIs: POI[],
 ): POI[] {
-  // Conserver les POIs non-écoles d'OSM, et les écoles OSM qui ne correspondent à aucune école officielle
-  const unmatchedOSM = osmPOIs.filter(
-    (osmPOI) =>
-      osmPOI.category !== "ecoles" ||
-      !educationPOIs.some((eduPOI) => isSameSchool(osmPOI, eduPOI)),
-  );
+  // Dès que le référentiel officiel répond, il devient l'unique source pour
+  // les écoles. Les catégories Mapbox « school » sont trop permissives et
+  // incluent régulièrement des centres de formation ou des lieux mal classés.
+  // En cas d'indisponibilité du référentiel, on conserve le repli Mapbox.
+  const unmatchedOSM = educationPOIs.length > 0
+    ? osmPOIs.filter((osmPOI) =>
+        osmPOI.category !== "ecoles" || /crèche|creche|halte-garderie|multi.?accueil/i.test(`${osmPOI.name} ${osmPOI.subType}`),
+      )
+    : osmPOIs;
 
   return [...unmatchedOSM, ...educationPOIs].sort(
     (a, b) => a.distanceMeters - b.distanceMeters,
