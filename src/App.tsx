@@ -92,7 +92,7 @@ export const App: React.FC = () => {
   const [isDemoInfoOpen, setIsDemoInfoOpen] = useState(false);
 
   useEffect(() => {
-    if (!authUser || authChecking) return;
+    if (authChecking) return;
     const url = new URL(window.location.href);
     if (currentView === "home") url.searchParams.delete("view");
     else url.searchParams.set("view", currentView);
@@ -103,7 +103,7 @@ export const App: React.FC = () => {
       url.searchParams.delete("analysis");
     }
     window.history.replaceState(window.history.state, "", url);
-  }, [activeAnalysis?.id, authChecking, authUser?.id, currentView]);
+  }, [activeAnalysis?.id, authChecking, currentView]);
 
   const refreshImportantNotificationsCount = async (userId: string) => {
     try {
@@ -277,8 +277,10 @@ export const App: React.FC = () => {
       await registerCurrentDevice(freshUser.id).catch((err) => console.warn("Vérification du nouvel appareil impossible :", err));
       await refreshImportantNotificationsCount(freshUser.id);
     }
-    await loadUserAnalyses(user.id, true);
     setCurrentView("home");
+    await loadUserAnalyses(user.id, true);
+    // setCurrentView removed to avoid overriding
+
   };
 
   const handleLogout = async () => {

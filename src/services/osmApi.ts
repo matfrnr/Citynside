@@ -90,18 +90,8 @@ function setCachedPOIs(key: string, pois: POI[]): void {
 // Miroirs Overpass fiables et performants
 // ─────────────────────────────────────────────────────────────────────────────
 const OVERPASS_MIRRORS = [
-  ...(import.meta.env.PROD
-    ? [
-        "/api/overpass",
-      ]
-    : [
-        "https://overpass-api.de/api/interpreter",
-        "https://lz4.overpass-api.de/api/interpreter",
-        "https://z.overpass-api.de/api/interpreter",
-        "https://overpass.private.coffee/api/interpreter",
-        "https://overpass.kumi.systems/api/interpreter",
-        "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-      ]),
+  "https://overpass.private.coffee/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 ];
 
 /**
