@@ -1,16 +1,19 @@
 export default async function handler(req, res) {
-  if (req.method !== "GET") return res.status(405).json({ error: "Method Not Allowed" });
-  const query = new URLSearchParams();
-  for (const key of ["lat", "lon", "radius", "bbox", "limit"]) {
-    if (req.query?.[key]) query.set(key, String(req.query[key]));
-  }
+  if (req.method !== "GET") return res.status(200).json([]);
   try {
-    const response = await fetch(`https://transport.data.gouv.fr/api/gtfs/stops?${query}`);
+    const incoming = new URL(req.url || "/api/gtfs-stops", "http://localhost");
+    const query = new URLSearchParams();
+    for (const key of ["south", "north", "west", "east", "width_pixels", "height_pixels", "zoom_level"]) {
+      const value = incoming.searchParams.get(key);
+      if (value) query.set(key, value);
+    }
+    const response = await fetch(`https://transport.data.gouv.fr/api/gtfs-stops?${query}`);
     const text = await response.text();
-    res.status(response.status).setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
+    if (!response.ok) return res.status(200).json([]);
+    res.status(200).setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
     res.setHeader("Content-Type", response.headers.get("content-type") || "application/json");
     return res.send(text);
-  } catch (error) {
-    return res.status(502).json({ error: "GTFS indisponible" });
+  } catch {
+    return res.status(200).json([]);
   }
 }

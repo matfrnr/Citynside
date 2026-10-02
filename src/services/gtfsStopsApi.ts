@@ -15,12 +15,13 @@ export async function fetchNationalTransitStops(
 ): Promise<POI[]> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  const delta = radiusMeters / 111_320;
-  const urls = [
-    `${GTFS_API}?lat=${lat}&lon=${lon}&radius=${radiusMeters}`,
-    `${GTFS_API}?bbox=${encodeURIComponent(`${lon - delta},${lat - delta},${lon + delta},${lat + delta}`)}&limit=500`,
-    `${GTFS_API}?min_lat=${lat - delta}&min_lon=${lon - delta}&max_lat=${lat + delta}&max_lon=${lon + delta}&limit=500`,
-  ];
+  const latDelta = radiusMeters / 111_320;
+  const lonDelta = latDelta / Math.max(Math.cos(lat * Math.PI / 180), 0.1);
+  const params = new URLSearchParams({
+    south: String(lat - latDelta), north: String(lat + latDelta),
+    west: String(lon - lonDelta), east: String(lon + lonDelta),
+  });
+  const urls = [`${GTFS_API}?${params}`];
 
   try {
     for (const url of urls) {
@@ -28,7 +29,7 @@ export async function fetchNationalTransitStops(
         const response = await fetch(url, { signal: controller.signal });
         if (!response.ok) continue;
         const body = await response.json();
-        const rows = Array.isArray(body) ? body : body.data || body.results || body.features || [];
+        const rows = Array.isArray(body) ? body : body.data || body.results || body.features || body.stops || [];
         const pois = rows.map((row: any) => {
           const props = row.properties || row;
           const coords = row.geometry?.coordinates;
