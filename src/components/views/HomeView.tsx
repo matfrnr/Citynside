@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Building2, ArrowRight, Map, Bell, FileText, Calendar, MapPin, History, Star, GitCompareArrows, Pencil, X, Check } from 'lucide-react';
+import { Building2, ArrowRight, Map, Bell, FileText, Calendar, MapPin, History, Star, GitCompareArrows, Pencil, X, Check, CircleHelp } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { LOCAL_DEMO_USER_ID, type AppView, type NeighborhoodAnalysis } from '../../types';
 import { DEFAULT_QUICK_ACCESS, fetchHomeQuickAccess, getLocalHomeQuickAccess, saveHomeQuickAccess, type QuickAccessId } from '../../services/homeQuickAccess';
@@ -37,6 +37,16 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [draftQuickAccess, setDraftQuickAccess] = useState<QuickAccessId[]>(quickAccess);
   const [quickAccessSaveError, setQuickAccessSaveError] = useState('');
   const [isSavingQuickAccess, setIsSavingQuickAccess] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isHelpOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsHelpOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isHelpOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -234,6 +244,30 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </section>
       )}
 
+      <footer className="home-help-footer">
+        <button type="button" className="home-help-button" onClick={() => setIsHelpOpen(true)}>
+          <CircleHelp size={17} /> Obtenir de l’aide
+        </button>
+      </footer>
+
+      {isHelpOpen && <div className="home-help-backdrop" onClick={() => setIsHelpOpen(false)}>
+        <section className="home-help-dialog" role="dialog" aria-modal="true" aria-labelledby="home-help-title" onClick={(event) => event.stopPropagation()}>
+          <header className="home-help-header">
+            <div><span className="home-help-icon"><CircleHelp size={20} /></span><div><h2 id="home-help-title">Comment utiliser Citynside ?</h2><p>Les réponses aux questions les plus fréquentes.</p></div></div>
+            <button type="button" className="home-help-close" aria-label="Fermer l’aide" onClick={() => setIsHelpOpen(false)}><X size={19} /></button>
+          </header>
+          <div className="home-help-content">
+            <details><summary>Comment lancer une analyse de quartier ?</summary><p>Cliquez sur « Nouvelle analyse », saisissez une adresse dans la barre de recherche, choisissez la bonne proposition puis lancez l’analyse.</p></details>
+            <details><summary>À quoi correspondent la note et la lettre ?</summary><p>La note globale résume les indicateurs du quartier sur 10. La lettre donne une lecture rapide de cette note. Les notes détaillées permettent ensuite de comprendre les points forts et les points de vigilance.</p></details>
+            <details><summary>Que change un profil indicatif ?</summary><p>Un profil (Famille, Étudiant, Senior ou Investisseur) pondère les indicateurs selon un projet. Il aide à lire les résultats, sans modifier les données ni la note globale.</p></details>
+            <details><summary>Comment utiliser les filtres de la carte ?</summary><p>Choisissez une catégorie pour afficher les équipements correspondants. Vous pouvez régler la catégorie affichée par défaut dans Personnalisation et masquer ou réafficher les commandes avec l’icône en forme d’œil.</p></details>
+            <details><summary>Pourquoi une donnée ou la qualité de l’air peut-elle être indisponible ?</summary><p>Les résultats dépendent des sources consultées. Si l’une d’elles ne répond pas au moment de la recherche, l’information concernée peut être temporairement indisponible. Relancez l’analyse un peu plus tard.</p></details>
+            <details><summary>Comment enregistrer ou partager une analyse ?</summary><p>Depuis une analyse, utilisez l’action d’enregistrement pour la retrouver dans l’historique, puis ouvrez le rapport pour le consulter ou le télécharger en PDF.</p></details>
+            <details><summary>Les minutes à pied sont-elles un itinéraire exact ?</summary><p>Non. C’est une estimation calculée à partir de la distance directe. Elle ne tient pas compte du réseau réel de rues, des entrées ou des obstacles.</p></details>
+          </div>
+        </section>
+      </div>}
+
       <style>{`
         .home-container {
           max-width: 960px;
@@ -243,6 +277,23 @@ export const HomeView: React.FC<HomeViewProps> = ({
           gap: 36px;
           padding: 4px 8px 56px;
         }
+
+        .home-help-footer { display: flex; justify-content: center; padding-top: 4px; }
+        .home-help-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 16px; border: 1px solid var(--color-border); border-radius: 999px; background: #fff; color: var(--color-primary); font: inherit; font-size: .84rem; font-weight: 650; cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+        .home-help-button:hover { border-color: var(--color-green); background: var(--color-green-subtle); }
+        .home-help-backdrop { position: fixed; inset: 0; z-index: 1100; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(15, 35, 31, .5); }
+        .home-help-dialog { display: flex; flex-direction: column; width: min(100%, 620px); max-height: min(86dvh, 760px); overflow: hidden; border: 1px solid var(--color-border); border-radius: 18px; background: #fff; box-shadow: 0 24px 80px rgba(0,0,0,.24); }
+        .home-help-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 22px 24px 18px; border-bottom: 1px solid var(--color-border-subtle); }
+        .home-help-header > div { display: flex; align-items: center; gap: 12px; }
+        .home-help-icon { display: grid; place-items: center; width: 42px; height: 42px; flex: 0 0 auto; border-radius: 12px; background: var(--color-green-light); color: var(--color-primary); }
+        .home-help-header h2 { color: var(--color-primary); font-size: 1.12rem; }
+        .home-help-header p { margin-top: 4px; color: var(--color-text-muted); font-size: .8rem; }
+        .home-help-close { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 auto; border: 0; border-radius: 50%; background: #f2f5f1; color: var(--color-primary); cursor: pointer; }
+        .home-help-content { display: grid; gap: 8px; overflow-y: auto; padding: 16px 24px 22px; }
+        .home-help-content details { border: 1px solid var(--color-border); border-radius: 10px; background: #fff; }
+        .home-help-content summary { padding: 13px 15px; color: var(--color-primary); font-size: .86rem; font-weight: 650; cursor: pointer; }
+        .home-help-content details p { padding: 0 15px 14px; color: var(--color-text-muted); font-size: .82rem; line-height: 1.55; }
+        @media (max-width: 540px) { .home-help-backdrop { padding: 10px; } .home-help-dialog { max-height: 90dvh; border-radius: 14px; } .home-help-header { padding: 18px 16px 14px; } .home-help-content { padding: 12px 16px 18px; } .home-help-header h2 { font-size: 1rem; } }
 
         /* ── Hero ── */
         .home-hero {
