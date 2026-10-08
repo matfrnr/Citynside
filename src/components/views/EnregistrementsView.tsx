@@ -12,6 +12,7 @@ interface EnregistrementsViewProps {
   onToggleFavorite: (id: string) => void;
   onDeleteAnalysis: (id: string) => void;
   onRenameAnalysis: (id: string, newName: string) => void;
+  onClearAll: (ids: string[], activeTab: 'history' | 'favorites') => void;
 }
 
 export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
@@ -22,6 +23,7 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
   onToggleFavorite,
   onDeleteAnalysis,
   onRenameAnalysis,
+  onClearAll,
 }) => {
   const [filterQuery, setFilterQuery] = useState('');
   const [selectedCity, setSelectedCity] = useState('all');
@@ -31,6 +33,7 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameName, setRenameName] = useState('');
+  const [clearAllOpen, setClearAllOpen] = useState(false);
 
   const sourceAnalyses = activeTab === 'favorites'
     ? analyses.filter((item) => item.isFavorite)
@@ -78,7 +81,7 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
   return (
     <div className="enregistrements-container">
       <div className="enreg-header">
-        <h1 className="enreg-title">{activeTab === 'history' ? 'Historique' : 'Favoris'}</h1>
+        <div className="enreg-title-row"><h1 className="enreg-title">{activeTab === 'history' ? 'Historique' : 'Favoris'}</h1>{!isDemo && sourceAnalyses.length > 0 && <button className="clear-all-btn" onClick={() => setClearAllOpen(true)}><Trash2 size={14}/>Tout supprimer</button>}</div>
         <p className="enreg-subtitle">
           {activeTab === 'history' ? 'Vos 20 recherches les plus récentes, enregistrées automatiquement.' : 'Les analyses que vous avez marquées d’une étoile.'}
         </p>
@@ -231,6 +234,22 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
         </div>
       )}
 
+      {clearAllOpen && (
+        <div className="delete-modal-overlay" onClick={() => setClearAllOpen(false)}>
+          <div className="delete-modal" onClick={(e) => e.stopPropagation()}>
+            <Trash2 size={28} className="delete-modal-icon" />
+            <h3>{activeTab === 'history' ? 'Tout supprimer de l’historique ?' : 'Effacer tous les favoris ?'}</h3>
+            <p>{activeTab === 'history'
+              ? `${sourceAnalyses.length} analyse${sourceAnalyses.length > 1 ? 's seront supprimées' : ' sera supprimée'} définitivement.`
+              : `${sourceAnalyses.length} favori${sourceAnalyses.length > 1 ? 's seront retirés' : ' sera retiré'} des favoris. Les analyses resteront dans l’historique.`}</p>
+            <div className="delete-modal-actions">
+              <button className="btn-cancel" onClick={() => setClearAllOpen(false)}>Annuler</button>
+              <button className="btn-confirm-delete" onClick={() => { onClearAll(sourceAnalyses.map((item) => item.id), activeTab); setClearAllOpen(false); }}>Tout supprimer</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Rename modal */}
       {renameId && (
         <div className="delete-modal-overlay" onClick={() => setRenameId(null)}>
@@ -274,11 +293,17 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
           text-align: center;
         }
 
+        .enreg-title-row { display: flex; align-items: center; justify-content: center; position: relative; }
+        .clear-all-btn { position: absolute; right: 0; display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid #e3e8e3; border-radius: 8px; background: transparent; color: #748078; font: inherit; font-size: .75rem; cursor: pointer; }
+        .clear-all-btn:hover { border-color: #d5a6a6; color: #a84343; background: #fffafa; }
+
         .enreg-title {
           font-size: 2rem;
           color: var(--color-primary);
           font-weight: 700;
         }
+
+        @media (max-width: 600px) { .enreg-title-row { justify-content: space-between; } .clear-all-btn { position: static; } }
 
         .enreg-subtitle {
           font-family: var(--font-family-body);

@@ -4,6 +4,7 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Bus,
+  Building2,
   Car,
   CheckCircle2,
   ChevronRight,
@@ -26,6 +27,7 @@ interface ScoresListProps {
   selectedCategory: string | null;
   onSelectCategory: (category: string | null) => void;
   addressName?: string;
+  globalScore: number;
 }
 
 export const ScoresList: React.FC<ScoresListProps> = ({
@@ -33,16 +35,18 @@ export const ScoresList: React.FC<ScoresListProps> = ({
   selectedCategory,
   onSelectCategory,
   addressName,
+  globalScore,
 }) => {
   const [modalCategory, setModalCategory] = useState<CategoryScore | null>(
     null,
   );
+  const [showProfileInfo, setShowProfileInfo] = useState(false);
   const [scoreProfile, setScoreProfile] = useState("family");
   const scoreProfiles: { id: string; label: string; weights: Record<string, number> }[] = [
-    { id: "family", label: "Famille", weights: { ecoles: 3, sante: 2, espaces_verts: 2, tranquillite: 2, loisirs: 1.3, commerces: 1, transports: 1, pmr: 1 } },
-    { id: "student", label: "Étudiant", weights: { transports: 3, commerces: 2, loisirs: 3, sante: .5, espaces_verts: 1, tranquillite: .8, ecoles: .5 } },
-    { id: "senior", label: "Senior", weights: { sante: 3, pmr: 3, commerces: 2, transports: 1.5, espaces_verts: 1, tranquillite: 2, loisirs: 1 } },
-    { id: "investor", label: "Investisseur", weights: { transports: 3, commerces: 3, ecoles: 1.5, sante: 1.5, loisirs: 1, espaces_verts: 1, tranquillite: 1, pmr: .7, stationnement: .7 } },
+    { id: "family", label: "Famille", weights: { ecoles: 3.5, sante: 2.5, espaces_verts: 2., tranquillite: 1, loisirs: 0.5, commerces: 0.5, transports: 0, pmr: 0 } },
+    { id: "student", label: "Étudiant", weights: { transports: 4, commerces: 2, loisirs: 0, sante: 0, espaces_verts: 0, tranquillite: 1, ecoles: 3 } },
+    { id: "senior", label: "Senior", weights: { sante: 4, pmr: 3, commerces: 2.5, transports: 1, espaces_verts: 1, tranquillite: 2, loisirs: 0 } },
+    { id: "investor", label: "Investisseur", weights: { transports: 2, commerces: 3, ecoles: 2, sante: 2, loisirs: 0, espaces_verts: 0, tranquillite: 0, pmr: 0, stationnement: 1 } },
   ];
   const activeProfile = scoreProfiles.find((profile) => profile.id === scoreProfile) || scoreProfiles[0];
   const profileEntries = categories.flatMap((category) => {
@@ -73,6 +77,8 @@ export const ScoresList: React.FC<ScoresListProps> = ({
         return <Accessibility size={18} />;
       case "Sparkles":
         return <Sparkles size={18} />;
+      case "Building2":
+        return <Building2 size={18} />;
       default:
         return <Info size={18} />;
     }
@@ -108,14 +114,59 @@ export const ScoresList: React.FC<ScoresListProps> = ({
 
       <section className="profile-score-panel" aria-label="Lecture du score selon votre profil">
         <div className="profile-score-heading">
-          <div><strong>Lecture selon votre projet</strong><span>Les mêmes indicateurs sont pondérés différemment.</span></div>
+          <div><strong>Lecture selon votre projet</strong><span>Moyenne globale des 10 indicateurs.</span></div>
+          <b>{globalScore.toFixed(1)}<small>/10</small></b>
+        </div>
+        <p>Cette note correspond au score global affiché dans le rapport.</p>
+      </section>
+
+      <section className="profile-score-panel profile-score-secondary" aria-label="Profils indicatifs">
+        <div className="profile-score-heading">
+          <div><strong>Profils indicatifs</strong><span>Ces lectures ne modifient pas la note globale.</span></div>
+          <button
+            type="button"
+            aria-label="Comprendre les profils et leur pondération"
+            title="Comprendre les profils"
+            onClick={() => setShowProfileInfo(true)}
+            style={{ border: "1px solid #cbd5e1", borderRadius: "50%", width: 24, height: 24, background: "white", color: "#334155", fontWeight: 700, cursor: "pointer" }}
+          >i</button>
           {profileScore !== null && <b>{profileScore.toFixed(1)}<small>/10</small></b>}
         </div>
         <div className="profile-score-options">
-          {scoreProfiles.map((profile) => <button key={profile.id} className={scoreProfile === profile.id ? "active" : ""} onClick={() => setScoreProfile(profile.id)}>{profile.label}</button>)}
+          {scoreProfiles.map((profile) => (
+            <button key={profile.id} className={scoreProfile === profile.id ? "active" : ""} onClick={() => setScoreProfile(profile.id)}>{profile.label}</button>
+          ))}
         </div>
-        <p>Repère indicatif, distinct du score global. Le profil investisseur décrit les services et la desserte, sans estimer la rentabilité d’un bien.</p>
       </section>
+
+      {showProfileInfo && (
+        <div className="methodology-modal-overlay" role="dialog" aria-modal="true" aria-label="Explication des profils indicatifs" onClick={() => setShowProfileInfo(false)}>
+          <div className="methodology-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title-wrap">
+                <span className="modal-cat-icon"><Info size={18} /></span>
+                <div>
+                  <h4 className="modal-title">Profils indicatifs</h4>
+                  <span className="modal-score-sub">Une lecture adaptée à votre projet</span>
+                </div>
+              </div>
+              <button className="modal-close-btn" onClick={() => setShowProfileInfo(false)} aria-label="Fermer">×</button>
+            </div>
+            <div className="modal-body">
+              <p className="section-text">La note globale est la moyenne simple des 10 catégories. Les profils appliquent ensuite des coefficients différents pour montrer ce qui compte le plus selon votre situation. Ils servent de repère et ne remplacent pas la note globale.</p>
+              <div className="modal-section">
+                <h5 className="section-label">Pondérations</h5>
+                <ul className="modal-factor-list">
+                  <li className="modal-factor-card"><strong style={{ fontSize: "1em" }}>Famille</strong><br/><span style={{ fontSize: "0.8em" }}>Surpondération des indicateurs Écoles · Santé · Espaces verts</span></li>
+                  <li className="modal-factor-card"><strong style={{ fontSize: "1em" }}>Étudiant</strong><br/><span style={{ fontSize: "0.8em" }}>Surpondération des indicateurs Transports · Écoles · Commerces</span></li>
+                  <li className="modal-factor-card"><strong style={{ fontSize: "1em" }}>Senior</strong><br/><span style={{ fontSize: "0.8em" }}>Surpondération des indicateurs Santé · PMR · Commerces</span></li>
+                  <li className="modal-factor-card"><strong style={{ fontSize: "1em" }}>Investisseur</strong><br/><span style={{ fontSize: "0.8em" }}>Surpondération des indicateurs Transports · Commerces · Écoles</span></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filter Tabs */}
       <div className="categories-filter-bar">

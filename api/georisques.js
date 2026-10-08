@@ -1,5 +1,5 @@
 export const config = {
-  runtime: 'edge',
+  runtime: 'nodejs',
 };
 
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -43,12 +43,29 @@ export default async (request) => {
   }
 
   try {
-    const response = await fetch(`https://georisques.gouv.fr/api/v1/resultats_rapport_risque?latlon=${encodeURIComponent(latlon)}`, {
-      signal: AbortSignal.timeout(8000), // 8s max
-    });
+    const upstreamUrl = `https://georisques.gouv.fr/api/v1/resultats_rapport_risque?latlon=${encodeURIComponent(latlon)}`;
+    let response;
+    let lastError;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        response = await fetch(upstreamUrl, {
+          signal: AbortSignal.timeout(12000),
+          headers: {
+            accept: "application/json",
+            "user-agent": "Citynside/1.0",
+          },
+          cache: "no-store",
+        });
+        if (response.ok) break;
+        lastError = new Error(`Géorisques API returned ${response.status}`);
+      } catch (error) {
+        lastError = error;
+      }
+    }
 
-    if (!response.ok) {
-      throw new Error(`Géorisques API returned ${response.status}`);
+    if (!response || !response.ok) {
+      console.warn("Géorisques temporairement indisponible :", lastError);
+      return jsonResponse({ unavailable: true, findings: [] }, 200, { "cache-control": "no-store" });
     }
 
     const payload = await response.json();

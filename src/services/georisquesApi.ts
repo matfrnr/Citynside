@@ -17,6 +17,15 @@ function prettifyRiskKey(key: string): string {
   return normalized ? normalized[0].toLocaleUpperCase("fr") + normalized.slice(1) : "Risque signalé";
 }
 
+function prettifyRiskStatus(status: string): string {
+  const value = status.trim().replace(/\s+/g, " ");
+  if (/^(inconnu|non connu|risque inconnu)$/i.test(value)) return "Information indisponible";
+  if (/non\s+concern[ée]e?/i.test(value)) return "Aucun signalement";
+  if (/concern[ée]e?/i.test(value)) return "Zone concernée";
+  if (/^risque\s+existant\s*[-–—:]\s*/i.test(value)) return `Risque ${value.replace(/^risque\s+existant\s*[-–—:]\s*/i, "")}`;
+  return value;
+}
+
 function parseFindings(payload: unknown): RiskFinding[] {
   const findings: RiskFinding[] = [];
   const seen = new Set<string>();
@@ -39,7 +48,7 @@ function parseFindings(payload: unknown): RiskFinding[] {
       const id = `${group}:${label.toLocaleLowerCase("fr")}`;
       if (!seen.has(id)) {
         seen.add(id);
-        findings.push({ id, label: prettifyRiskKey(label), group, addressStatus, communeStatus });
+        findings.push({ id, label: prettifyRiskKey(label), group, addressStatus: prettifyRiskStatus(addressStatus), communeStatus: communeStatus ? prettifyRiskStatus(communeStatus) : communeStatus });
       }
     }
 
@@ -59,12 +68,15 @@ export async function fetchRiskAssessment(lat: number, lon: number): Promise<Ris
 
   const reportUrl = `https://georisques.gouv.fr/api/v1/rapport_pdf?latlon=${encodeURIComponent(`${lon},${lat}`)}`;
   try {
-    const endpoint = import.meta.env.PROD
-      ? `/api/georisques?latlon=${encodeURIComponent(`${lon},${lat}`)}`
-      : `https://georisques.gouv.fr/api/v1/resultats_rapport_risque?latlon=${encodeURIComponent(`${lon},${lat}`)}`;
-    const response = await fetch(endpoint, { signal: AbortSignal.timeout(8000) });
+    // Toujours passer par le proxy same-origin : l'API Géorisques ferme
+    // parfois la connexion HTTP/2 du navigateur et ne gère pas le CORS.
+    const endpoint = `/api/georisques?latlon=${encodeURIComponent(`${lon},${lat}`)}`;
+    const response = await fetch(endpoint, { signal: AbortSignal.timeout(12000) });
     if (!response.ok) throw new Error(`Géorisques indisponible (${response.status})`);
     const payload: unknown = await response.json();
+    if (payload && typeof payload === "object" && (payload as { unavailable?: boolean }).unavailable) {
+      return { status: "unavailable", findings: [], reportUrl };
+    }
     const assessment: RiskAssessment = {
       status: "available",
       findings: parseFindings(payload),
@@ -74,7 +86,8 @@ export async function fetchRiskAssessment(lat: number, lon: number): Promise<Ris
     cache.set(cacheKey, { assessment, timestamp: Date.now() });
     return assessment;
   } catch (error) {
-    console.warn("Consultation Géorisques indisponible :", error);
+    // Géorisques peut interrompre ses connexions pendant une maintenance.
+    // Cette consultation reste optionnelle et ne doit pas polluer la console.
     return { status: "unavailable", findings: [], reportUrl };
   }
 }

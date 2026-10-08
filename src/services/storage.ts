@@ -48,6 +48,28 @@ const DEMO_EXAMPLE_ANALYSIS_IDS = new Set([
 const getStorageKey = (userId: string) =>
   `${STORAGE_KEY}_${encodeURIComponent(userId)}`;
 
+const DEMO_AIR_QUALITY_KEY = "citynside_demo_air_quality_v1";
+
+function getDemoAirQuality(analysisId: string) {
+  try {
+    const cache = JSON.parse(localStorage.getItem(DEMO_AIR_QUALITY_KEY) || "{}");
+    return cache[analysisId] || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function saveDemoAirQuality(analysisId: string, airQuality: NeighborhoodAnalysis["airQuality"]): void {
+  if (!airQuality) return;
+  try {
+    const cache = JSON.parse(localStorage.getItem(DEMO_AIR_QUALITY_KEY) || "{}");
+    cache[analysisId] = airQuality;
+    localStorage.setItem(DEMO_AIR_QUALITY_KEY, JSON.stringify(cache));
+  } catch {
+    // L'analyse de démonstration reste utilisable si le stockage local échoue.
+  }
+}
+
 /**
  * POIs de démonstration réalistes pour des adresses connues de Grenoble.
  * Chaque POI correspond à un vrai lieu existant avec des coordonnées GPS réelles.
@@ -174,6 +196,7 @@ function mapRowToAnalysis(row: Record<string, any>): NeighborhoodAnalysis {
     impressions: row.impressions || undefined,
     isFavorite: Boolean(row.is_favorite),
     riskAssessment: row.risk_assessment || undefined,
+    airQuality: row.air_quality || undefined,
   };
 }
 
@@ -193,6 +216,7 @@ function mapAnalysisToRow(analysis: NeighborhoodAnalysis, userId: string) {
     impressions: analysis.impressions ?? null,
     is_favorite: Boolean(analysis.isFavorite),
     risk_assessment: analysis.riskAssessment ?? null,
+    air_quality: analysis.airQuality ?? null,
     created_at: analysis.createdAt || new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -204,7 +228,9 @@ export function getStoredAnalyses(userId: string): NeighborhoodAnalysis[] {
   if (isDemo) {
     // The demo is a fixed, read-only showcase. Always use the current bundled
     // examples so older local caches cannot hide the latest score breakdowns.
-    const examples = INITIAL_ANALYSES.filter((item) => DEMO_EXAMPLE_ANALYSIS_IDS.has(item.id));
+    const examples = INITIAL_ANALYSES
+      .filter((item) => DEMO_EXAMPLE_ANALYSIS_IDS.has(item.id))
+      .map((item) => ({ ...item, airQuality: getDemoAirQuality(item.id) ?? item.airQuality }));
     try {
       localStorage.setItem(storageKey, JSON.stringify(examples));
     } catch {

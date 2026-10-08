@@ -13,6 +13,7 @@ import type { AirQualityData } from "./airQualityApi";
 export function calculateCategoryScores(
   pois: POI[],
   airQuality?: AirQualityData | null,
+  center?: { lat: number; lon: number },
 ): CategoryScore[] {
   // Regroupement des POI par catégorie
   const transports = pois.filter((p) => p.category === "transports");
@@ -22,6 +23,7 @@ export function calculateCategoryScores(
   const espacesVerts = pois.filter((p) => p.category === "espaces_verts");
   const stationnement = pois.filter((p) => p.category === "stationnement");
   const loisirs = pois.filter((p) => p.category === "loisirs");
+  const servicesPublics = pois.filter((p) => p.category === "services_publics");
   const security = pois.filter((p) => p.category === "tranquillite");
 
   // =========================================================================
@@ -32,85 +34,43 @@ export function calculateCategoryScores(
   const transportPositive: ScoreFactor[] = [];
   const transportNegative: ScoreFactor[] = [];
 
-  const closestHeavy = transports.find(
-    (p) =>
-      p.subType.toLowerCase().includes("tram") ||
-      p.subType.toLowerCase().includes("gare") ||
-      p.subType.toLowerCase().includes("métro"),
-  );
-  const closestBus = transports.find((p) =>
-    p.subType.toLowerCase().includes("bus"),
-  );
-  const closestGenericStop = transports.find((p) =>
-    p.subType.toLowerCase().includes("arrêt de transport"),
-  );
-  const bikeRental = transports.find((p) =>
-    p.subType.toLowerCase().includes("vélo"),
-  );
+  const normalizedType = (p: POI) => p.subType.toLowerCase();
+  const isBike = (p: POI) => /vélo|velo|bicycle/.test(normalizedType(p));
+  const isOfficialStation = (p: POI) => /gare ferroviaire sncf/i.test(p.subType);
+  // Les types bus/tram sont trop souvent mal renseignés : on évalue donc
+  // tous les arrêts locaux de la même façon.
+  // `port` seul exclut à tort « Arrêt de transport », car le mot transport
+  // contient la séquence `port`. Ne filtrer que le mot isolé.
+  const localStops = transports.filter((p) => !isBike(p) && !isOfficialStation(p) && !/ferry|\bport\b|gare ferroviaire/.test(normalizedType(p)));
+  const closestLocal = [...localStops].sort((a, b) => a.distanceMeters - b.distanceMeters)[0];
+  const closestSNCFStation = transports.filter(isOfficialStation).sort((a, b) => a.distanceMeters - b.distanceMeters)[0];
 
-  if (closestHeavy) {
-    if (closestHeavy.distanceMeters <= 300) {
-      transportScore += 3.5;
+  if (closestLocal) {
+    if (closestLocal.distanceMeters <= 200) {
+      transportScore += 3.0;
       transportPositive.push({
-        label: `${closestHeavy.name || closestHeavy.subType} à ${closestHeavy.distanceMeters}m`,
-        points: 3.5,
+        label: `${closestLocal.name || closestLocal.subType} à ${closestLocal.distanceMeters}m`,
+        points: 3.0,
         impact: "positive",
-        detail: "Accès piéton immédiat (< 4 min) à un transport lourd et rapide.",
+        detail: "Arrêt de desserte locale immédiat (< 3 min à pied).",
       });
-    } else if (closestHeavy.distanceMeters <= 600) {
-      transportScore += 2.5;
-      transportPositive.push({
-        label: `${closestHeavy.name || closestHeavy.subType} à ${closestHeavy.distanceMeters}m`,
-        points: 2.5,
-        impact: "positive",
-        detail: "Accès à pied confortable (< 8 min).",
-      });
-    } else {
-      transportScore += 1.2;
-      transportPositive.push({
-        label: `${closestHeavy.name || closestHeavy.subType} à ${closestHeavy.distanceMeters}m`,
-        points: 1.2,
-        impact: "positive",
-        detail: "Ligne structurante accessible à pied bien qu'un peu éloignée.",
-      });
-    }
-  } else {
-    transportScore -= 1.5;
-    transportNegative.push({
-      label: "Pas de métro, tramway ni gare à moins de 800m",
-      points: -1.5,
-      impact: "negative",
-      detail: "Dépendance accrue au bus ou à la voiture pour les liaisons rapides.",
-    });
-  }
-
-  if (closestBus) {
-    if (closestBus.distanceMeters <= 200) {
-      transportScore += 2.0;
-      transportPositive.push({
-        label: `${closestBus.name || "Arrêt de bus"} à ${closestBus.distanceMeters}m`,
-        points: 2.0,
-        impact: "positive",
-        detail: "Arrêt au pied de l'adresse ou à moins de 3 min.",
-      });
-    } else if (closestBus.distanceMeters <= 450) {
+    } else if (closestLocal.distanceMeters <= 450) {
       transportScore += 1.4;
       transportPositive.push({
-        label: `${closestBus.name || "Arrêt de bus"} à ${closestBus.distanceMeters}m`,
+        label: `${closestLocal.name || closestLocal.subType} à ${closestLocal.distanceMeters}m`,
         points: 1.4,
         impact: "positive",
-        detail: "Desserte de quartier accessible.",
+        detail: "Desserte de quartier accessible à pied.",
+      });
+    } else {
+      transportScore += 0.7;
+      transportPositive.push({
+        label: `${closestLocal.name || closestLocal.subType} à ${closestLocal.distanceMeters}m`,
+        points: 0.7,
+        impact: "positive",
+        detail: "Arrêt de transport recensé à proximité, mais un peu éloigné.",
       });
     }
-  } else if (closestGenericStop) {
-    const points = closestGenericStop.distanceMeters <= 200 ? 1.1 : 0.7;
-    transportScore += points;
-    transportPositive.push({
-      label: `${closestGenericStop.name || "Arrêt de transport"} à ${closestGenericStop.distanceMeters}m`,
-      points,
-      impact: "positive",
-      detail: "Arrêt de transport recensé à proximité ; le mode précis n'est pas fourni par la source.",
-    });
   } else {
     transportScore -= 1.0;
     transportNegative.push({
@@ -121,38 +81,67 @@ export function calculateCategoryScores(
     });
   }
 
-  if (bikeRental) {
-    transportScore += 0.8;
+  const distinctStops: POI[] = [];
+  for (const stop of [...localStops].sort((a, b) => a.distanceMeters - b.distanceMeters)) {
+    if (stop.distanceMeters > 850) continue;
+    const duplicate = distinctStops.some((existing) =>
+      Math.hypot((existing.lat - stop.lat) * 111_000, (existing.lon - stop.lon) * 78_000) <= 30,
+    );
+    if (!duplicate) distinctStops.push(stop);
+  }
+  const densityPoints = distinctStops.length >= 11 ? 1 : distinctStops.length >= 6 ? 0.7 : distinctStops.length >= 3 ? 0.4 : 0;
+  if (densityPoints > 0) {
+    transportScore += densityPoints;
     transportPositive.push({
-      label: `${bikeRental.name || "Station vélo"} à ${bikeRental.distanceMeters}m`,
-      points: 0.8,
+      label: `Densité de desserte (${distinctStops.length} arrêts distincts)`,
+      points: densityPoints,
       impact: "positive",
-      detail: "Disponibilité de mobilités douces en libre-service.",
+      detail: "Arrêts distincts dans 850 m ; ce nombre ne déduit ni les lignes ni leur fréquence.",
     });
   }
 
-  const busCount = transports.filter((p) =>
-    p.subType.toLowerCase().includes("bus"),
-  ).length;
-  const genericStopCount = transports.filter((p) =>
-    p.subType.toLowerCase().includes("arrêt de transport"),
-  ).length;
-  if (busCount >= 3) {
-    transportScore += 0.7;
+  // Répartition géographique : on regarde dans combien de secteurs autour de
+  // l'adresse (nord-est, sud-est, sud-ouest, nord-ouest) se trouvent les
+  // arrêts distincts. Cela évite de surévaluer 10 arrêts regroupés au même
+  // endroit et valorise une desserte réellement répartie.
+  const coveredSectors = new Set<number>();
+  if (distinctStops.length >= 3) {
+    const centerLat = center?.lat ?? distinctStops.reduce((sum, stop) => sum + stop.lat, 0) / distinctStops.length;
+    const centerLon = center?.lon ?? distinctStops.reduce((sum, stop) => sum + stop.lon, 0) / distinctStops.length;
+    for (const stop of distinctStops) {
+      const north = (stop.lat - centerLat) * 111_000;
+      const east = (stop.lon - centerLon) * 78_000;
+      const angle = Math.atan2(east, north) + Math.PI * 2;
+      coveredSectors.add(Math.floor((angle % (Math.PI * 2)) / (Math.PI / 2)));
+    }
+  }
+  const spreadPoints = coveredSectors.size >= 4 ? 0.6 : coveredSectors.size >= 3 ? 0.4 : coveredSectors.size >= 2 ? 0.2 : 0;
+  if (spreadPoints > 0) {
+    transportScore += spreadPoints;
     transportPositive.push({
-      label: `Réseau dense de bus (${busCount} arrêts)`,
-      points: 0.7,
+      label: `Desserte répartie autour de la zone (${coveredSectors.size}/4 secteurs)`,
+      points: spreadPoints,
       impact: "positive",
-      detail: "Multiples lignes alternatives disponibles.",
+      detail: "Les arrêts distincts sont répartis dans plusieurs directions ; le bonus reste limité lorsque les données ne couvrent pas tous les secteurs.",
     });
   }
-  if (genericStopCount >= 3) {
-    transportScore += 0.4;
+
+  if (closestSNCFStation && closestSNCFStation.distanceMeters <= 1200) {
+    const points = closestSNCFStation.distanceMeters <= 400 ? 1.2 : closestSNCFStation.distanceMeters <= 800 ? 0.8 : 0.4;
+    transportScore += points;
     transportPositive.push({
-      label: `Desserte locale recensée (${genericStopCount} arrêts)`,
-      points: 0.4,
+      label: `Gare SNCF à ${closestSNCFStation.distanceMeters}m`,
+      points,
       impact: "positive",
-      detail: "Plusieurs arrêts sont recensés, sans extrapoler leur mode de transport.",
+      detail: "Gare voyageurs confirmée par le référentiel officiel SNCF.",
+    });
+  } else {
+    transportScore -= 0.5;
+    transportNegative.push({
+      label: "Pas de gare SNCF référencée dans un rayon de 1,2 km",
+      points: -0.5,
+      impact: "negative",
+      detail: "La pénalité reste indépendante de la desserte locale par les arrêts de transport.",
     });
   }
 
@@ -286,7 +275,10 @@ export function calculateCategoryScores(
     (e) =>
       e.subType.toLowerCase().includes("maternelle") ||
       e.subType.toLowerCase().includes("crèche") ||
-      e.name.toLowerCase().includes("maternelle"),
+      e.subType.toLowerCase().includes("creche") ||
+      e.name.toLowerCase().includes("maternelle") ||
+      e.name.toLowerCase().includes("crèche") ||
+      e.name.toLowerCase().includes("creche"),
   );
   const elementaire = ecoles.find(
     (e) =>
@@ -301,12 +293,15 @@ export function calculateCategoryScores(
       e.name.toLowerCase().includes("collège") ||
       e.name.toLowerCase().includes("lycée"),
   );
+  const higherEducation = ecoles.find((e) =>
+    /enseignement supérieur|enseignement superieur|université|universite|iut|ufr|faculté|faculte|campus/i.test(`${e.subType} ${e.name}`),
+  );
 
   if (closestSchool) {
     if (closestSchool.distanceMeters <= 350) {
       ecoleScore += 3.5;
       ecolePositive.push({
-        label: `${closestSchool.name || closestSchool.subType} à ${closestSchool.distanceMeters}m`,
+        label: `${closestSchool.name || closestSchool.subType} · ${closestSchool.distanceMeters}m`,
         points: 3.5,
         impact: "positive",
         detail: "Trajet scolaire ultra court et sécurisé pour les enfants.",
@@ -314,7 +309,7 @@ export function calculateCategoryScores(
     } else if (closestSchool.distanceMeters <= 650) {
       ecoleScore += 2.2;
       ecolePositive.push({
-        label: `${closestSchool.name || closestSchool.subType} à ${closestSchool.distanceMeters}m`,
+        label: `${closestSchool.name || closestSchool.subType} · ${closestSchool.distanceMeters}m`,
         points: 2.2,
         impact: "positive",
         detail: "Établissement accessible à pied facilement.",
@@ -322,7 +317,7 @@ export function calculateCategoryScores(
     } else {
       ecoleScore += 1.0;
       ecolePositive.push({
-        label: `${closestSchool.name} à ${closestSchool.distanceMeters}m`,
+        label: `${closestSchool.name || closestSchool.subType} · ${closestSchool.distanceMeters}m`,
         points: 1.0,
         impact: "positive",
         detail: "Établissement recensé dans le secteur élargi.",
@@ -359,10 +354,20 @@ export function calculateCategoryScores(
   if (secondaire) {
     ecoleScore += 0.8;
     ecolePositive.push({
-      label: `${secondaire.name || secondaire.subType} à ${secondaire.distanceMeters}m`,
+      label: `${secondaire.subType || "Collège ou lycée"} · ${secondaire.distanceMeters}m`,
       points: 0.8,
       impact: "positive",
       detail: "Collège ou lycée accessible pour les adolescents.",
+    });
+  }
+
+  if (higherEducation && higherEducation.distanceMeters <= 850) {
+    ecoleScore += 0.8;
+    ecolePositive.push({
+      label: `Enseignement supérieur · ${higherEducation.distanceMeters}m`,
+      points: 0.8,
+      impact: "positive",
+      detail: "Université, IUT ou établissement d'enseignement supérieur accessible dans le secteur.",
     });
   }
 
@@ -387,7 +392,13 @@ export function calculateCategoryScores(
       p.subType.toLowerCase().includes("médecin") ||
       p.subType.toLowerCase().includes("cabinet") ||
       p.subType.toLowerCase().includes("clinique") ||
-      p.subType.toLowerCase().includes("dentiste"),
+      p.subType.toLowerCase().includes("dentiste") ||
+      p.subType.toLowerCase().includes("professionnel de santé") ||
+      p.subType.toLowerCase().includes("professionnel de sante") ||
+      p.subType.toLowerCase().includes("maison / centre de santé") ||
+      p.subType.toLowerCase().includes("maison / centre de sante") ||
+      p.subType.toLowerCase().includes("maison médicale") ||
+      p.subType.toLowerCase().includes("maison medicale"),
   );
   const hospital = sante.find((p) =>
     p.subType.toLowerCase().includes("hôpital"),
@@ -439,13 +450,25 @@ export function calculateCategoryScores(
         detail: "Professionnel de santé accessible.",
       });
     }
+    const complementary = sante.filter((p) => /pharmacie|opticien|dermatologue|kinésithérapeute|kinesitherapeute|ostéopathe|osteopathe|laboratoire|dentiste|hôpital|clinique/i.test(p.subType));
+    if (complementary.length === 0) {
+      santeScore -= 0.4;
+      santeNegative.push({ label: "Peu de services de santé complémentaires", points: -0.4, impact: "negative", detail: "Un médecin est présent, mais aucun autre service de santé n'est identifié." });
+    }
   } else {
     santeScore -= 1.2;
-    santeNegative.push({
-      label: "Pas de cabinet médical ou médecin répertorié à proximité",
-      points: -1.2,
-      impact: "negative",
-      detail: "Densité médicale faible dans le quartier immédiat.",
+    santeNegative.push({ label: "Pas de cabinet médical ou médecin répertorié à proximité", points: -1.2, impact: "negative", detail: "Densité médicale faible dans le quartier immédiat." });
+  }
+
+  const healthTypes = new Set(sante.map((p) => p.subType.toLowerCase()));
+  if (healthTypes.size >= 2) {
+    const points = Math.min(0.8, (healthTypes.size - 1) * 0.3);
+    santeScore += points;
+    santePositive.push({
+      label: `${healthTypes.size} types de services de santé`,
+      points,
+      impact: "positive",
+      detail: "Présence de services médicaux complémentaires dans le secteur.",
     });
   }
 
@@ -609,18 +632,18 @@ export function calculateCategoryScores(
     });
   }
 
-  if (closestHeavy && closestHeavy.distanceMeters <= 120) {
+  if (closestLocal && closestLocal.distanceMeters <= 120) {
     tranquilityScore -= 2.0;
     tranquilityNegative.push({
-      label: `Proximité immédiate transport lourd (${closestHeavy.distanceMeters}m)`,
+      label: `Proximité immédiate d'un arrêt (${closestLocal.distanceMeters}m)`,
       points: -2.0,
       impact: "negative",
       detail: "Passage régulier de tramway/train susceptible de générer des vibrations sonores.",
     });
-  } else if (closestHeavy && closestHeavy.distanceMeters <= 300) {
+  } else if (closestLocal && closestLocal.distanceMeters <= 300) {
     tranquilityScore -= 0.8;
     tranquilityNegative.push({
-      label: `Axe de transport à ${closestHeavy.distanceMeters}m`,
+      label: `Arrêt de transport à ${closestLocal.distanceMeters}m`,
       points: -0.8,
       impact: "negative",
       detail: "Activité de circulation modérée à proximité.",
@@ -670,15 +693,15 @@ export function calculateCategoryScores(
     if (airQuality.scoreImpact > 0) {
       tranquilityScore += airQuality.scoreImpact;
       tranquilityPositive.push({
-        label: `${airQuality.label} (Indice AQI: ${airQuality.europeanAqi})`,
+        label: `${airQuality.label}`,
         points: airQuality.scoreImpact,
         impact: "positive",
-        detail: "Faibles concentrations en particules fines PM2.5 et dioxyde d'azote.",
+        detail: "Faibles concentrations en particules fines et dioxyde d'azote.",
       });
     } else if (airQuality.scoreImpact < 0) {
       tranquilityScore += airQuality.scoreImpact;
       tranquilityNegative.push({
-        label: `${airQuality.label} (Indice AQI: ${airQuality.europeanAqi})`,
+        label: `${airQuality.label}`,
         points: airQuality.scoreImpact,
         impact: "negative",
         detail: "Niveau de particules atmosphériques nécessitant vigilance.",
@@ -728,10 +751,10 @@ export function calculateCategoryScores(
   const pmrPositive: ScoreFactor[] = [];
   const pmrNegative: ScoreFactor[] = [];
 
-  if (closestHeavy) {
+  if (closestLocal) {
     pmrScore += 1.8;
     pmrPositive.push({
-      label: `Station structurante PMR à ${closestHeavy.distanceMeters}m`,
+      label: `Arrêt de transport accessible à ${closestLocal.distanceMeters}m`,
       points: 1.8,
       impact: "positive",
       detail: "Les stations modernes de tramway/métro offrent un accès de plain-pied garanti.",
@@ -756,10 +779,10 @@ export function calculateCategoryScores(
     });
   }
 
-  if (closestBus && closestBus.distanceMeters <= 250) {
+  if (closestLocal && closestLocal.distanceMeters <= 250) {
     pmrScore += 0.8;
     pmrPositive.push({
-      label: `Arrêt de bus proche (${closestBus.distanceMeters}m)`,
+      label: `Arrêt de desserte locale proche (${closestLocal.distanceMeters}m)`,
       points: 0.8,
       impact: "positive",
       detail: "Réduction des distances de marche à pied.",
@@ -779,10 +802,8 @@ export function calculateCategoryScores(
       maxScore: 10,
       baseScore: baseTransport,
       iconName: "Bus",
-      highlightText: closestHeavy
-        ? `${closestHeavy.name || closestHeavy.subType} (${closestHeavy.distanceMeters}m)`
-        : closestBus
-          ? `${closestBus.name || "Bus"} (${closestBus.distanceMeters}m)`
+      highlightText: closestLocal
+          ? `${closestLocal.name || closestLocal.subType} (${closestLocal.distanceMeters}m)`
           : "Aucun transport à proximité",
       poisFoundCount: transports.length,
       positiveFactors: transportPositive,
@@ -792,7 +813,7 @@ export function calculateCategoryScores(
         ...transportNegative.map((f) => `${f.points.toFixed(1)} pt : ${f.label}`),
       ],
       calculationExplanation:
-        "Score calculé sur l'accessibilité piétonne (distance au mètre près) d'un transport lourd en site propre (tram/métro/gare SNCF), le maillage des lignes de bus et la présence de stations vélo.",
+        "Score calculé sur la proximité du meilleur arrêt recensé, la densité et la répartition géographique des arrêts distincts, ainsi que la présence éventuelle d'une gare SNCF officielle. Les étiquettes bus/tram et les stations vélo ne servent pas à attribuer un bonus spécifique.",
       sources: [
         {
           name: "SNCF Gares & Connexions",
@@ -801,9 +822,9 @@ export function calculateCategoryScores(
           lastUpdated: "2026",
         },
         {
-          name: "OpenStreetMap",
-          description: "Arrêts de bus, tramway, métro et stations vélo",
-          url: "https://www.openstreetmap.org",
+          name: "GTFS national & Mapbox",
+          description: "Arrêts de transport du Point d'Accès National complétés par Mapbox",
+          url: "https://transport.data.gouv.fr",
           lastUpdated: "2026",
         },
       ],
@@ -830,9 +851,9 @@ export function calculateCategoryScores(
         "Score mesurant la capacité à réaliser ses courses du quotidien à pied : boulangeries, supérettes, supermarchés, boucheries et primeurs dans un rayon piétonnier de 800m.",
       sources: [
         {
-          name: "OpenStreetMap",
+          name: "Mapbox Searchbox",
           description: "Recensement cartographique des commerces de proximité",
-          url: "https://www.openstreetmap.org",
+          url: "https://www.mapbox.com",
           lastUpdated: "2026",
         },
       ],
@@ -855,7 +876,7 @@ export function calculateCategoryScores(
         ...ecoleNegative.map((f) => `${f.points.toFixed(1)} pt : ${f.label}`),
       ],
       calculationExplanation:
-        "Évalué à partir du fichier national officiel des établissements scolaires ouverts du Ministère de l'Éducation Nationale complété par OpenStreetMap pour la petite enfance.",
+        "Évalué à partir du fichier national officiel des établissements scolaires ouverts du Ministère de l'Éducation Nationale complété par Mapbox pour la petite enfance.",
       sources: [
         {
           name: "Ministère de l’Éducation nationale",
@@ -864,7 +885,7 @@ export function calculateCategoryScores(
           lastUpdated: "2026",
         },
         {
-          name: "OpenStreetMap",
+          name: "Mapbox Searchbox",
           description: "Crèches et structures petite enfance",
           lastUpdated: "2026",
         },
@@ -893,7 +914,7 @@ export function calculateCategoryScores(
         "Score calculé sur la disponibilité et la distance pédestre des officines pharmaceutiques, cabinets de médecins généralistes, dentistes et hôpitaux.",
       sources: [
         {
-          name: "OpenStreetMap Santé",
+          name: "Mapbox Searchbox Santé",
           description: "Pharmacies, cabinets médicaux, cliniques et hôpitaux",
           lastUpdated: "2026",
         },
@@ -920,7 +941,7 @@ export function calculateCategoryScores(
         "Score mesurant l'accessibilité à des zones arborées, parcs publics, squares et aires de jeux extérieures dans un rayon de marche direct.",
       sources: [
         {
-          name: "OpenStreetMap Espaces Verts",
+          name: "Mapbox Streets & Searchbox",
           description: "Parcs, jardins publics et équipements de loisirs",
           lastUpdated: "2026",
         },
@@ -947,11 +968,30 @@ export function calculateCategoryScores(
         "Score fondé sur la présence, la distance et le nombre d'aménagements de stationnement publics ou d'ouvrages dédiés dans la zone.",
       sources: [
         {
-          name: "OpenStreetMap",
+          name: "Mapbox & IGN BD TOPO",
           description: "Parkings publics et aires de stationnement",
           lastUpdated: "2026",
         },
       ],
+    },
+    {
+      category: "services_publics",
+      label: "Services publics",
+      // La pénalité d'absence doit être incluse dans la note finale, sinon
+      // l'écran pouvait afficher « -0,5 pt » tout en conservant 5/10.
+      score: Math.max(0, Math.min(10,
+        5 + Math.min(3, servicesPublics.length) * 0.8 + (servicesPublics.length ? 0 : -0.5),
+      )),
+      maxScore: 10,
+      baseScore: 5,
+      iconName: "Building2",
+      highlightText: servicesPublics.length ? `${servicesPublics.length} service${servicesPublics.length > 1 ? "s" : ""} public${servicesPublics.length > 1 ? "s" : ""} à proximité` : "Aucun service public recensé à proximité",
+      poisFoundCount: servicesPublics.length,
+      positiveFactors: servicesPublics.slice(0, 3).map((poi) => ({ label: `${poi.subType} à ${poi.distanceMeters}m`, points: 0.8, impact: "positive" as const, detail: "Service administratif accessible à pied." })),
+      negativeFactors: servicesPublics.length ? [] : [{ label: "Aucun service public identifié", points: -0.5, impact: "negative" as const, detail: "Les démarches administratives peuvent nécessiter un déplacement." }],
+      details: servicesPublics.map((poi) => `${poi.subType} à ${poi.distanceMeters}m`),
+      calculationExplanation: "Score fondé sur la présence et la proximité des bureaux de poste, mairies et services administratifs recensés par Mapbox.",
+      sources: [{ name: "Mapbox Searchbox", description: "Bureaux de poste, mairies, tribunaux et services administratifs", url: "https://www.mapbox.com/", lastUpdated: "2026" }],
     },
     {
       category: "tranquillite",
@@ -1001,8 +1041,8 @@ export function calculateCategoryScores(
       positiveFactors: leisurePositive,
       negativeFactors: [],
       details: leisurePositive.map((factor) => `+${factor.points.toFixed(1)} pt : ${factor.label}`),
-      calculationExplanation: "Indicateur de proximité des équipements sportifs, culturels et socioculturels recensés dans OpenStreetMap. En l'absence de résultats, la note reste neutre car la couverture cartographique varie selon les communes.",
-      sources: [{ name: "OpenStreetMap", description: "Équipements sportifs, bibliothèques, cinémas, théâtres, musées et centres culturels", url: "https://www.openstreetmap.org/", lastUpdated: "Données collaboratives" }],
+      calculationExplanation: "Indicateur de proximité des équipements sportifs, culturels et socioculturels recensés par Mapbox. En l'absence de résultats, la note reste neutre car la couverture varie selon les communes.",
+      sources: [{ name: "Mapbox Searchbox", description: "Équipements sportifs, bibliothèques, cinémas, théâtres, musées et centres culturels", url: "https://www.mapbox.com/", lastUpdated: "2026" }],
     },
     {
       category: "pmr",
@@ -1026,7 +1066,7 @@ export function calculateCategoryScores(
         "Estimation de la praticabilité piétonne et personnes à mobilité réduite basée sur l'existence de quais de transport adaptés et de services essentiels à courte distance.",
       sources: [
         {
-          name: "OpenStreetMap & RATP/SNCF",
+          name: "Mapbox & GTFS/SNCF",
           description: "Aménagements d'accessibilité des stations et trottoirs",
           lastUpdated: "2026",
         },

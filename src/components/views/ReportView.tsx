@@ -295,7 +295,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
 
   const appraisal = getScoreGrade(analysis.globalScore);
   const hasRightSections = includedSections.sources || includedSections.impressions;
-  const positiveRiskFindings = (analysis.riskAssessment?.findings ?? []).filter((finding) => !/pas de risque connu|non concern|aucun risque|absence de risque|non expose|non exposé/i.test(finding.addressStatus));
+  const positiveRiskFindings = (analysis.riskAssessment?.findings ?? []).filter((finding) => !/pas de risque connu|information indisponible|non concern|aucun signalement|aucun risque|absence de risque|non expose|non exposé/i.test(finding.addressStatus));
 
   const getAgentName = () => [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.name || "Agent Immobilier";
 

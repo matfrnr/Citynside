@@ -40,18 +40,22 @@ export async function fetchNationalTransitStops(
           const name = String(props.stop_name || props.name || "").trim();
           if (!name) return null;
           const source = String(props.dataset_title || props.d_title || props.agency_name || "").trim();
-          const modeText = `${source} ${name}`.toLowerCase();
-          const sourceText = source.toLowerCase();
+          // Ne pas déduire le mode du nom du réseau (un réseau peut desservir
+          // bus et tram) : utiliser uniquement les champs de mode de l'arrêt.
+          const modeText = `${props.route_type_name || ""} ${props.route_type || ""} ${props.vehicle_type || ""} ${props.mode || ""} ${name}`.toLowerCase();
           const stopText = name.toLowerCase();
           const isGareRoutiere = /\bgare routi[èe]re\b/.test(stopText);
           const hasStreetAddress = /\b(rue|avenue|av|boulevard|bd|bvd|place|pl|route|pont|chemin)\b.*(\bgare\b|\bsncf\b|\bter\b)/.test(stopText);
           const isBusOrCar = /\b(bus|car|cars|autocar|autocars)\b/.test(modeText);
-          const explicitRail = !isGareRoutiere && !hasStreetAddress && !isBusOrCar && (
-            /(\bgare\b|\bsncf\b|\bter\b|ferroviaire)/.test(stopText) ||
-            /(\bsncf\b|\bter\b|ferroviaire)/.test(sourceText)
+          const explicitRail = !isGareRoutiere && !/parking|parkings|stationnement/.test(stopText) && !hasStreetAddress && !isBusOrCar && (
+            /\b(sncf|ter|tgv|train|ferroviaire)\b/.test(stopText) ||
+            /\b(sncf|ter|tgv|ferroviaire)\b/.test(source.toLowerCase())
           );
-          const subType = /tram|light rail|métro|metro/.test(modeText)
+          const routeType = String(props.route_type ?? props.routeType ?? "").trim();
+          const subType = /\b(tram|tramway|light rail)\b/.test(modeText) || routeType === "0"
             ? "Arrêt de tramway / métro"
+            : /\b(métro|metro|subway)\b/.test(modeText) || routeType === "1"
+              ? "Arrêt de tramway / métro"
             : explicitRail
               ? "Gare / arrêt ferroviaire"
               : isBusOrCar

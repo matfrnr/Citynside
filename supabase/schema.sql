@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS public.analyses (
   pois JSONB NOT NULL DEFAULT '[]'::jsonb,
   impressions JSONB,
   risk_assessment JSONB,
+  air_quality JSONB,
   is_favorite BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()

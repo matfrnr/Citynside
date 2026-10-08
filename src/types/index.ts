@@ -20,6 +20,7 @@ export type POICategory =
   | "espaces_verts"
   | "stationnement"
   | "loisirs"
+  | "services_publics"
   | "tranquillite";
 
 export interface RiskFinding {
@@ -102,6 +103,7 @@ export interface NeighborhoodAnalysis {
   impressions?: FieldImpressions;
   isFavorite?: boolean;
   riskAssessment?: RiskAssessment;
+  airQuality?: import("../services/airQualityApi").AirQualityData | null;
 }
 
 export const LOCAL_DEMO_USER_ID = "local-demo-user";

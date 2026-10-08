@@ -76,7 +76,8 @@ export function mergeEducationPOIs(
   // En cas d'indisponibilité du référentiel, on conserve le repli Mapbox.
   const unmatchedOSM = educationPOIs.length > 0
     ? osmPOIs.filter((osmPOI) =>
-        osmPOI.category !== "ecoles" || /crèche|creche|halte-garderie|multi.?accueil/i.test(`${osmPOI.name} ${osmPOI.subType}`),
+        osmPOI.category !== "ecoles" ||
+        /crèche|creche|halte-garderie|multi.?accueil|lycée|lycee|collège|college|universit|facult|campus|iut|institut|école supérieure|ecole superieure|enseignement supérieur|enseignement superieur|grande école|grande ecole|bts|cpge|ingénieur|ingenieur|management|business school/i.test(`${osmPOI.name} ${osmPOI.subType}`),
       )
     : osmPOIs;
 

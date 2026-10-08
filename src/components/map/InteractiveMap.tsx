@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import { Crosshair, Navigation, X } from 'lucide-react';
 import type { POI } from '../../types';
-import { ANALYSIS_RADIUS_METERS, EXTENDED_TRANSIT_RADIUS_METERS } from '../../services/osmApi';
+import { ANALYSIS_RADIUS_METERS } from '../../services/osmApi';
 
 interface InteractiveMapProps {
   lat: number;
@@ -155,7 +155,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       poi.distanceMeters <= ANALYSIS_RADIUS_METERS ||
       (poi.category === 'transports' &&
         /gare ferroviaire|arrêt ferroviaire/i.test(poi.subType) &&
-        poi.distanceMeters <= EXTENDED_TRANSIT_RADIUS_METERS),
+        poi.distanceMeters <= 1200),
     ).filter((poi) => !selectedCategory || poi.category === selectedCategory);
 
     const categoryColors: Record<string, string> = {
@@ -166,6 +166,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       espaces_verts: '#15803d',
       stationnement: '#475569',
       loisirs: '#be185d',
+      services_publics: '#0e7490',
       tranquillite: '#0f766e',
     };
 
@@ -177,6 +178,9 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       }
       if (poi.category === 'sante' && poi.subType.toLowerCase().includes('pharmacie')) {
         return '#059669'; // Vert pharmacie (croix verte)
+      }
+      if (poi.category === 'sante' && /hôpital|hopital|clinique|chu/.test(poi.subType.toLowerCase())) {
+        return '#991b1b'; // Rouge foncé réservé aux établissements hospitaliers
       }
       return categoryColors[poi.category] || '#059669';
     };
@@ -203,6 +207,9 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         if (sub.includes('pharmacie')) {
           // Croix de pharmacie
           return '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" stroke="none"><path d="M10 3h4v7h7v4h-7v7h-4v-7H3v-4h7z"/></svg>';
+        }
+        if (sub.includes('hôpital') || sub.includes('hopital') || sub.includes('clinique') || sub.includes('chu')) {
+          return '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M4 21V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16M2 21h20M9 21v-4h6v4M12 6v6M9 9h6"/></svg>';
         }
         // Autres soins (hôpital, médecin, clinique, dentiste)
         return '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>';
@@ -239,12 +246,13 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
       const color = getPoiColor(poi);
       const iconSvg = getMiniSvgIcon(poi.category, poi.subType);
+      const isHospital = poi.category === 'sante' && /hôpital|hopital|clinique|chu/.test(poi.subType.toLowerCase());
       const walkingMinutes = Math.max(1, Math.round(poi.distanceMeters / 75)); // ~4.5 km/h
 
       const poiIcon = L.divIcon({
         className: 'cyt-custom-poi-marker',
         html: `
-          <div class="cyt-pin-pin" style="--pin-bg: ${color};" title="${poi.name}">
+          <div class="cyt-pin-pin${isHospital ? ' hospital-marker' : ''}" style="--pin-bg: ${color};" title="${poi.name}">
             <div class="cyt-pin-head">
               <span class="cyt-pin-svg">${iconSvg}</span>
             </div>
@@ -256,7 +264,11 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         popupAnchor: [0, -32],
       });
 
-      const marker = L.marker([finalLat, finalLon], { icon: poiIcon });
+      const isRailStation = poi.category === 'transports' && /gare ferroviaire|arrêt ferroviaire/i.test(poi.subType);
+      const marker = L.marker([finalLat, finalLon], {
+        icon: poiIcon,
+        zIndexOffset: isRailStation ? 1200 : 0,
+      });
       marker.on('click', (e) => {
         L.DomEvent.stopPropagation(e);
       });
@@ -443,6 +455,12 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
           align-items: center;
           justify-content: center;
           color: #ffffff;
+        }
+
+        .hospital-marker .cyt-pin-head {
+          width: 34px;
+          height: 34px;
+          border-width: 3px;
         }
 
         .cyt-pin-svg {

@@ -20,6 +20,7 @@ import {
   fetchAnalyses,
   getStoredAnalyses,
   renameAnalysis,
+  saveDemoAirQuality,
   saveAnalysis,
   toggleFavorite,
 } from "./services/storage";
@@ -42,6 +43,13 @@ const APP_VIEWS: AppView[] = [
 const readViewFromUrl = (): AppView => {
   const requested = new URLSearchParams(window.location.search).get("view");
   return APP_VIEWS.includes(requested as AppView) ? requested as AppView : "home";
+};
+
+const resetUrlToHome = () => {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("view");
+  url.searchParams.delete("analysis");
+  window.history.replaceState(window.history.state, "", url);
 };
 
 const notifyAccountActivated = async (userId: string) => {
@@ -223,6 +231,7 @@ export const App: React.FC = () => {
         setAuthUser(user);
         await loadUserAnalyses(user.id, false);
       } else {
+        if (event === "SIGNED_OUT") resetUrlToHome();
         clearReleaseNotesContinueState();
         setAuthUser(null);
         setAnalyses([]);
@@ -267,6 +276,9 @@ export const App: React.FC = () => {
   }, []);
 
   const handleAuthenticated = async (user: AuthUser) => {
+    resetUrlToHome();
+    setCurrentView("home");
+    setActiveAnalysis(null);
     if (user.id === LOCAL_DEMO_USER_ID) {
       localStorage.setItem(LOCAL_DEMO_SESSION_KEY, "active");
       setAuthUser(user);
@@ -277,13 +289,17 @@ export const App: React.FC = () => {
       await registerCurrentDevice(freshUser.id).catch((err) => console.warn("Vérification du nouvel appareil impossible :", err));
       await refreshImportantNotificationsCount(freshUser.id);
     }
-    setCurrentView("home");
     await loadUserAnalyses(user.id, true);
     // setCurrentView removed to avoid overriding
 
   };
 
   const handleLogout = async () => {
+    // Nettoyer synchroniquement l'URL avant signOut : une reconnexion rapide
+    // ne pourra pas relire la vue privée précédente avant l'effet React.
+    resetUrlToHome();
+    setCurrentView("home");
+    setActiveAnalysis(null);
     if (authUser) clearReleaseNotesContinueState(authUser.id);
     if (authUser?.id === LOCAL_DEMO_USER_ID) {
       localStorage.removeItem(LOCAL_DEMO_SESSION_KEY);
@@ -297,7 +313,6 @@ export const App: React.FC = () => {
     setAuthUser(null);
     setAnalyses([]);
     setActiveAnalysis(null);
-    setCurrentView("home");
   };
 
   const handleSelectAnalysis = (analysis: NeighborhoodAnalysis) => {
@@ -324,7 +339,8 @@ export const App: React.FC = () => {
   const handleUpdateAnalysis = (updated: NeighborhoodAnalysis) => {
     if (authUser?.id === LOCAL_DEMO_USER_ID) {
       // Demo examples may be enriched from the same public sources as a live
-      // analysis, but those refreshed details stay in memory only.
+      // analysis. Keep the air-quality snapshot across page refreshes too.
+      saveDemoAirQuality(updated.id, updated.airQuality);
       setActiveAnalysis(updated);
       return;
     }
@@ -344,12 +360,14 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleUpdateRiskAssessment = async (analysisId: string, riskAssessment: RiskAssessment) => {
+  const handleUpdateRiskAssessment = async (analysisId: string, riskAssessment: RiskAssessment, airQuality?: import("./services/airQualityApi").AirQualityData | null, analysisSnapshot?: NeighborhoodAnalysis) => {
     if (!authUser || authUser.id === LOCAL_DEMO_USER_ID) return;
     const stored = getStoredAnalyses(authUser.id).find((analysis) => analysis.id === analysisId);
     if (!stored) return;
-    const base = activeAnalysis?.id === analysisId ? activeAnalysis : stored;
-    const updated = { ...base, riskAssessment };
+    const base = analysisSnapshot?.id === analysisId
+      ? analysisSnapshot
+      : (activeAnalysis?.id === analysisId ? activeAnalysis : stored);
+    const updated = { ...base, riskAssessment, airQuality: airQuality ?? base.airQuality };
     if (activeAnalysis?.id === analysisId) setActiveAnalysis(updated);
     await saveAnalysis(updated, authUser.id);
     setAnalyses(getStoredAnalyses(authUser.id));
@@ -405,6 +423,20 @@ export const App: React.FC = () => {
     if (activeAnalysis?.id === id) {
       setActiveAnalysis(null);
     }
+  };
+
+  const handleClearSavedTab = async (ids: string[], tab: "history" | "favorites") => {
+    if (!authUser || authUser.id === LOCAL_DEMO_USER_ID) return;
+    if (tab === "history") {
+      await Promise.all(ids.map((id) => deleteAnalysis(id, authUser.id)));
+      if (activeAnalysis && ids.includes(activeAnalysis.id)) setActiveAnalysis(null);
+    } else {
+      await Promise.all(ids.map((id) => toggleFavorite(id, authUser.id)));
+      if (activeAnalysis && ids.includes(activeAnalysis.id)) {
+        setActiveAnalysis({ ...activeAnalysis, isFavorite: false });
+      }
+    }
+    setAnalyses(getStoredAnalyses(authUser.id));
   };
 
   const favoritesCount = analyses.filter((a) => a.isFavorite).length;
@@ -525,6 +557,7 @@ export const App: React.FC = () => {
               onToggleFavorite={handleToggleFav}
               onDeleteAnalysis={handleDeleteAnalysis}
               onRenameAnalysis={handleRenameAnalysis}
+              onClearAll={handleClearSavedTab}
             />
           )}
 

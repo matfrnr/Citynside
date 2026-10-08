@@ -1,6 +1,7 @@
 import { ArrowRight, FileText, Star, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { fetchAirQuality } from "../../services/airQualityApi";
+import type { AirQualityData } from "../../services/airQualityApi";
 import { reverseGeocode } from "../../services/banApi";
 import {
   fetchEducationPOIsInRadius,
@@ -10,6 +11,7 @@ import { ANALYSIS_RADIUS_METERS, EXTENDED_TRANSIT_RADIUS_METERS, fetchPOIsInRadi
 import { calculateCategoryScores } from "../../services/scoringEngine";
 import { fetchSNCFStationsInRadius } from "../../services/sncfApi";
 import { fetchNationalTransitStops } from "../../services/gtfsStopsApi";
+import { fetchIGNParkingPOIs } from "../../services/ignParkingApi";
 import type { AddressResult, NeighborhoodAnalysis, POI, RiskAssessment } from "../../types";
 import { fetchRiskAssessment } from "../../services/georisquesApi";
 import { InteractiveMap } from "../map/InteractiveMap";
@@ -17,13 +19,13 @@ import { ScoresList } from "../scores/ScoresList";
 import { RiskNuisancePanel } from "../scores/RiskNuisancePanel";
 import { AddressSearchBar } from "../search/AddressSearchBar";
 
-const demoAnalysisRequests = new Map<string, Promise<{ pois: POI[]; categories: NeighborhoodAnalysis["categories"]; avg: number }>>();
+const demoAnalysisRequests = new Map<string, Promise<{ pois: POI[]; categories: NeighborhoodAnalysis["categories"]; avg: number; airQuality: AirQualityData | null }>>();
 
 interface NewAnalysisViewProps {
   isDemo: boolean;
   currentAnalysis: NeighborhoodAnalysis | null;
   onUpdateAnalysis: (analysis: NeighborhoodAnalysis) => void;
-  onUpdateRiskAssessment: (analysisId: string, assessment: RiskAssessment) => void;
+  onUpdateRiskAssessment: (analysisId: string, assessment: RiskAssessment, airQuality?: import("../../services/airQualityApi").AirQualityData | null, analysisSnapshot?: NeighborhoodAnalysis) => void;
   onToggleFavorite: (id: string) => void;
   onGoToReport: () => void;
   onGoToImpressions: () => void;
@@ -40,17 +42,19 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [lastAirQuality, setLastAirQuality] = useState<AirQualityData | null>(null);
   const latestSearchId = useRef(0);
   const activeOsmRequest = useRef<AbortController | null>(null);
 
   // Fonction résiliente et accélérée d'agrégation multi-API
   const runParallelAnalysis = async (lat: number, lon: number, osmSignal?: AbortSignal) => {
-    const [osmRes, eduRes, sncfRes, gtfsRes, airRes] = await Promise.allSettled([
+    const [osmRes, eduRes, sncfRes, gtfsRes, airRes, ignParkingRes] = await Promise.allSettled([
       fetchPOIsInRadius(lat, lon, ANALYSIS_RADIUS_METERS, osmSignal),
       fetchEducationPOIsInRadius(lat, lon, ANALYSIS_RADIUS_METERS),
       fetchSNCFStationsInRadius(lat, lon, EXTENDED_TRANSIT_RADIUS_METERS),
       fetchNationalTransitStops(lat, lon, EXTENDED_TRANSIT_RADIUS_METERS),
       fetchAirQuality(lat, lon),
+      fetchIGNParkingPOIs(lat, lon, ANALYSIS_RADIUS_METERS),
     ]);
 
     const osmPOIs: POI[] = osmRes.status === "fulfilled" ? osmRes.value : [];
@@ -58,66 +62,142 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
     const sncfPOIs: POI[] = sncfRes.status === "fulfilled" ? sncfRes.value : [];
     const gtfsPOIs: POI[] = gtfsRes.status === "fulfilled" ? gtfsRes.value : [];
     const airQuality = airRes.status === "fulfilled" ? airRes.value : null;
+    const ignParkingPOIs: POI[] = ignParkingRes.status === "fulfilled" ? ignParkingRes.value : [];
 
     // Fusionner et dédupliquer les POIs officiels SNCF + Éducation + OSM
     const mergedSchools = mergeEducationPOIs(osmPOIs, eduPOIs);
-    const allPOIs = [...mergedSchools, ...gtfsPOIs];
+    // Les gares ferroviaires viennent exclusivement du référentiel officiel
+    // SNCF. On retire les faux ferroviaires issus de Mapbox/GTFS (parkings,
+    // arrêts routiers portant « gare » dans leur nom).
+    const nonRailPOIs = [...mergedSchools, ...gtfsPOIs].filter((p) =>
+      !(p.category === "transports" && /gare ferroviaire|arrêt ferroviaire/i.test(p.subType))
+    );
+    const allPOIs = [...nonRailPOIs, ...ignParkingPOIs];
 
-    // Ajouter les gares SNCF si pas déjà présentes à < 50m
+    // Ajouter les gares officielles SNCF
     for (const sncf of sncfPOIs) {
-      const alreadyHasStation = allPOIs.some(
-        (p) =>
-          p.category === "transports" &&
-          Math.abs(p.lat - sncf.lat) < 0.0006 &&
-          Math.abs(p.lon - sncf.lon) < 0.0006,
-      );
-      if (!alreadyHasStation) {
-        allPOIs.push(sncf);
-      }
+      allPOIs.push(sncf);
     }
 
     // Déduplication finale de sécurité sur l'ensemble des POIs combinés (OSM + Éducation + SNCF)
     const finalPOIs: POI[] = [];
+    const similarStopName = (a: string, b: string) => {
+      const compact = (value: string) => value.split(/\s+/)
+        .filter((token) => token && !/^(le|la|les|de|du|des)$/.test(token))
+        .map((token) => token.length > 4 && !token.endsWith("bus") ? token.replace(/s$/, "") : token)
+        .join("");
+      const left = compact(a);
+      const right = compact(b);
+      if (!left || !right) return false;
+      if (left === right) return true;
+      if (left.length < 6 || right.length < 6) return false;
+      if (left.startsWith(right) || right.startsWith(left)) return true;
+      const previous = Array.from({ length: right.length + 1 }, (_, i) => i);
+      for (let i = 1; i <= left.length; i++) {
+        const current = [i];
+        for (let j = 1; j <= right.length; j++) {
+          current[j] = Math.min(current[j - 1] + 1, previous[j] + 1, previous[j - 1] + (left[i - 1] === right[j - 1] ? 0 : 1));
+        }
+        for (let j = 0; j < current.length; j++) previous[j] = current[j];
+      }
+      return previous[right.length] <= 2;
+    };
     for (const p of allPOIs) {
       const isDup = finalPOIs.some((existing) => {
         if (existing.category !== p.category) return false;
         const d = calculateDistanceMeters(existing.lat, existing.lon, p.lat, p.lon);
         if (p.category === "ecoles") {
-          // Deux écoles à moins de 45m sont le même site
-          if (d <= 45) return true;
-          // Même nom patronymique à moins de 90m
-          if (
-            existing.name &&
-            p.name &&
-            existing.name.toLowerCase().trim() === p.name.toLowerCase().trim() &&
-            d <= 90
-          ) {
-            return true;
-          }
-          return false;
+          // Une primaire, une maternelle et une crèche peuvent partager la
+          // même adresse : on ne fusionne que le même sous-type, ou le même
+          // établissement exactement nommé.
+          const sameSubtype = existing.subType.trim().toLowerCase() === p.subType.trim().toLowerCase();
+          const sameName = existing.name && p.name && existing.name.trim().toLowerCase() === p.name.trim().toLowerCase();
+          return sameSubtype && ((d <= 45) || (sameName && d <= 90));
         }
         // Deux arrêts proches ne sont fusionnés que si leur nom est
         // strictement identique : deux arrêts différents peuvent partager le
         // même type et se trouver sur le même quai ou dans la même rue.
         if (p.category === "transports") {
+          const pIsOfficialStation = /gare ferroviaire sncf/i.test(p.subType);
+          const existingIsOfficialStation = /gare ferroviaire sncf/i.test(existing.subType);
+          // Un arrêt générique (p. ex. « Grenoble, gares ») ne doit jamais
+          // absorber la fiche officielle de la gare située au même endroit.
+          if (pIsOfficialStation !== existingIsOfficialStation) return false;
           const sameRail = /gare ferroviaire|arrêt ferroviaire/i.test(existing.subType) &&
             /gare ferroviaire|arrêt ferroviaire/i.test(p.subType);
           if (sameRail && d <= 120) return true;
-          return Boolean(existing.name && p.name) &&
-            existing.name!.trim().toLowerCase() === p.name!.trim().toLowerCase() &&
-            d <= 30;
+          // On nettoie le nom pour enlever le "Ville, " ajouté par GTFS et uniformiser tous les types de tirets (tiret cadratin, demi-cadratin, etc.)
+          const cleanName = (n: string) => n.trim().toLowerCase()
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+            .replace(/^[^,]+,\s*/, "").replace(/[-_–—]+/g, " ")
+            .replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+          const nameA = existing.name ? cleanName(existing.name) : "";
+          const nameB = p.name ? cleanName(p.name) : "";
+          const tokensA = new Set(nameA.split(" ").filter((t) => t.length >= 3));
+          const tokensB = new Set(nameB.split(" ").filter((t) => t.length >= 3));
+          const commonTokens = [...tokensA].filter((t) => tokensB.has(t));
+          const sameName = Boolean(nameA && nameB) &&
+            (nameA === nameB || (commonTokens.length >= 2 &&
+              commonTokens.length >= Math.min(tokensA.size, tokensB.size)));
+          const similarName = Boolean(nameA && nameB) && similarStopName(nameA, nameB);
+            
+          const genericVsBus =
+            (existing.subType === "Arrêt de transport" && p.subType === "Arrêt de bus") ||
+            (p.subType === "Arrêt de transport" && existing.subType === "Arrêt de bus");
+          // Deux sources peuvent donner des noms différents au même quai.
+          // À moins de 10 m, le même sous-type suffit pour fusionner ; au-delà,
+          // on conserve l'exigence d'un nom équivalent. Ne jamais fusionner
+          // bus et tram.
+          // Conflit de sources sur le même arrêt : si le nom est identique et
+          // les coordonnées sont très proches, on fusionne avant de choisir
+          // l'étiquette la plus conservative (bus plutôt que tram/métro).
+          if ((sameName || similarName) && d <= 30) return true;
+          if (existing.subType === p.subType && d <= 10) return true;
+          if ((sameName || genericVsBus) && (existing.subType === p.subType || genericVsBus) && d <= 100) return true;
+          return false;
         }
         // Pour les autres catégories : même sous-type à moins de 25m
         return existing.subType === p.subType && d <= 25;
       });
 
+      if (isDup && p.category === "transports") {
+        // La fiche SNCF est la source de référence : elle doit remplacer un
+        // éventuel point GTFS générique au même endroit (sinon la gare peut
+        // rester étiquetée comme simple arrêt de transport).
+        if (/gare ferroviaire sncf/i.test(p.subType)) {
+          const sncfIndex = finalPOIs.findIndex((existing) =>
+            existing.category === "transports" &&
+            calculateDistanceMeters(existing.lat, existing.lon, p.lat, p.lon) <= 120 &&
+            /gare ferroviaire|arrêt ferroviaire|arrêt de transport/i.test(existing.subType),
+          );
+          if (sncfIndex >= 0) finalPOIs[sncfIndex] = p;
+        }
+        const existingIndex = finalPOIs.findIndex((existing) =>
+          existing.category === "transports" &&
+          existing.name && p.name &&
+          similarStopName(existing.name, p.name) &&
+          calculateDistanceMeters(existing.lat, existing.lon, p.lat, p.lon) <= 30
+        );
+        if (existingIndex >= 0 && /arrêt de bus/i.test(p.subType) && /tramway|métro/i.test(finalPOIs[existingIndex].subType)) {
+          finalPOIs[existingIndex] = p;
+        }
+      }
+      if (isDup && p.category === "ecoles") {
+        const existingIndex = finalPOIs.findIndex((existing) =>
+          existing.category === "ecoles" && calculateDistanceMeters(existing.lat, existing.lon, p.lat, p.lon) <= 45
+        );
+        const specificity = (school: POI) => /maternelle|crèche|creche|collège|lycée|primaire|élémentaire|superieure|supérieure/i.test(`${school.subType} ${school.name}`) ? 2 : 1;
+        if (existingIndex >= 0 && specificity(p) > specificity(finalPOIs[existingIndex])) {
+          finalPOIs[existingIndex] = p;
+        }
+      }
       if (!isDup) {
         finalPOIs.push(p);
       }
     }
 
     finalPOIs.sort((a, b) => a.distanceMeters - b.distanceMeters);
-    const categories = calculateCategoryScores(finalPOIs, airQuality);
+    const categories = calculateCategoryScores(finalPOIs, airQuality, { lat, lon });
 
     const sum = categories.reduce((acc, curr) => acc + curr.score, 0);
     const avg = Math.round((sum / categories.length) * 10) / 10;
@@ -136,9 +216,9 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
       demoAnalysisRequests.set(currentAnalysis.id, request);
     }
     setIsLoading(true);
-    request.then(({ pois, categories, avg }) => {
+    request.then(({ pois, categories, avg, airQuality }) => {
       if (cancelled || pois.length === 0) return;
-      onUpdateAnalysis({ ...currentAnalysis, pois, categories, globalScore: avg });
+      onUpdateAnalysis({ ...currentAnalysis, pois, categories, globalScore: avg, airQuality });
     }).catch((error) => {
       console.warn("Enrichissement des données de démonstration indisponible :", error);
     }).finally(() => {
@@ -157,7 +237,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
     activeOsmRequest.current = osmController;
     setIsLoading(true);
     try {
-      const { pois, categories, avg } = await runParallelAnalysis(
+      const { pois, categories, avg, airQuality } = await runParallelAnalysis(
         addr.lat,
         addr.lon,
         osmController.signal,
@@ -176,12 +256,14 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
         globalScore: avg,
         categories,
         pois,
+        airQuality,
         impressions: currentAnalysis?.impressions,
         riskAssessment: { status: "loading", findings: [], reportUrl: `https://georisques.gouv.fr/api/v1/rapport_pdf?latlon=${encodeURIComponent(`${addr.lon},${addr.lat}`)}` },
       };
 
+      setLastAirQuality(airQuality);
       onUpdateAnalysis(updated);
-      void fetchRiskAssessment(addr.lat, addr.lon).then((assessment) => onUpdateRiskAssessment(updated.id, assessment));
+      void fetchRiskAssessment(addr.lat, addr.lon).then((assessment) => onUpdateRiskAssessment(updated.id, assessment, updated.airQuality, updated));
     } catch (e) {
       console.error("Erreur analyse:", e);
     } finally {
@@ -205,7 +287,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
       ]);
       if (searchId !== latestSearchId.current) return;
 
-      const { pois, categories, avg } = analysisData;
+      const { pois, categories, avg, airQuality } = analysisData;
 
       const updated: NeighborhoodAnalysis = {
         id: `analysis_${Date.now()}`,
@@ -219,12 +301,14 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
         globalScore: avg,
         categories,
         pois,
+        airQuality,
         impressions: currentAnalysis?.impressions,
         riskAssessment: { status: "loading", findings: [], reportUrl: `https://georisques.gouv.fr/api/v1/rapport_pdf?latlon=${encodeURIComponent(`${lon},${lat}`)}` },
       };
 
+      setLastAirQuality(airQuality);
       onUpdateAnalysis(updated);
-      void fetchRiskAssessment(lat, lon).then((assessment) => onUpdateRiskAssessment(updated.id, assessment));
+      void fetchRiskAssessment(lat, lon).then((assessment) => onUpdateRiskAssessment(updated.id, assessment, updated.airQuality, updated));
     } catch (e) {
       console.error("Erreur lors de la sélection de position:", e);
     } finally {
@@ -280,6 +364,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
               selectedCategory={selectedCategory}
               onSelectCategory={setSelectedCategory}
               addressName={`${currentAnalysis.address}, ${currentAnalysis.city}`}
+              globalScore={currentAnalysis.globalScore}
             />
           </section>
 
@@ -287,6 +372,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
             <RiskNuisancePanel
               assessment={currentAnalysis.riskAssessment}
               tranquility={currentAnalysis.categories.find((category) => category.category === "tranquillite")}
+              airQuality={currentAnalysis.airQuality ?? lastAirQuality}
             />
           </section>
         </div>

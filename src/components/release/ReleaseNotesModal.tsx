@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, Megaphone, X } from "lucide-react";
 import { CURRENT_RELEASE_NOTES, releaseNotesContinueKey } from "../../config/releaseNotes";
+import { supabase } from "../../services/supabase";
 
 interface ReleaseNotesModalProps {
   userId: string;
@@ -18,17 +19,24 @@ export const ReleaseNotesModal: React.FC<ReleaseNotesModalProps> = ({ userId }) 
       setIsOpen(false);
       return;
     }
-    try {
-      if (localStorage.getItem(dismissedVersionKey) === CURRENT_RELEASE_NOTES.version ||
-          sessionStorage.getItem(continueKey) === CURRENT_RELEASE_NOTES.version) {
-        setIsOpen(false);
-        return;
+    const checkDismissed = async () => {
+      try {
+        const localDismissed = localStorage.getItem(dismissedVersionKey) === CURRENT_RELEASE_NOTES.version;
+        const temporaryDismissed = sessionStorage.getItem(continueKey) === CURRENT_RELEASE_NOTES.version;
+        const { data } = await supabase.auth.getUser();
+        const accountDismissed = data.user?.id === userId &&
+          data.user.user_metadata?.citynside_release_notes_dismissed_version === CURRENT_RELEASE_NOTES.version;
+        if (localDismissed || temporaryDismissed || accountDismissed) {
+          setIsOpen(false);
+          return;
+        }
+      } catch {
+        // L'annonce reste affichable si le navigateur ou Supabase bloque le stockage.
       }
-    } catch {
-      // L'annonce reste affichable si le navigateur bloque le stockage.
-    }
-    setIsOpen(true);
-  }, [continueKey, dismissedVersionKey, hasReleaseNotes]);
+      setIsOpen(true);
+    };
+    void checkDismissed();
+  }, [continueKey, dismissedVersionKey, hasReleaseNotes, userId]);
 
   const dismissVersion = () => {
     try {
@@ -36,6 +44,11 @@ export const ReleaseNotesModal: React.FC<ReleaseNotesModalProps> = ({ userId }) 
     } catch {
       // La fenêtre reste fermée pour cette session si le stockage est indisponible.
     }
+    void supabase.auth.updateUser({
+      data: { citynside_release_notes_dismissed_version: CURRENT_RELEASE_NOTES.version },
+    }).catch(() => {
+      // Le stockage local reste disponible si la synchronisation du compte échoue.
+    });
     setIsOpen(false);
   };
 
