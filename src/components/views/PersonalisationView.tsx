@@ -160,7 +160,7 @@ export const PersonalisationView: React.FC<PersonalisationViewProps> = ({ userId
               <input
                 type="checkbox"
                 checked={customization.includedSections[section.key]}
-                onChange={(event) => updateCustomization({ includedSections: { [section.key]: event.target.checked } })}
+                onChange={(event) => updateCustomization({ includedSections: { ...customization.includedSections, [section.key]: event.target.checked } })}
               />
             </label>
           ))}

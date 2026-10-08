@@ -18,6 +18,7 @@ import { InteractiveMap } from "../map/InteractiveMap";
 import { ScoresList } from "../scores/ScoresList";
 import { RiskNuisancePanel } from "../scores/RiskNuisancePanel";
 import { AddressSearchBar } from "../search/AddressSearchBar";
+import { NeighborhoodAssistant } from "../analysis/NeighborhoodAssistant";
 import type { DefaultCategoryFilter, DefaultScoreProfile, DistanceUnit } from "../../services/userPreferences";
 
 const demoAnalysisRequests = new Map<string, Promise<{ pois: POI[]; categories: NeighborhoodAnalysis["categories"]; avg: number; airQuality: AirQualityData | null }>>();
@@ -414,6 +415,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
               airQuality={currentAnalysis.airQuality ?? lastAirQuality}
             />
           </section>
+          {!isDemo && <NeighborhoodAssistant analysis={currentAnalysis} />}
         </div>
       ) : (
         <div className="analysis-empty-state" role="status">

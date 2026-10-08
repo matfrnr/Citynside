@@ -42,4 +42,10 @@ Le serveur d’authentification requiert Node.js 24 ou supérieur (SQLite intég
 
 La base des comptes et invitations est créée dans `data/citynside.sqlite` (ignorée par Git). Pour changer son emplacement, définissez `CITYNSIDE_DATA_DIR`. L’API écoute sur `127.0.0.1:3001` par défaut; `API_HOST` et `API_PORT` permettent de configurer son écoute.
 
+### Assistant IA de quartier
+
+L’assistant utilise l’API Groq côté serveur. Pour le développement local, copiez `.env.example` vers `.env`, puis renseignez `GROQ_API_KEY`, `SUPABASE_URL` et `SUPABASE_ANON_KEY` (les variables `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY` sont aussi reconnues localement). Pour Vercel ou Netlify, configurez ces trois variables dans les variables d’environnement du projet. Ne préfixez jamais la clé Groq par `VITE_` et ne la publiez pas dans le navigateur.
+
+Les requêtes sont réservées aux utilisateurs connectés. Le quota partagé est de 50 requêtes par jour pour toute l’équipe, avec une limite par compte de 20 requêtes sur une heure et 5 sur 10 minutes. Les quotas sont enregistrés dans Supabase : appliquez la migration `supabase/migrations/20261009_assistant_shared_quota.sql` avant d’activer l’assistant. L’interface avertit l’utilisateur à l’approche des plafonds et lorsqu’un plafond est atteint. Les questions hors sujet sont bloquées dans l’interface et côté serveur, sans consommer de quota. Seuls les scores, les libellés et les résumés d’indicateurs sont transmis; l’adresse précise et les coordonnées ne le sont pas. En l’absence de clé Groq, l’assistant affiche un message de configuration.
+
 En production, servez l’application et l’API sous la même origine derrière un reverse proxy HTTPS, définissez `NODE_ENV=production` pour activer l’attribut `Secure` du cookie, protégez les sauvegardes SQLite et ne publiez jamais une clé d’invitation. Les analyses et les champs du profil restent dans le `localStorage` du navigateur, isolés par compte sur cet appareil; ils ne sont pas synchronisés entre appareils et ne sont pas stockés dans la base serveur.
