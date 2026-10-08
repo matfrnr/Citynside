@@ -129,4 +129,5 @@ export type AppView =
   | "favoris"
   | "comparison"
   | "notifications"
+  | "personalisation"
   | "profile";

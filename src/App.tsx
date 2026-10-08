@@ -9,10 +9,13 @@ import { ImpressionsView } from "./components/views/ImpressionsView";
 import { NewAnalysisView } from "./components/views/NewAnalysisView";
 import { NotificationsView } from "./components/views/NotificationsView";
 import { ProfileView } from "./components/views/ProfileView";
+import { PersonalisationView } from "./components/views/PersonalisationView";
+import { needsProfileSetup, ProfileSetupModal } from "./components/profile/ProfileSetupModal";
 import { ReportView } from "./components/views/ReportView";
 import { ReleaseNotesModal } from "./components/release/ReleaseNotesModal";
 import { clearReleaseNotesContinueState } from "./config/releaseNotes";
 import { fetchUserProfile } from "./services/profile";
+import { DEFAULT_USER_PREFERENCES, loadUserPreferences, type UserPreferences } from "./services/userPreferences";
 import { createNotification, fetchNotifications } from "./services/notifications";
 import { registerCurrentDevice } from "./services/deviceSession";
 import {
@@ -37,7 +40,7 @@ import {
 const LOCAL_DEMO_SESSION_KEY = "citynside_demo_session";
 const APP_VIEWS: AppView[] = [
   "home", "new-analysis", "impressions", "report", "enregistrements",
-  "favoris", "comparison", "notifications", "profile",
+  "favoris", "comparison", "notifications", "personalisation", "profile",
 ];
 
 const readViewFromUrl = (): AppView => {
@@ -98,6 +101,8 @@ export const App: React.FC = () => {
   const [authChecking, setAuthChecking] = useState(true);
   const [importantNotificationsCount, setImportantNotificationsCount] = useState(0);
   const [isDemoInfoOpen, setIsDemoInfoOpen] = useState(false);
+  const [isProfileSetupOpen, setIsProfileSetupOpen] = useState(false);
+  const [userPreferences, setUserPreferences] = useState<UserPreferences>(DEFAULT_USER_PREFERENCES);
 
   useEffect(() => {
     if (authChecking) return;
@@ -195,13 +200,19 @@ export const App: React.FC = () => {
           // disponibles dans la session. Les appels Supabase secondaires ne
           // doivent pas bloquer le premier affichage après un rechargement.
           const user = mapSupabaseUser(session.user);
+          const preferences = loadUserPreferences(user.id);
+          setUserPreferences(preferences);
+          if (!new URLSearchParams(window.location.search).has("view")) setCurrentView(preferences.startView);
           setAuthUser(user);
           void loadUserAnalyses(user.id, true);
           setAuthChecking(false);
 
           void Promise.allSettled([
             fetchUserProfile(session.user).then((profile) => {
-              if (!cancelled) setAuthUser(profile);
+              if (!cancelled) {
+                setAuthUser(profile);
+                setIsProfileSetupOpen(needsProfileSetup(profile));
+              }
             }),
             notifyAccountActivated(user.id),
             registerCurrentDevice(user.id),
@@ -227,6 +238,8 @@ export const App: React.FC = () => {
       if (event === "INITIAL_SESSION") return;
 
       if (session?.user) {
+        // Un événement SIGNED_IN peut aussi accompagner la reprise d'un onglet :
+        // ne pas réappliquer ici la page de départ et interrompre une recherche.
         const user = await fetchUserProfile(session.user);
         setAuthUser(user);
         await loadUserAnalyses(user.id, false);
@@ -234,6 +247,8 @@ export const App: React.FC = () => {
         if (event === "SIGNED_OUT") resetUrlToHome();
         clearReleaseNotesContinueState();
         setAuthUser(null);
+        setIsProfileSetupOpen(false);
+        setUserPreferences(DEFAULT_USER_PREFERENCES);
         setAnalyses([]);
         setActiveAnalysis(null);
       }
@@ -281,10 +296,15 @@ export const App: React.FC = () => {
     setActiveAnalysis(null);
     if (user.id === LOCAL_DEMO_USER_ID) {
       localStorage.setItem(LOCAL_DEMO_SESSION_KEY, "active");
+      setUserPreferences(DEFAULT_USER_PREFERENCES);
       setAuthUser(user);
     } else {
+      const preferences = loadUserPreferences(user.id);
+      setUserPreferences(preferences);
+      setCurrentView(preferences.startView);
       const freshUser = await fetchUserProfile(user);
       setAuthUser(freshUser);
+      setIsProfileSetupOpen(needsProfileSetup(freshUser));
       await notifyAccountActivated(freshUser.id).catch((err) => console.warn("Notification d’activation non enregistrée :", err));
       await registerCurrentDevice(freshUser.id).catch((err) => console.warn("Vérification du nouvel appareil impossible :", err));
       await refreshImportantNotificationsCount(freshUser.id);
@@ -311,6 +331,8 @@ export const App: React.FC = () => {
       }
     }
     setAuthUser(null);
+    setUserPreferences(DEFAULT_USER_PREFERENCES);
+    setIsProfileSetupOpen(false);
     setAnalyses([]);
     setActiveAnalysis(null);
   };
@@ -474,7 +496,7 @@ export const App: React.FC = () => {
   if (!authUser) return <AuthView onAuthenticated={handleAuthenticated} />;
 
   return (
-    <div className="cyt-app-layout">
+    <div className={`cyt-app-layout${userPreferences.reduceMotion ? " reduce-motion" : ""}`}>
       {/* Fixed Sidebar */}
       <Sidebar
         currentView={currentView}
@@ -513,6 +535,12 @@ export const App: React.FC = () => {
           {currentView === "new-analysis" && (
             <NewAnalysisView
               isDemo={authUser.id === LOCAL_DEMO_USER_ID}
+              mapControlsHiddenByDefault={userPreferences.hideMapControlsByDefault}
+              mapZoom={userPreferences.mapZoom}
+              reduceMotion={userPreferences.reduceMotion}
+              defaultScoreProfile={userPreferences.defaultScoreProfile}
+              defaultCategoryFilter={userPreferences.defaultCategoryFilter}
+              distanceUnit={userPreferences.distanceUnit}
               currentAnalysis={activeAnalysis}
               onUpdateAnalysis={handleUpdateAnalysis}
               onUpdateRiskAssessment={handleUpdateRiskAssessment}
@@ -536,6 +564,7 @@ export const App: React.FC = () => {
               isDemo={authUser.id === LOCAL_DEMO_USER_ID}
               analysis={activeAnalysis}
               user={authUser}
+              distanceUnit={userPreferences.distanceUnit}
               onReportGenerated={() => {
                 void createNotification(authUser.id, {
                   id: `report_${activeAnalysis.id}_${Date.now()}`,
@@ -564,6 +593,8 @@ export const App: React.FC = () => {
           {currentView === "comparison" && <ComparisonView analyses={analyses} />}
 
           {currentView === "notifications" && <NotificationsView isDemo={authUser.id === LOCAL_DEMO_USER_ID} user={authUser} onImportantUnreadChange={setImportantNotificationsCount} />}
+
+          {currentView === "personalisation" && <PersonalisationView userId={authUser.id} onUserPreferencesChange={setUserPreferences} />}
 
           {currentView === "profile" && (
             <ProfileView
@@ -611,7 +642,22 @@ export const App: React.FC = () => {
 
       <ReleaseNotesModal userId={authUser.id} />
 
+      {isProfileSetupOpen && <ProfileSetupModal
+        user={authUser}
+        onComplete={(updatedUser) => { setAuthUser(updatedUser); setIsProfileSetupOpen(false); }}
+        onDismiss={() => setIsProfileSetupOpen(false)}
+      />}
+
       <style>{`
+        .cyt-app-layout.reduce-motion *,
+        .cyt-app-layout.reduce-motion *::before,
+        .cyt-app-layout.reduce-motion *::after {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          scroll-behavior: auto !important;
+          transition-duration: 0.01ms !important;
+        }
+
         .cyt-app-layout {
           display: flex;
           width: 100vw;

@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
-import { Crosshair, Navigation, X } from 'lucide-react';
+import { Crosshair, Eye, EyeOff, Maximize2, Minimize2, Navigation, X } from 'lucide-react';
 import type { POI } from '../../types';
+import type { DistanceUnit } from '../../services/userPreferences';
+import { formatDistance } from '../../services/distanceFormat';
 import { ANALYSIS_RADIUS_METERS } from '../../services/osmApi';
 
 interface InteractiveMapProps {
@@ -9,6 +11,10 @@ interface InteractiveMapProps {
   lon: number;
   neighborhoodName?: string;
   pois: POI[];
+  focusPoi?: POI | null;
+  controlsVisibleByDefault?: boolean;
+  reduceMotion?: boolean;
+  distanceUnit?: DistanceUnit;
   selectedCategory: string | null;
   onSelectCategory?: (category: string | null) => void;
   onSelectLocation?: (lat: number, lon: number) => void;
@@ -21,25 +27,59 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   lon,
   neighborhoodName: _neighborhoodName,
   pois,
+  focusPoi = null,
+  controlsVisibleByDefault = true,
+  reduceMotion = false,
+  distanceUnit = 'meters',
   selectedCategory,
   onSelectCategory,
   onSelectLocation,
   height = '100%',
-  zoom = 15,
+  zoom = 14,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
+  const poiMarkersRef = useRef<Map<string, L.Marker>>(new Map());
   const boundaryLayerRef = useRef<L.Layer | null>(null);
   const mainPinMarkerRef = useRef<L.Marker | null>(null);
+  const controlsBeforeFullscreenRef = useRef(false);
 
   // Mode explicite de repositionnement pour naviguer librement sans fausse manipulation
   const [isRepositionMode, setIsRepositionMode] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [mapControlsVisible, setMapControlsVisible] = useState(() =>
+    typeof window === 'undefined' ? controlsVisibleByDefault : !window.matchMedia('(max-width: 767px)').matches && controlsVisibleByDefault,
+  );
   const isRepositionModeRef = useRef(false);
 
   useEffect(() => {
     isRepositionModeRef.current = isRepositionMode;
   }, [isRepositionMode]);
+
+  useEffect(() => {
+    if (!isExpanded) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsExpanded(false);
+        setMapControlsVisible(controlsBeforeFullscreenRef.current);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    const frame = window.requestAnimationFrame(() => {
+      const map = mapInstanceRef.current;
+      if (!map) return;
+      map.invalidateSize({ pan: false });
+      map.setView([lat, lon], zoom, { animate: false });
+    });
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+      window.cancelAnimationFrame(frame);
+    };
+  }, [isExpanded, lat, lon, zoom]);
 
   // Initialize Map
   useEffect(() => {
@@ -103,7 +143,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    map.setView([lat, lon], zoom, { animate: true });
+    map.setView([lat, lon], zoom, { animate: !reduceMotion });
 
     // 1. Remove previous main pin
     if (mainPinMarkerRef.current) {
@@ -142,7 +182,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     }).addTo(map);
 
     boundaryLayerRef.current = analysisCircle;
-  }, [lat, lon, zoom]);
+  }, [lat, lon, zoom, reduceMotion]);
 
   // Update POI markers when POIs or category filter changes
   useEffect(() => {
@@ -150,9 +190,10 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     if (!markersGroup) return;
 
     markersGroup.clearLayers();
+    poiMarkersRef.current.clear();
 
     const filteredPOIs = pois.filter((poi) =>
-      poi.distanceMeters <= ANALYSIS_RADIUS_METERS ||
+      poi.id === focusPoi?.id || poi.distanceMeters <= ANALYSIS_RADIUS_METERS ||
       (poi.category === 'transports' &&
         /gare ferroviaire|arrêt ferroviaire/i.test(poi.subType) &&
         poi.distanceMeters <= 1200),
@@ -247,8 +288,6 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       const color = getPoiColor(poi);
       const iconSvg = getMiniSvgIcon(poi.category, poi.subType);
       const isHospital = poi.category === 'sante' && /hôpital|hopital|clinique|chu/.test(poi.subType.toLowerCase());
-      const walkingMinutes = Math.max(1, Math.round(poi.distanceMeters / 75)); // ~4.5 km/h
-
       const poiIcon = L.divIcon({
         className: 'cyt-custom-poi-marker',
         html: `
@@ -279,14 +318,34 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
           </div>
           <h4 class="popup-title">${poi.name}</h4>
           <div class="popup-meta">
-            <span class="popup-distance">📍 <b>${poi.distanceMeters} m</b></span>
-            <span class="popup-time">🚶 ~${walkingMinutes} min à pied</span>
+            <span class="popup-distance">📍 <b>${formatDistance(poi.distanceMeters, distanceUnit)}</b></span>
           </div>
         </div>
       `);
       markersGroup.addLayer(marker);
+      poiMarkersRef.current.set(poi.id, marker);
     });
-  }, [pois, selectedCategory]);
+  }, [pois, selectedCategory, focusPoi?.id, distanceUnit]);
+
+  useEffect(() => {
+    if (!focusPoi) return;
+    const map = mapInstanceRef.current;
+    const marker = poiMarkersRef.current.get(focusPoi.id);
+    if (!map || !marker) return;
+    const target = L.latLng(focusPoi.lat, focusPoi.lon);
+    const zoomLevel = Math.max(map.getZoom(), 16);
+    if (map.getCenter().distanceTo(target) < 5 && map.getZoom() >= zoomLevel) {
+      marker.openPopup();
+      return;
+    }
+    if (reduceMotion) {
+      map.setView(target, zoomLevel, { animate: false });
+      marker.openPopup();
+      return;
+    }
+    map.once('moveend', () => marker.openPopup());
+    map.flyTo(target, zoomLevel, { duration: 0.7 });
+  }, [focusPoi, pois, selectedCategory, reduceMotion]);
 
   const handleZoomIn = () => {
     mapInstanceRef.current?.zoomIn();
@@ -297,15 +356,62 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   };
 
   const handleRecenter = () => {
-    mapInstanceRef.current?.flyTo([lat, lon], zoom, { duration: 0.8 });
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    if (reduceMotion) map.setView([lat, lon], zoom, { animate: false });
+    else map.flyTo([lat, lon], zoom, { duration: 0.8 });
+  };
+
+  const handleToggleExpanded = () => {
+    const nextExpanded = !isExpanded;
+    if (nextExpanded) controlsBeforeFullscreenRef.current = mapControlsVisible;
+    setIsExpanded(nextExpanded);
+    setMapControlsVisible(nextExpanded ? false : controlsBeforeFullscreenRef.current);
   };
 
   return (
     <div
-      className={`interactive-map-wrapper ${isRepositionMode ? 'reposition-mode-active' : ''}`}
+      className={`interactive-map-wrapper ${isRepositionMode ? 'reposition-mode-active' : ''} ${isExpanded ? 'is-expanded' : ''}`}
       style={{ height }}
     >
       <div ref={mapContainerRef} className="map-inner-container" />
+
+      <div className="map-top-controls">
+        <button
+          className={`map-controls-toggle${mapControlsVisible ? '' : ' is-controls-hidden'}`}
+          type="button"
+          onClick={() => setMapControlsVisible((visible) => !visible)}
+          aria-label={mapControlsVisible ? 'Masquer les commandes de la carte' : 'Afficher les commandes de la carte'}
+          aria-pressed={mapControlsVisible}
+          title={mapControlsVisible ? 'Masquer les commandes' : 'Afficher les commandes'}
+        >
+          {mapControlsVisible ? <EyeOff size={17} /> : <Eye size={17} />}
+        </button>
+        {mapControlsVisible && (
+          <>
+            <button
+              className="map-expand-btn"
+              type="button"
+              onClick={handleToggleExpanded}
+              aria-label={isExpanded ? 'Réduire la carte' : 'Afficher la carte en plein écran'}
+              title={isExpanded ? 'Réduire la carte (Échap)' : 'Afficher la carte en plein écran'}
+            >
+              {isExpanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+              <span>{isExpanded ? 'Réduire' : 'Plein écran'}</span>
+            </button>
+            {!isRepositionMode && onSelectLocation && (
+              <button
+                className="map-reposition-trigger-btn"
+                onClick={() => setIsRepositionMode(true)}
+                title="Activer pour choisir un nouvel emplacement sur la carte"
+              >
+                <Crosshair size={14} />
+                <span>Déplacer l'adresse</span>
+              </button>
+            )}
+          </>
+        )}
+      </div>
 
       {/* Bannière active de repositionnement */}
       {isRepositionMode ? (
@@ -322,22 +428,10 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
             <span>Annuler</span>
           </button>
         </div>
-      ) : (
-        /* Bouton pour activer le repositionnement intentionnel */
-        onSelectLocation && (
-          <button
-            className="map-reposition-trigger-btn"
-            onClick={() => setIsRepositionMode(true)}
-            title="Activer pour choisir un nouvel emplacement sur la carte"
-          >
-            <Crosshair size={14} />
-            <span>Déplacer l'adresse</span>
-          </button>
-        )
-      )}
+      ) : null}
 
       {/* Badge indicateur de filtre actif pour transparence totale */}
-      {selectedCategory && (
+      {mapControlsVisible && selectedCategory && (
         <div className="map-filter-active-pill">
           <span>Filtre carte : <b>{selectedCategory}</b> ({pois.filter(p => p.category === selectedCategory).length} affichés)</span>
           {onSelectCategory && (
@@ -356,7 +450,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       )}
 
       {/* Floating Tactical Tablet Controls (+ / - / Recentrer) matching mockup 2 */}
-      <div className="map-tablet-controls">
+      {mapControlsVisible && <div className="map-tablet-controls">
         <button
           className="map-zoom-btn"
           onClick={handleRecenter}
@@ -365,13 +459,13 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         >
           <Navigation size={18} />
         </button>
-        <button className="map-zoom-btn" onClick={handleZoomIn} aria-label="Zoomer">
+        <button className="map-zoom-btn map-zoom-step-btn" onClick={handleZoomIn} aria-label="Zoomer">
           +
         </button>
-        <button className="map-zoom-btn" onClick={handleZoomOut} aria-label="Dézoomer">
+        <button className="map-zoom-btn map-zoom-step-btn" onClick={handleZoomOut} aria-label="Dézoomer">
           −
         </button>
-      </div>
+      </div>}
 
       <style>{`
         .interactive-map-wrapper {
@@ -386,6 +480,84 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         .map-inner-container {
           width: 100%;
           height: 100%;
+        }
+
+        .map-top-controls {
+          position: absolute;
+          top: 16px;
+          right: 16px;
+          z-index: 1300;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .map-controls-toggle {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 42px;
+          height: 42px;
+          border: 1px solid rgba(255,255,255,.75);
+          border-radius: 11px;
+          background: #fff;
+          color: #173830;
+          box-shadow: 0 4px 14px rgba(0,0,0,.2);
+          cursor: pointer;
+        }
+
+        .map-controls-toggle:hover { background: #f1f6f0; }
+        .map-controls-toggle.is-controls-hidden { background: #173830; color: #fff; border-color: #173830; }
+        .map-controls-toggle.is-controls-hidden:hover { background: #255146; }
+
+        .map-expand-btn {
+          display: none;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          min-height: 42px;
+          padding: 0 14px;
+          border: 1px solid rgba(255,255,255,.75);
+          border-radius: 11px;
+          background: #fff;
+          color: #173830;
+          box-shadow: 0 4px 14px rgba(0,0,0,.2);
+          font: inherit;
+          font-size: .84rem;
+          font-weight: 650;
+          cursor: pointer;
+        }
+
+        .map-expand-btn:hover { background: #f1f6f0; }
+
+        .interactive-map-wrapper.is-expanded {
+          position: fixed;
+          inset: 0;
+          z-index: 10000;
+          width: 100vw;
+          height: 100vh !important;
+          height: 100dvh !important;
+          border-radius: 0;
+          box-shadow: none;
+        }
+
+        .interactive-map-wrapper.is-expanded .map-top-controls { top: 20px; right: 20px; }
+
+        .map-top-controls .map-reposition-trigger-btn {
+          position: static;
+          margin: 0;
+          min-height: 42px;
+        }
+
+        @media (min-width: 768px) {
+          .map-expand-btn { display: inline-flex; }
+        }
+
+        @media (min-width: 768px) and (max-width: 900px) {
+          .map-top-controls .map-expand-btn span,
+          .map-top-controls .map-reposition-trigger-btn span { display: none; }
+          .map-top-controls .map-expand-btn,
+          .map-top-controls .map-reposition-trigger-btn { width: 42px; padding: 0; justify-content: center; }
         }
 
         /* Custom Main Marker & Badge */
@@ -691,6 +863,10 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
         .map-zoom-btn:active {
           transform: scale(0.96);
+        }
+
+        @media (hover: none) and (pointer: coarse) {
+          .map-zoom-step-btn { display: none; }
         }
       `}</style>
     </div>

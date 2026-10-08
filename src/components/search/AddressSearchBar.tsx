@@ -9,6 +9,7 @@ interface AddressSearchBarProps {
   onTriggerAnalysis?: () => void;
   isLoading?: boolean;
   readOnly?: boolean;
+  autoFocus?: boolean;
 }
 
 export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
@@ -17,6 +18,7 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
   onTriggerAnalysis,
   isLoading = false,
   readOnly = false,
+  autoFocus = false,
 }) => {
   const [query, setQuery] = useState(initialValue);
   const [suggestions, setSuggestions] = useState<AddressResult[]>([]);
@@ -28,6 +30,10 @@ export const AddressSearchBar: React.FC<AddressSearchBarProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceTimerRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (autoFocus && !readOnly) inputRef.current?.focus();
+  }, [autoFocus, readOnly]);
 
   // Auto-effacement du message de feedback après 6 secondes
   useEffect(() => {

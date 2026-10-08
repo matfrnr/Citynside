@@ -9,11 +9,13 @@ import {
   Printer,
   Eye,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { DEFAULT_REPORT_CUSTOMIZATION, fetchReportCustomization, saveReportCustomization, type ReportCustomization } from '../../services/reportCustomization';
+import { DEFAULT_REPORT_CUSTOMIZATION, fetchReportCustomization, loadDefaultReportCustomization, saveReportCustomization, type ReportCustomization } from '../../services/reportCustomization';
 import { LOCAL_DEMO_USER_ID, type AuthUser, type NeighborhoodAnalysis } from '../../types';
+import type { DistanceUnit } from '../../services/userPreferences';
+import { formatDistanceText } from '../../services/distanceFormat';
 
 interface ReportViewProps {
   isDemo: boolean;
@@ -21,20 +23,21 @@ interface ReportViewProps {
   onBackToEdit: () => void;
   user?: AuthUser | null;
   onReportGenerated?: () => void;
+  distanceUnit: DistanceUnit;
 }
 
-const loadReportCustomization = (key: string): ReportCustomization => {
+const loadReportCustomization = (key: string, fallback: ReportCustomization): ReportCustomization => {
   try {
     const saved = localStorage.getItem(key);
-    if (!saved) return DEFAULT_REPORT_CUSTOMIZATION;
+    if (!saved) return fallback;
     const parsed = JSON.parse(saved) as Partial<ReportCustomization>;
     return {
-      ...DEFAULT_REPORT_CUSTOMIZATION,
+      ...fallback,
       ...parsed,
-      includedSections: { ...DEFAULT_REPORT_CUSTOMIZATION.includedSections, ...parsed.includedSections },
+      includedSections: { ...fallback.includedSections, ...parsed.includedSections },
     };
   } catch {
-    return DEFAULT_REPORT_CUSTOMIZATION;
+    return fallback;
   }
 };
 
@@ -44,6 +47,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
   onBackToEdit,
   user,
   onReportGenerated,
+  distanceUnit,
 }) => {
   const reportRef = useRef<HTMLDivElement>(null);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -51,14 +55,15 @@ export const ReportView: React.FC<ReportViewProps> = ({
   const [showReportOptions, setShowReportOptions] = useState(false);
   const isServerUser = Boolean(user?.id && user.id !== LOCAL_DEMO_USER_ID);
   const customizationKey = `citynside_report_customization_${user?.id || 'local'}_${analysis.id}`;
-  const [customization, setCustomization] = useState(() => ({ key: customizationKey, value: loadReportCustomization(customizationKey) }));
+  const defaultCustomization = useMemo(() => user?.id ? loadDefaultReportCustomization(user.id) : DEFAULT_REPORT_CUSTOMIZATION, [user?.id]);
+  const [customization, setCustomization] = useState(() => ({ key: customizationKey, value: loadReportCustomization(customizationKey, defaultCustomization) }));
   const [customizationLoaded, setCustomizationLoaded] = useState(!isServerUser);
   const [customizationDirty, setCustomizationDirty] = useState(false);
   const [customizationSyncState, setCustomizationSyncState] = useState<'loading' | 'saving' | 'ready' | 'saved' | 'error' | 'local'>(isServerUser ? 'loading' : 'local');
   const customizationRef = useRef(customization);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   customizationRef.current = customization;
-  const customizationValue = customization.key === customizationKey ? customization.value : DEFAULT_REPORT_CUSTOMIZATION;
+  const customizationValue = customization.key === customizationKey ? customization.value : defaultCustomization;
   const { includedSections, strengths, reservations } = customizationValue;
 
   useEffect(() => {
@@ -66,7 +71,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
     setCustomizationLoaded(!isServerUser);
     setCustomizationDirty(false);
     if (!isServerUser || !user?.id) {
-      setCustomization({ key: customizationKey, value: loadReportCustomization(customizationKey) });
+      setCustomization({ key: customizationKey, value: loadReportCustomization(customizationKey, defaultCustomization) });
       setCustomizationSyncState('local');
       setCustomizationLoaded(true);
       return () => { cancelled = true; };
@@ -75,7 +80,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
     setCustomizationSyncState('loading');
     void fetchReportCustomization(user.id, analysis.id).then((saved) => {
       if (cancelled) return;
-      const localValue = loadReportCustomization(customizationKey);
+      const localValue = loadReportCustomization(customizationKey, defaultCustomization);
       setCustomization({ key: customizationKey, value: saved || localValue });
       setCustomizationLoaded(true);
       if (saved) {
@@ -90,12 +95,12 @@ export const ReportView: React.FC<ReportViewProps> = ({
     }).catch((error) => {
       if (cancelled) return;
       console.warn('Chargement des préférences de rapport depuis Supabase impossible :', error);
-      setCustomization({ key: customizationKey, value: loadReportCustomization(customizationKey) });
+      setCustomization({ key: customizationKey, value: loadReportCustomization(customizationKey, defaultCustomization) });
       setCustomizationLoaded(true);
       setCustomizationSyncState('error');
     });
     return () => { cancelled = true; };
-  }, [analysis.id, customizationKey, isServerUser, user?.id]);
+  }, [analysis.id, customizationKey, defaultCustomization, isServerUser, user?.id]);
 
   useEffect(() => {
     if (!customizationLoaded || customization.key !== customizationKey) return;
@@ -130,7 +135,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
     if (!customizationLoaded) return;
     setCustomization((current) => ({
       key: customizationKey,
-      value: { ...(current.key === customizationKey ? current.value : loadReportCustomization(customizationKey)), ...value },
+      value: { ...(current.key === customizationKey ? current.value : loadReportCustomization(customizationKey, defaultCustomization)), ...value },
     }));
     setCustomizationDirty(true);
   };
@@ -470,8 +475,8 @@ export const ReportView: React.FC<ReportViewProps> = ({
                 return <div key={cat.category} className="report-cat-row">
                   <div className="cat-row-left">
                     <span className="cat-title-text">{cat.label}</span>
-                    <span className="cat-highlight">{cat.highlightText}</span>
-                    {nearestFactor && !placeAlreadyMentioned && <span className="cat-distance">Distance : {nearestFactor.label.match(/\d+\s*m/i)?.[0].replace(/m/i, ' m')}</span>}
+                    <span className="cat-highlight">{formatDistanceText(cat.highlightText, distanceUnit)}</span>
+                    {nearestFactor && !placeAlreadyMentioned && <span className="cat-distance">Distance : {formatDistanceText(nearestFactor.label.match(/\d+\s*m/i)?.[0] || '', distanceUnit)}</span>}
                   </div>
                   <div className="cat-row-right">
                     <span className="cat-score-pill">

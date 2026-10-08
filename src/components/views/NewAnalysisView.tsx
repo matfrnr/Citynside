@@ -18,11 +18,18 @@ import { InteractiveMap } from "../map/InteractiveMap";
 import { ScoresList } from "../scores/ScoresList";
 import { RiskNuisancePanel } from "../scores/RiskNuisancePanel";
 import { AddressSearchBar } from "../search/AddressSearchBar";
+import type { DefaultCategoryFilter, DefaultScoreProfile, DistanceUnit } from "../../services/userPreferences";
 
 const demoAnalysisRequests = new Map<string, Promise<{ pois: POI[]; categories: NeighborhoodAnalysis["categories"]; avg: number; airQuality: AirQualityData | null }>>();
 
 interface NewAnalysisViewProps {
   isDemo: boolean;
+  mapControlsHiddenByDefault: boolean;
+  mapZoom: number;
+  reduceMotion: boolean;
+  defaultScoreProfile: DefaultScoreProfile;
+  defaultCategoryFilter: DefaultCategoryFilter;
+  distanceUnit: DistanceUnit;
   currentAnalysis: NeighborhoodAnalysis | null;
   onUpdateAnalysis: (analysis: NeighborhoodAnalysis) => void;
   onUpdateRiskAssessment: (analysisId: string, assessment: RiskAssessment, airQuality?: import("../../services/airQualityApi").AirQualityData | null, analysisSnapshot?: NeighborhoodAnalysis) => void;
@@ -33,6 +40,12 @@ interface NewAnalysisViewProps {
 
 export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
   isDemo,
+  mapControlsHiddenByDefault,
+  mapZoom,
+  reduceMotion,
+  defaultScoreProfile,
+  defaultCategoryFilter,
+  distanceUnit,
   currentAnalysis,
   onUpdateAnalysis,
   onUpdateRiskAssessment,
@@ -40,7 +53,8 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
   onGoToReport,
   onGoToImpressions,
 }) => {
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(defaultCategoryFilter);
+  const [poiToLocate, setPoiToLocate] = useState<POI | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [lastAirQuality, setLastAirQuality] = useState<AirQualityData | null>(null);
   const latestSearchId = useRef(0);
@@ -230,7 +244,8 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
   // When user selects an address in autocomplete or hits Analyser
   const handleSelectAddress = async (addr: AddressResult) => {
     if (isDemo) return;
-    setSelectedCategory(null);
+    setSelectedCategory(defaultCategoryFilter);
+    setPoiToLocate(null);
     const searchId = ++latestSearchId.current;
     activeOsmRequest.current?.abort();
     const osmController = new AbortController();
@@ -278,7 +293,8 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
     activeOsmRequest.current?.abort();
     const osmController = new AbortController();
     activeOsmRequest.current = osmController;
-    setSelectedCategory(null);
+    setSelectedCategory(defaultCategoryFilter);
+    setPoiToLocate(null);
     setIsLoading(true);
     try {
       const [rev, analysisData] = await Promise.all([
@@ -316,6 +332,19 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
     }
   };
 
+  const handleLocatePoi = (poi: POI) => {
+    setSelectedCategory(poi.category);
+    setPoiToLocate({ ...poi });
+    window.requestAnimationFrame(() => {
+      document.querySelector(".analysis-map-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  };
+
+  const handleSelectCategory = (category: string | null) => {
+    setSelectedCategory(category);
+    setPoiToLocate(null);
+  };
+
   return (
     <div className="new-analysis-container">
       {/* Header section matching Mockup 2 */}
@@ -335,6 +364,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
               : ""
           }
           onSelectAddress={handleSelectAddress}
+          autoFocus={!isDemo && !currentAnalysis}
           onTriggerAnalysis={() => {}}
           isLoading={isLoading}
           readOnly={isDemo}
@@ -351,7 +381,12 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
                 neighborhoodName={currentAnalysis.address}
                 pois={currentAnalysis.pois}
                 selectedCategory={selectedCategory}
-                onSelectCategory={setSelectedCategory}
+                focusPoi={poiToLocate}
+                controlsVisibleByDefault={!mapControlsHiddenByDefault}
+                zoom={mapZoom}
+                reduceMotion={reduceMotion}
+                distanceUnit={distanceUnit}
+                onSelectCategory={handleSelectCategory}
                 onSelectLocation={isDemo ? undefined : handleMapLocationSelect}
                 height="420px"
               />
@@ -362,9 +397,13 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
             <ScoresList
               categories={currentAnalysis.categories}
               selectedCategory={selectedCategory}
-              onSelectCategory={setSelectedCategory}
+              onSelectCategory={handleSelectCategory}
               addressName={`${currentAnalysis.address}, ${currentAnalysis.city}`}
               globalScore={currentAnalysis.globalScore}
+              pois={currentAnalysis.pois}
+              onLocatePoi={handleLocatePoi}
+              defaultScoreProfile={defaultScoreProfile}
+              distanceUnit={distanceUnit}
             />
           </section>
 

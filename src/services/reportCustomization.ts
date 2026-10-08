@@ -12,6 +12,31 @@ export const DEFAULT_REPORT_CUSTOMIZATION: ReportCustomization = {
   reservations: "",
 };
 
+const defaultCustomizationKey = (userId: string) => `citynside_report_defaults_${userId}`;
+
+export function loadDefaultReportCustomization(userId: string): ReportCustomization {
+  try {
+    const saved = localStorage.getItem(defaultCustomizationKey(userId));
+    if (!saved) return DEFAULT_REPORT_CUSTOMIZATION;
+    const parsed = JSON.parse(saved) as Partial<ReportCustomization>;
+    return {
+      ...DEFAULT_REPORT_CUSTOMIZATION,
+      ...parsed,
+      includedSections: { ...DEFAULT_REPORT_CUSTOMIZATION.includedSections, ...parsed.includedSections },
+    };
+  } catch {
+    return DEFAULT_REPORT_CUSTOMIZATION;
+  }
+}
+
+export function saveDefaultReportCustomization(userId: string, customization: ReportCustomization): void {
+  try {
+    localStorage.setItem(defaultCustomizationKey(userId), JSON.stringify(customization));
+  } catch {
+    // Les préférences restent utilisables pendant la session si le stockage local est indisponible.
+  }
+}
+
 const mapRow = (row: Record<string, unknown>): ReportCustomization => {
   const sections = row.included_sections && typeof row.included_sections === "object"
     ? row.included_sections as Partial<ReportCustomization["includedSections"]>
