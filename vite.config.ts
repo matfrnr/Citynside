@@ -1,5 +1,5 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig, loadEnv, type Plugin } from "vite";
+import { defineConfig, loadEnv, type Plugin, type ProxyOptions } from "vite";
 import { handleAssistantRequest } from "./server/assistant-handler.mjs";
 
 function assistantDevEndpoint(): Plugin {
@@ -36,26 +36,38 @@ function assistantDevEndpoint(): Plugin {
 }
 
 // https://vite.dev/config/
-export default defineConfig({
-  plugins: [react(), assistantDevEndpoint()],
-  server: {
-    proxy: {
-      "/api/gtfs-stops": {
-        target: "https://transport.data.gouv.fr",
+export default defineConfig(({ mode }) => {
+  const environment = loadEnv(mode, process.cwd(), "");
+  const georisquesProxyOrigin = environment.GEORISQUES_PROXY_ORIGIN?.replace(/\/$/, "");
+  const georisquesProxy: ProxyOptions = georisquesProxyOrigin
+    ? {
+        target: georisquesProxyOrigin,
         changeOrigin: true,
-      },
-      "/api/georisques": {
+        secure: true,
+      }
+    : {
         target: "https://www.georisques.gouv.fr",
         changeOrigin: true,
         secure: true,
-        rewrite: (path) => path.replace(/^\/api\/georisques/, "/api/v1/resultats_rapport_risque"),
+        rewrite: (path: string) => path.replace(/^\/api\/georisques/, "/api/v1/resultats_rapport_risque"),
         configure: (proxy) => {
           proxy.on("proxyReq", (proxyReq) => {
             proxyReq.setHeader("accept", "application/json");
             proxyReq.setHeader("user-agent", "Citynside/1.0 (georisques proxy)");
           });
         },
+      };
+
+  return {
+    plugins: [react(), assistantDevEndpoint()],
+    server: {
+      proxy: {
+        "/api/gtfs-stops": {
+          target: "https://transport.data.gouv.fr",
+          changeOrigin: true,
+        },
+        "/api/georisques": georisquesProxy,
       },
     },
-  },
+  };
 });
