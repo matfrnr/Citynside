@@ -1,7 +1,3 @@
-export const config = {
-  runtime: 'nodejs',
-};
-
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const responseCache = new Map();
 
@@ -15,7 +11,7 @@ const jsonResponse = (body, status = 200, extraHeaders = {}) =>
     },
   });
 
-export default async (request) => {
+async function handleGeorisquesRequest(request) {
   if (request.method !== "GET" && request.method !== "OPTIONS") {
     return jsonResponse({ error: "Méthode non autorisée." }, 405);
   }
@@ -80,4 +76,10 @@ export default async (request) => {
     console.error("Georisques Proxy Error:", error);
     return jsonResponse({ error: "Géorisques API indisponible." }, 502);
   }
+}
+
+// Vercel Node.js Web Handler signature. A bare default function is interpreted
+// as the legacy (req, res) signature and can fail before this handler runs.
+export default {
+  fetch: handleGeorisquesRequest,
 };
