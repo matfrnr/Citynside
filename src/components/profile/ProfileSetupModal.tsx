@@ -9,10 +9,6 @@ interface ProfileSetupModalProps {
   onDismiss: () => void;
 }
 
-export const needsProfileSetup = (user: AuthUser): boolean =>
-  user.id !== "local-demo-user" &&
-  (!user.firstName?.trim() || !user.lastName?.trim());
-
 export const ProfileSetupModal: React.FC<ProfileSetupModalProps> = ({ user, onComplete, onDismiss }) => {
   const [firstName, setFirstName] = useState(user.firstName?.trim() || "Agent");
   const [lastName, setLastName] = useState(user.lastName?.trim() || "Citynside");

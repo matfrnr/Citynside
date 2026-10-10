@@ -19,7 +19,7 @@ const offTopicReply = "Je peux vous aider à lire cette analyse de quartier : se
 
 function isNeighborhoodQuestion(question: string, history: ConversationTurn[], analysis: NeighborhoodAnalysis): boolean {
   const normalized = question.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  if (/\b\d+\s*(?:\+|\-|\*|\/|plus|moins|fois|divise par)\s*\d+\b/.test(normalized)
+  if (/\b\d+\s*(?:\+|-|\*|\/|plus|moins|fois|divise par)\s*\d+\b/.test(normalized)
     || /\b(calcul|calcule|resous|recette|meteo|ecris un mail|redige un mail|traduis|programme en|code en|blague|poeme|president|capitale de)\b/.test(normalized)) return false;
   if (/\b(quartier|analyse|note|score|indicateur|critere|atout|avantage|points? forts?|points? de vigilance|reserve|proximite|environnement|ecole|maternelle|college|lycee|universite|transport|gare|bus|tram|commerce|sante|medecin|pharmacie|parc|espace vert|securite|risque|air|bruit|accessibilite|pmr|famille|enfant|senior|etudiant|immobilier|bien|logement|rapport|resultat|equipement|service|marche|sport|culture|synthese|resume|profil|comparaison|comparer|marche a pied|temps de trajet)\b/.test(normalized)) return true;
   const analysisText = analysis.categories.flatMap((category) => [

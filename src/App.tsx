@@ -10,7 +10,8 @@ import { NewAnalysisView } from "./components/views/NewAnalysisView";
 import { NotificationsView } from "./components/views/NotificationsView";
 import { ProfileView } from "./components/views/ProfileView";
 import { PersonalisationView } from "./components/views/PersonalisationView";
-import { needsProfileSetup, ProfileSetupModal } from "./components/profile/ProfileSetupModal";
+import { ProfileSetupModal } from "./components/profile/ProfileSetupModal";
+import { needsProfileSetup } from "./services/profileSetup";
 import { ReportView } from "./components/views/ReportView";
 import { ReleaseNotesModal } from "./components/release/ReleaseNotesModal";
 import { clearReleaseNotesContinueState } from "./config/releaseNotes";
@@ -102,11 +103,16 @@ export const App: React.FC = () => {
     useState<NeighborhoodAnalysis | null>(null);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [authChecking, setAuthChecking] = useState(true);
-  const [importantNotificationsCount, setImportantNotificationsCount] = useState(0);
+  const [importantNotificationsSnapshot, setImportantNotificationsSnapshot] = useState({ userId: null as string | null, count: 0 });
   const [isDemoInfoOpen, setIsDemoInfoOpen] = useState(false);
   const [isProfileSetupOpen, setIsProfileSetupOpen] = useState(false);
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(DEFAULT_USER_PREFERENCES);
   const userNavigationRef = useRef<{ view: AppView; analysisId: string | null } | null>(null);
+  const authUserId = authUser?.id ?? null;
+  const activeAnalysisId = activeAnalysis?.id ?? null;
+  const importantNotificationsCount = authUserId === importantNotificationsSnapshot.userId
+    ? importantNotificationsSnapshot.count
+    : 0;
   const navigateTo = (view: AppView, analysisId: string | null = null) => {
     userNavigationRef.current = { view, analysisId };
     setCurrentView(view);
@@ -114,37 +120,48 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     if (authChecking) return;
-    if (!authUser) {
+    if (!authUserId) {
       resetUrlToHome();
-      if (currentView !== "home") setCurrentView("home");
-      if (activeAnalysis) setActiveAnalysis(null);
       return;
     }
     const url = new URL(window.location.href);
     if (currentView === "home") url.searchParams.delete("view");
     else url.searchParams.set("view", currentView);
 
-    if (["report", "impressions", "new-analysis"].includes(currentView) && activeAnalysis) {
-      url.searchParams.set("analysis", activeAnalysis.id);
+    if (["report", "impressions", "new-analysis"].includes(currentView) && activeAnalysisId) {
+      url.searchParams.set("analysis", activeAnalysisId);
     } else {
       url.searchParams.delete("analysis");
     }
     window.history.replaceState(window.history.state, "", url);
-  }, [activeAnalysis?.id, authChecking, authUser?.id, currentView]);
+  }, [activeAnalysisId, authChecking, authUserId, currentView]);
 
   const refreshImportantNotificationsCount = async (userId: string) => {
     try {
       const items = await fetchNotifications(userId);
-      setImportantNotificationsCount(items.filter((item) => item.importance === "important" && !item.read).length);
+      setImportantNotificationsSnapshot({
+        userId,
+        count: items.filter((item) => item.importance === "important" && !item.read).length,
+      });
     } catch (error) {
       console.warn("Compteur de notifications indisponible :", error);
     }
   };
 
   useEffect(() => {
-    if (!authUser) { setImportantNotificationsCount(0); return; }
-    void refreshImportantNotificationsCount(authUser.id);
-  }, [authUser?.id]);
+    if (!authUserId) return;
+    let cancelled = false;
+    void fetchNotifications(authUserId).then((items) => {
+      if (cancelled) return;
+      setImportantNotificationsSnapshot({
+        userId: authUserId,
+        count: items.filter((item) => item.importance === "important" && !item.read).length,
+      });
+    }).catch((error) => {
+      if (!cancelled) console.warn("Compteur de notifications indisponible :", error);
+    });
+    return () => { cancelled = true; };
+  }, [authUserId]);
 
   const loadUserAnalyses = async (
     userId: string,
@@ -248,6 +265,11 @@ export const App: React.FC = () => {
           ]);
           return;
         }
+        // Une session absente (par exemple après l'effacement des données du
+        // navigateur) doit aussi effacer la vue privée conservée en mémoire.
+        resetUrlToHome();
+        userNavigationRef.current = null;
+        setCurrentView("home");
         setAuthChecking(false);
       })
       .catch(() => {
@@ -273,7 +295,10 @@ export const App: React.FC = () => {
         setAuthUser(user);
         await loadUserAnalyses(user.id, false);
       } else {
-        if (event === "SIGNED_OUT") resetUrlToHome();
+        if (event === "SIGNED_OUT") {
+          resetUrlToHome();
+          setCurrentView("home");
+        }
         userNavigationRef.current = null;
         clearReleaseNotesContinueState();
         setAuthUser(null);
@@ -634,7 +659,7 @@ export const App: React.FC = () => {
 
           {currentView === "comparison" && <ComparisonView analyses={analyses} />}
 
-          {currentView === "notifications" && <NotificationsView isDemo={authUser.id === LOCAL_DEMO_USER_ID} user={authUser} onImportantUnreadChange={setImportantNotificationsCount} />}
+          {currentView === "notifications" && <NotificationsView isDemo={authUser.id === LOCAL_DEMO_USER_ID} user={authUser} onImportantUnreadChange={(count) => setImportantNotificationsSnapshot({ userId: authUser.id, count })} />}
 
           {currentView === "personalisation" && <PersonalisationView userId={authUser.id} onUserPreferencesChange={setUserPreferences} />}
 

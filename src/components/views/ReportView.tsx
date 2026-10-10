@@ -53,14 +53,17 @@ export const ReportView: React.FC<ReportViewProps> = ({
   const [showReportOptions, setShowReportOptions] = useState(false);
   const isServerUser = Boolean(user?.id && user.id !== LOCAL_DEMO_USER_ID);
   const customizationKey = `citynside_report_customization_${user?.id || 'local'}_${analysis.id}`;
-  const defaultCustomization = useMemo(() => user?.id ? loadDefaultReportCustomization(user.id) : DEFAULT_REPORT_CUSTOMIZATION, [user?.id]);
+  const userId = user?.id;
+  const defaultCustomization = useMemo(() => userId ? loadDefaultReportCustomization(userId) : DEFAULT_REPORT_CUSTOMIZATION, [userId]);
   const [customization, setCustomization] = useState(() => ({ key: customizationKey, value: loadReportCustomization(customizationKey, defaultCustomization) }));
   const [customizationLoaded, setCustomizationLoaded] = useState(!isServerUser);
   const [customizationDirty, setCustomizationDirty] = useState(false);
   const [customizationSyncState, setCustomizationSyncState] = useState<'loading' | 'saving' | 'ready' | 'saved' | 'error' | 'local'>(isServerUser ? 'loading' : 'local');
   const customizationRef = useRef(customization);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
-  customizationRef.current = customization;
+  useEffect(() => {
+    customizationRef.current = customization;
+  }, [customization]);
   const customizationValue = customization.key === customizationKey ? customization.value : defaultCustomization;
   const { includedSections, strengths, reservations } = customizationValue;
 
@@ -476,7 +479,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
               {analysis.categories.map((cat) => {
                 const nearestFactor = cat.positiveFactors?.find((factor) => /\d+\s*m/i.test(factor.label));
                 const factorPlace = nearestFactor?.label.replace(/\s+à\s+\d+\s*m.*$/i, "").trim();
-                const placeAlreadyMentioned = Boolean(factorPlace && cat.highlightText.toLocaleLowerCase("fr").includes(factorPlace.toLocaleLowerCase("fr")));
+                const placeAlreadyMentioned = factorPlace && cat.highlightText.toLocaleLowerCase("fr").includes(factorPlace.toLocaleLowerCase("fr"));
                 return <div key={cat.category} className="report-cat-row">
                   <div className="cat-row-left">
                     <span className="cat-title-text">{cat.label}</span>

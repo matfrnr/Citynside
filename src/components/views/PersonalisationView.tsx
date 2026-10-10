@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Check, FileText, Home, Map, RotateCcw, SlidersHorizontal } from "lucide-react";
 import {
   DEFAULT_REPORT_CUSTOMIZATION,
@@ -28,18 +28,25 @@ const reportSections: { key: keyof ReportCustomization["includedSections"]; labe
 ];
 
 export const PersonalisationView: React.FC<PersonalisationViewProps> = ({ userId, onUserPreferencesChange }) => {
-  const [customization, setCustomization] = useState<ReportCustomization>(() => loadDefaultReportCustomization(userId));
-  const [preferences, setPreferences] = useState<UserPreferences>(() => loadUserPreferences(userId));
+  const [customizationSnapshot, setCustomizationSnapshot] = useState(() => ({
+    userId,
+    value: loadDefaultReportCustomization(userId),
+  }));
+  const [preferencesSnapshot, setPreferencesSnapshot] = useState(() => ({
+    userId,
+    value: loadUserPreferences(userId),
+  }));
+  const customization = customizationSnapshot.userId === userId
+    ? customizationSnapshot.value
+    : loadDefaultReportCustomization(userId);
+  const preferences = preferencesSnapshot.userId === userId
+    ? preferencesSnapshot.value
+    : loadUserPreferences(userId);
   const [interfaceResetNotice, setInterfaceResetNotice] = useState(false);
-
-  useEffect(() => {
-    setCustomization(loadDefaultReportCustomization(userId));
-    setPreferences(loadUserPreferences(userId));
-  }, [userId]);
 
   const updatePreferences = (update: Partial<UserPreferences>) => {
     const next = { ...preferences, ...update };
-    setPreferences(next);
+    setPreferencesSnapshot({ userId, value: next });
     setInterfaceResetNotice(false);
     saveUserPreferences(userId, next);
     onUserPreferencesChange(next);
@@ -48,7 +55,7 @@ export const PersonalisationView: React.FC<PersonalisationViewProps> = ({ userId
   const resetPreferences = () => {
     saveUserPreferences(userId, DEFAULT_USER_PREFERENCES);
     const defaults = { ...DEFAULT_USER_PREFERENCES };
-    setPreferences(defaults);
+    setPreferencesSnapshot({ userId, value: defaults });
     onUserPreferencesChange(defaults);
     setInterfaceResetNotice(true);
   };
@@ -61,13 +68,13 @@ export const PersonalisationView: React.FC<PersonalisationViewProps> = ({ userId
         ? { ...customization.includedSections, ...update.includedSections }
         : customization.includedSections,
     };
-    setCustomization(next);
+    setCustomizationSnapshot({ userId, value: next });
     saveDefaultReportCustomization(userId, next);
   };
 
   const resetDefaults = () => {
     saveDefaultReportCustomization(userId, DEFAULT_REPORT_CUSTOMIZATION);
-    setCustomization(DEFAULT_REPORT_CUSTOMIZATION);
+    setCustomizationSnapshot({ userId, value: DEFAULT_REPORT_CUSTOMIZATION });
   };
 
   return (

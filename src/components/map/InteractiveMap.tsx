@@ -6,9 +6,9 @@ import type { DistanceUnit } from '../../services/userPreferences';
 import { formatDistance } from '../../services/distanceFormat';
 import { ANALYSIS_RADIUS_METERS } from '../../services/osmApi';
 
-const getDisplayedPOIs = (pois: POI[], focusPoi: POI | null, selectedCategory: string | null) =>
+const getDisplayedPOIs = (pois: POI[], focusPoiId: string | null, selectedCategory: string | null) =>
   pois.filter((poi) =>
-    poi.id === focusPoi?.id || poi.distanceMeters <= ANALYSIS_RADIUS_METERS ||
+    poi.id === focusPoiId || poi.distanceMeters <= ANALYSIS_RADIUS_METERS ||
     (poi.category === 'transports' &&
       /gare ferroviaire|arrêt ferroviaire/i.test(poi.subType) &&
       poi.distanceMeters <= 1200),
@@ -206,7 +206,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     markersGroup.clearLayers();
     poiMarkersRef.current.clear();
 
-    const filteredPOIs = getDisplayedPOIs(pois, focusPoi, selectedCategory);
+    const filteredPOIs = getDisplayedPOIs(pois, focusPoi?.id ?? null, selectedCategory);
 
     const categoryColors: Record<string, string> = {
       transports: '#1d4ed8',
@@ -443,7 +443,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       {mapControlsVisible && selectedCategory && (
         <div className="map-filter-active-pill">
           <span>
-            Filtre carte : <b>{selectedCategory}</b> · {getDisplayedPOIs(pois, focusPoi, selectedCategory).length} sur la carte
+            Filtre carte : <b>{selectedCategory}</b> · {getDisplayedPOIs(pois, focusPoi?.id ?? null, selectedCategory).length} sur la carte
           </span>
           {onSelectCategory && (
             <button

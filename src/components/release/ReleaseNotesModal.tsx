@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, Megaphone, X } from "lucide-react";
 import { CURRENT_RELEASE_NOTES, releaseNotesContinueKey } from "../../config/releaseNotes";
 import { supabase } from "../../services/supabase";
@@ -16,7 +16,6 @@ export const ReleaseNotesModal: React.FC<ReleaseNotesModalProps> = ({ userId }) 
 
   useEffect(() => {
     if (!hasReleaseNotes) {
-      setIsOpen(false);
       return;
     }
     const checkDismissed = async () => {
@@ -52,10 +51,10 @@ export const ReleaseNotesModal: React.FC<ReleaseNotesModalProps> = ({ userId }) 
     setIsOpen(false);
   };
 
-  const continueUntilNextLogin = () => {
+  const continueUntilNextLogin = useCallback(() => {
     try { sessionStorage.setItem(continueKey, CURRENT_RELEASE_NOTES.version); } catch { /* Fermeture temporaire jusqu'au prochain rendu. */ }
     setIsOpen(false);
-  };
+  }, [continueKey]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -64,9 +63,9 @@ export const ReleaseNotesModal: React.FC<ReleaseNotesModalProps> = ({ userId }) 
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [isOpen, continueKey]);
+  }, [isOpen, continueUntilNextLogin]);
 
-  if (!isOpen) return null;
+  if (!hasReleaseNotes || !isOpen) return null;
 
   return (
     <div className="release-modal-backdrop" onClick={continueUntilNextLogin}>

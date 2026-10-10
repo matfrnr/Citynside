@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Search, Building2, ArrowRight, Calendar, Star, Trash2, Pencil, History } from 'lucide-react';
 import type { NeighborhoodAnalysis } from '../../types';
 
@@ -29,7 +29,9 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
   const [selectedCity, setSelectedCity] = useState('all');
   const [minimumScore, setMinimumScore] = useState('all');
   const [sortOrder, setSortOrder] = useState('recent');
-  const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
+  const filterKey = JSON.stringify([filterQuery, activeTab, selectedCity, minimumScore, sortOrder]);
+  const [visibleCountState, setVisibleCountState] = useState({ key: filterKey, count: ITEMS_PER_PAGE });
+  const visibleCount = visibleCountState.key === filterKey ? visibleCountState.count : ITEMS_PER_PAGE;
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameName, setRenameName] = useState('');
@@ -53,8 +55,6 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
     if (sortOrder === 'score-asc') return a.globalScore - b.globalScore;
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
-
-  useEffect(() => setVisibleCount(ITEMS_PER_PAGE), [filterQuery, activeTab, selectedCity, minimumScore, sortOrder]);
 
   const displayed = filtered.slice(0, visibleCount);
   const hasMore = filtered.length > visibleCount;
@@ -208,7 +208,10 @@ export const EnregistrementsView: React.FC<EnregistrementsViewProps> = ({
         <div className="enreg-load-more">
           <button
             className="btn-load-more"
-            onClick={() => setVisibleCount((prev) => prev + ITEMS_PER_PAGE)}
+            onClick={() => setVisibleCountState((current) => ({
+              key: filterKey,
+              count: (current.key === filterKey ? current.count : ITEMS_PER_PAGE) + ITEMS_PER_PAGE,
+            }))}
           >
             Voir plus ({filtered.length - visibleCount} restante{filtered.length - visibleCount > 1 ? 's' : ''})
           </button>

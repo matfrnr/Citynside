@@ -11,20 +11,31 @@ const formatDate = (value: string) => new Intl.DateTimeFormat("fr-FR", { dateSty
 export const NotificationsView: React.FC<NotificationsViewProps> = ({ isDemo, user, onImportantUnreadChange }) => {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [resources, setResources] = useState<LocalResource[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingState, setLoadingState] = useState({ userId: user.id, value: true });
+  const loading = loadingState.userId !== user.id || loadingState.value;
   const [loadingResources, setLoadingResources] = useState(false);
   const [error, setError] = useState("");
   const [section, setSection] = useState<"activity" | "local">("activity");
   const city = user.agencyCity?.trim() || "";
 
   const refresh = useCallback(async () => {
-    setLoading(true);
+    setLoadingState({ userId: user.id, value: true });
     try { setNotifications(await fetchNotifications(user.id)); }
     catch { setError("Impossible de charger les notifications. Vérifiez la configuration Supabase."); }
-    finally { setLoading(false); }
+    finally { setLoadingState({ userId: user.id, value: false }); }
   }, [user.id]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    let cancelled = false;
+    void fetchNotifications(user.id).then((items) => {
+      if (!cancelled) setNotifications(items);
+    }).catch(() => {
+      if (!cancelled) setError("Impossible de charger les notifications. Vérifiez la configuration Supabase.");
+    }).finally(() => {
+      if (!cancelled) setLoadingState({ userId: user.id, value: false });
+    });
+    return () => { cancelled = true; };
+  }, [user.id]);
   useEffect(() => {
     onImportantUnreadChange?.(notifications.filter((item) => item.importance === "important" && !item.read).length);
   }, [notifications, onImportantUnreadChange]);

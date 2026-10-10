@@ -11,7 +11,7 @@ import {
   Save,
   UserRound,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   type ProfileDetails,
   isValidPhoneNumber,
@@ -58,9 +58,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onProfileSaved,
   onPasswordChanged,
 }) => {
-  const [profile, setProfile] = useState<ProfileDetails>(() =>
-    loadProfile(user),
-  );
+  const [profileSnapshot, setProfileSnapshot] = useState(() => ({ user, value: loadProfile(user) }));
+  const profile = profileSnapshot.user === user ? profileSnapshot.value : loadProfile(user);
+  const setProfile = (update: ProfileDetails | ((current: ProfileDetails) => ProfileDetails)) => {
+    setProfileSnapshot((currentSnapshot) => {
+      const currentProfile = currentSnapshot.user === user ? currentSnapshot.value : loadProfile(user);
+      return {
+        user,
+        value: typeof update === "function" ? update(currentProfile) : update,
+      };
+    });
+  };
   const { avatarId, selectAvatar } = useProfileAvatar(user.id);
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -70,11 +78,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [passwordMessage, setPasswordMessage] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [isChangingPassword, setIsChangingPassword] = useState(false);
-
-  // Re-synchronise si user change (ex: modification reçue en direct depuis un autre appareil)
-  useEffect(() => {
-    setProfile(loadProfile(user));
-  }, [user]);
 
   const updateField = (field: keyof ProfileDetails, value: string) => {
     if (isDemo) return;
@@ -285,9 +288,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   onChange={(event) => updateField("phone", event.target.value)}
                 />
               </span>
-              {Boolean(
-                profile.phone.trim() && !isValidPhoneNumber(profile.phone),
-              ) ? (
+              {profile.phone.trim() && !isValidPhoneNumber(profile.phone) ? (
                 <span className="profile-field-error">
                   Numéro invalide : 10 chiffres requis (ex : 06 12 34 56 78)
                 </span>
