@@ -11,12 +11,15 @@ import {
 } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import type { AppView } from "../../types";
+import { ProfileAvatar } from "../profile/ProfileAvatar";
+import { useProfileAvatar } from "../profile/useProfileAvatar";
 
 const SIDEBAR_COLLAPSED_KEY = "citynside_sidebar_collapsed";
 
 interface SidebarProps {
   currentView: AppView;
   displayName: string;
+  userId: string;
   onNavigate: (view: AppView) => void;
   favoritesCount: number;
   importantNotificationsCount: number;
@@ -25,10 +28,12 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({
   currentView,
   displayName,
+  userId,
   onNavigate,
   favoritesCount,
   importantNotificationsCount,
 }) => {
+  const { avatarId } = useProfileAvatar(userId);
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     try {
       return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true";
@@ -255,7 +260,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         >
           <div className="avatar-img-wrap">
             <span className="agent-avatar" aria-hidden="true">
-              {initials}
+              {avatarId ? <ProfileAvatar avatarId={avatarId} /> : initials}
             </span>
           </div>
 
@@ -679,6 +684,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           font-size: 0.72rem;
           font-weight: 700;
         }
+
+        .agent-avatar svg { display: block; width: 100%; height: 100%; }
 
         .agent-info-text {
           display: flex;

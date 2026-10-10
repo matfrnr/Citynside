@@ -107,11 +107,19 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string | null>(defaultCategoryFilter);
   const [poiToLocate, setPoiToLocate] = useState<POI | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState("");
   const [previewAnalysis, setPreviewAnalysis] = useState<NeighborhoodAnalysis | null>(null);
   const [previewIsCached, setPreviewIsCached] = useState(false);
   const [lastAirQuality, setLastAirQuality] = useState<AirQualityData | null>(null);
   const latestSearchId = useRef(0);
   const activeOsmRequest = useRef<AbortController | null>(null);
+  const currentAnalysisRef = useRef(currentAnalysis);
+  const onUpdateAnalysisRef = useRef(onUpdateAnalysis);
+
+  useEffect(() => {
+    currentAnalysisRef.current = currentAnalysis;
+    onUpdateAnalysisRef.current = onUpdateAnalysis;
+  }, [currentAnalysis, onUpdateAnalysis]);
 
   // Fonction résiliente et accélérée d'agrégation multi-API
   const runParallelAnalysis = async (
@@ -289,17 +297,20 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
   // Enrich each fixed demo example with the same public datasets used for a
   // real analysis. The address stays fixed and App keeps this update in memory.
   useEffect(() => {
-    if (!isDemo || !currentAnalysis) return;
+    const analysisToEnrich = currentAnalysisRef.current;
+    if (!isDemo || !analysisToEnrich) return;
+    const analysisId = analysisToEnrich.id;
     let cancelled = false;
-    let request = demoAnalysisRequests.get(currentAnalysis.id);
+    let request = demoAnalysisRequests.get(analysisId);
     if (!request) {
-      request = runParallelAnalysis(currentAnalysis.lat, currentAnalysis.lon);
-      demoAnalysisRequests.set(currentAnalysis.id, request);
+      request = runParallelAnalysis(analysisToEnrich.lat, analysisToEnrich.lon);
+      demoAnalysisRequests.set(analysisId, request);
     }
     setIsLoading(true);
     request.then(({ pois, categories, avg, airQuality }) => {
-      if (cancelled || pois.length === 0) return;
-      onUpdateAnalysis({ ...currentAnalysis, pois, categories, globalScore: avg, airQuality });
+      const latestAnalysis = currentAnalysisRef.current;
+      if (cancelled || pois.length === 0 || latestAnalysis?.id !== analysisId) return;
+      onUpdateAnalysisRef.current({ ...latestAnalysis, pois, categories, globalScore: avg, airQuality });
     }).catch((error) => {
       console.warn("Enrichissement des données de démonstration indisponible :", error);
     }).finally(() => {
@@ -311,6 +322,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
   // When user selects an address in autocomplete or hits Analyser
   const handleSelectAddress = async (addr: AddressResult) => {
     if (isDemo) return;
+    setAnalysisError("");
     setSelectedCategory(defaultCategoryFilter);
     setPoiToLocate(null);
     setPreviewAnalysis(null);
@@ -375,6 +387,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
     } catch (e) {
       console.error("Erreur analyse:", e);
       if (searchId === latestSearchId.current) {
+        setAnalysisError(e instanceof Error ? e.message : "L’analyse n’a pas pu aboutir. Réessayez.");
         setPreviewIsCached(false);
         setPreviewAnalysis(null);
       }
@@ -386,6 +399,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
   // When user clicks anywhere on map
   const handleMapLocationSelect = async (lat: number, lon: number) => {
     if (isDemo) return;
+    setAnalysisError("");
     setPreviewAnalysis(null);
     setPreviewIsCached(false);
     const searchId = ++latestSearchId.current;
@@ -427,6 +441,9 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
       void fetchRiskAssessment(lat, lon).then((assessment) => onUpdateRiskAssessment(updated.id, assessment, updated.airQuality, updated));
     } catch (e) {
       console.error("Erreur lors de la sélection de position:", e);
+      if (searchId === latestSearchId.current) {
+        setAnalysisError(e instanceof Error ? e.message : "L’analyse de cette position n’a pas pu aboutir. Réessayez.");
+      }
     } finally {
       if (searchId === latestSearchId.current) setIsLoading(false);
     }
@@ -472,6 +489,8 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
           readOnly={isDemo}
         />
       </div>
+
+      {analysisError && <div className="analysis-error" role="alert">{analysisError}</div>}
 
       {isLoading && displayedAnalysis && !isDemo && (
         <div className="analysis-update-status" role="status" aria-live="polite">
@@ -607,6 +626,20 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
           width: 100%;
           display: flex;
           justify-content: center;
+        }
+
+        .analysis-error {
+          width: fit-content;
+          max-width: 100%;
+          margin: -12px auto -10px;
+          padding: 10px 14px;
+          border: 1px solid #f1b8b2;
+          border-radius: 10px;
+          background: #fff5f4;
+          color: #9f2d23;
+          font-size: .86rem;
+          line-height: 1.45;
+          text-align: center;
         }
 
         .analysis-results-content {

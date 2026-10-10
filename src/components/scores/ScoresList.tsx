@@ -25,6 +25,11 @@ import type { CategoryScore, POI, ScoreFactor } from "../../types";
 import type { DefaultScoreProfile, DistanceUnit } from "../../services/userPreferences";
 import { formatDistanceText } from "../../services/distanceFormat";
 
+const getVisiblePositiveFactors = (category: CategoryScore): ScoreFactor[] =>
+  (category.positiveFactors || []).filter(
+    (factor) => Number(factor.points.toFixed(1)) > 0,
+  );
+
 interface ScoresListProps {
   categories: CategoryScore[];
   selectedCategory: string | null;
@@ -61,6 +66,9 @@ export const ScoresList: React.FC<ScoresListProps> = ({
     { id: "investor", label: "Investisseur", weights: { transports: 2, commerces: 3, ecoles: 2, sante: 2, loisirs: 0, espaces_verts: 0, tranquillite: 0, pmr: 0, stationnement: 1 } },
   ];
   const activeProfile = scoreProfiles.find((profile) => profile.id === scoreProfile) || null;
+  const visibleModalPositiveFactors = modalCategory
+    ? getVisiblePositiveFactors(modalCategory)
+    : [];
   const profileEntries = activeProfile ? categories.flatMap((category) => {
     const weight = activeProfile.weights[category.category];
     return weight ? [{ score: category.score, weight }] : [];
@@ -260,7 +268,8 @@ export const ScoresList: React.FC<ScoresListProps> = ({
           .filter((c) => !selectedCategory || selectedCategory === c.category)
           .map((cat) => {
             const scoreColor = getScoreColor(cat.score);
-            const totalPos = (cat.positiveFactors || []).reduce(
+            const visiblePositiveFactors = getVisiblePositiveFactors(cat);
+            const totalPos = visiblePositiveFactors.reduce(
               (acc, f) => acc + f.points,
               0,
             );
@@ -318,8 +327,8 @@ export const ScoresList: React.FC<ScoresListProps> = ({
                 </div>
 
                 {/* Highlights List: Top Positive & Top Negative */}
-                {(cat.positiveFactors?.length || cat.negativeFactors?.length) ? <div className="factors-preview-list">
-                  {(cat.positiveFactors || []).slice(0, 2).map((pos, idx) => (
+                {(visiblePositiveFactors.length || cat.negativeFactors?.length) ? <div className="factors-preview-list">
+                  {visiblePositiveFactors.slice(0, 2).map((pos, idx) => (
                     <div key={`pos_${idx}`} className="preview-factor-item pos">
                       <PlusCircle size={14} className="factor-icon pos" />
                       <span className="factor-text">{formatDistanceText(pos.label, distanceUnit)}</span>
@@ -396,7 +405,7 @@ export const ScoresList: React.FC<ScoresListProps> = ({
                     <span className="balance-sub">Points gagnés</span>
                     <span className="balance-val pos">
                       +
-                      {(modalCategory.positiveFactors || [])
+                      {visibleModalPositiveFactors
                         .reduce((a, b) => a + b.points, 0)
                         .toFixed(1)}
                     </span>
@@ -427,9 +436,14 @@ export const ScoresList: React.FC<ScoresListProps> = ({
                   <CheckCircle2 size={17} />
                   <h5>Points gagnés</h5>
                 </div>
-                {(modalCategory.positiveFactors || []).length > 0 ? (
+                {modalCategory.category === "pmr" && visibleModalPositiveFactors.length > 0 && (
+                  <p className="factor-explanation pmr-factor-note">
+                    Les bonus reflètent la proximité et la répartition des services recensés. Ils ne confirment pas l’accessibilité PMR des lieux ni des trajets.
+                  </p>
+                )}
+                {visibleModalPositiveFactors.length > 0 ? (
                   <ul className="modal-factor-list">
-                    {(modalCategory.positiveFactors || []).map((factor, idx) => (
+                    {visibleModalPositiveFactors.map((factor, idx) => (
                       (() => {
                         const relatedPoi = findFactorPoi(factor);
                         return <li key={idx} className="modal-factor-card pos">
@@ -439,7 +453,9 @@ export const ScoresList: React.FC<ScoresListProps> = ({
                             </span>
                             <strong className="factor-name">{formatDistanceText(factor.label, distanceUnit)}</strong>
                           </div>
-                          {factor.detail && <p className="factor-explanation">{factor.detail}</p>}
+                          {modalCategory.category !== "pmr" && factor.detail && (
+                            <p className="factor-explanation">{factor.detail}</p>
+                          )}
                           {relatedPoi && <button type="button" className="factor-locate-btn" onClick={() => { setModalCategory(null); onLocatePoi(relatedPoi); }}>
                             <MapPin size={14} /> Voir sur la carte
                           </button>}
@@ -743,6 +759,7 @@ export const ScoresList: React.FC<ScoresListProps> = ({
           margin: 3px 0 0 0;
           padding-left: 2px;
         }
+        .pmr-factor-note { margin: 0 0 8px; line-height: 1.45; }
         .factor-locate-btn { display: inline-flex; align-items: center; gap: 5px; margin: 6px 0 0 2px; padding: 4px 7px; border: 0; border-radius: 6px; background: #eef5ef; color: #315f42; font: inherit; font-size: .72rem; font-weight: 650; cursor: pointer; }
         .factor-locate-btn:hover { background: #deebdf; }
 

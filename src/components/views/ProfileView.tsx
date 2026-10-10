@@ -19,6 +19,9 @@ import {
   changeUserPassword,
 } from "../../services/profile";
 import { type AuthUser, LOCAL_DEMO_USER_ID } from "../../types";
+import { PROFILE_AVATARS } from "../../services/profileAvatar";
+import { ProfileAvatar } from "../profile/ProfileAvatar";
+import { useProfileAvatar } from "../profile/useProfileAvatar";
 
 interface ProfileViewProps {
   isDemo: boolean;
@@ -58,6 +61,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [profile, setProfile] = useState<ProfileDetails>(() =>
     loadProfile(user),
   );
+  const { avatarId, selectAvatar } = useProfileAvatar(user.id);
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -162,7 +166,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         <aside className="profile-summary">
           <div className="profile-identity">
             <div className="profile-avatar" aria-hidden="true">
-              {initials}
+              {avatarId ? <ProfileAvatar avatarId={avatarId} className="profile-avatar-art" /> : initials}
             </div>
             <h2>
               {profile.firstName} {profile.lastName}
@@ -171,6 +175,27 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <span className="profile-agency">
               <Building2 size={15} /> {profile.agency}
             </span>
+            <fieldset className="profile-avatar-picker" disabled={isDemo}>
+              <legend>Choisir un avatar</legend>
+              <div className="profile-avatar-options">
+                {PROFILE_AVATARS.map((avatar) => (
+                  <label
+                    key={avatar.id}
+                    className={`profile-avatar-option${avatarId === avatar.id ? " selected" : ""}`}
+                  >
+                    <input
+                      type="radio"
+                      name={`profile-avatar-${user.id}`}
+                      value={avatar.id}
+                      checked={avatarId === avatar.id}
+                      onChange={() => selectAvatar(avatar.id)}
+                    />
+                    <ProfileAvatar avatarId={avatar.id} />
+                    <span>{avatar.label}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
           </div>
 
           <div className="profile-stats" aria-label="Votre activité">
@@ -455,6 +480,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         .profile-avatar {
           display: grid;
           place-items: center;
+          overflow: hidden;
           width: 82px;
           aspect-ratio: 1;
           border-radius: 50%;
@@ -466,6 +492,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           font-size: 1.65rem;
           font-weight: 700;
         }
+
+        .profile-avatar-art { display: block; width: 100%; height: 100%; }
+        .profile-avatar-picker { width: 100%; margin: 20px 0 0; padding: 13px 0 0; border: 0; border-top: 1px solid var(--color-border-subtle); text-align: left; }
+        .profile-avatar-picker legend { padding: 0; color: var(--color-primary); font-size: .76rem; font-weight: 700; }
+        .profile-avatar-picker > p { margin: 4px 0 10px; color: var(--color-text-muted); font-size: .65rem; line-height: 1.4; text-align: center; }
+        .profile-avatar-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+        .profile-avatar-option { position: relative; display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 4px; padding: 6px 2px; border: 1px solid transparent; border-radius: 10px; color: #526b61; font-size: .62rem; cursor: pointer; transition: background .15s ease, border-color .15s ease; }
+        .profile-avatar-option > svg { width: 40px; height: 40px; border-radius: 50%; box-shadow: 0 1px 4px #17383018; }
+        .profile-avatar-option input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+        .profile-avatar-option:hover, .profile-avatar-option.selected { border-color: #8bae91; background: #f1f7ef; }
+        .profile-avatar-option:focus-within { outline: 3px solid #9dc599; outline-offset: 2px; }
+        .profile-avatar-picker:disabled { opacity: .6; }
 
         .profile-identity h2 {
           margin-top: 14px;

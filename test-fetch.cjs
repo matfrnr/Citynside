@@ -54,7 +54,7 @@ async function test() {
             headers: {
               "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
               accept: "application/json",
-              "user-agent": "Citynside/1.0 (+https://citynside-app.netlify.app)",
+              "user-agent": "Citynside/1.0",
             },
             body: new URLSearchParams({ data: encodedQuery }),
             signal: controller.signal,

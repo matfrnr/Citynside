@@ -31,8 +31,15 @@ export async function askNeighborhoodAssistant(question: string, analysis: Neigh
           label: category.label,
           score: category.score,
           highlightText: category.highlightText,
-          positiveFactors: category.positiveFactors.map(({ label }) => label),
-          negativeFactors: category.negativeFactors.map(({ label }) => label),
+          // Les détails expliquent l'effet concret de chaque indicateur. Les
+          // transmettre aide l'assistant à interpréter les chiffres plutôt
+          // qu'à simplement répéter les libellés et les distances.
+          positiveFactors: category.positiveFactors.map(({ label, detail }) =>
+            detail ? `${label} — ${detail}` : label,
+          ),
+          negativeFactors: category.negativeFactors.map(({ label, detail }) =>
+            detail ? `${label} — ${detail}` : label,
+          ),
         })),
         airQuality: analysis.airQuality?.label || "Indisponible",
         risks: analysis.riskAssessment?.findings?.map(({ label }) => ({ label })) || [],

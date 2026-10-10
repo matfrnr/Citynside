@@ -4,11 +4,14 @@ function inlineContent(text: string, prefix: string): ReactNode[] {
   const parts = text.split(/(\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*)/g).filter(Boolean);
   return parts.map((part, index) => {
     const key = `${prefix}-${index}`;
+    const previousPart = parts[index - 1] || "";
+    const previousWasEmphasis = /^(?:\*\*[^*\n]+\*\*|__[^_\n]+__|\*[^*\n]+\*)$/.test(previousPart);
+    const missingWordSpace = previousWasEmphasis && /^[\p{L}\p{N}]/u.test(part) ? " " : "";
     if ((part.startsWith("**") && part.endsWith("**")) || (part.startsWith("__") && part.endsWith("__"))) {
       return <strong key={key}>{part.slice(2, -2)}</strong>;
     }
     if (part.startsWith("*") && part.endsWith("*")) return <em key={key}>{part.slice(1, -1)}</em>;
-    return part;
+    return `${missingWordSpace}${part}`;
   });
 }
 
@@ -16,9 +19,12 @@ function cleanMarkdown(text: string): string {
   return text
     .replace(/\\([*_`|])/g, "$1")
     .replace(/\r/g, "")
-    // Recolle le deux-points au libellé même quand celui-ci est un élément
-    // de liste et que le modèle insère une ligne vide avant le deux-points.
-    .replace(/^([ \t]*(?:(?:[-*]|\d+[.)])[ \t]+)?\*\*[^*\n]+\*\*)[ \t]*\n[ \t]*\n?[ \t]*:[ \t]*/gm, "$1: ")
+    .replace(/[ \t]*\(reprise\)[ \t]*/gi, " ")
+    // Supprime les deux-points de séparation après un intitulé en gras,
+    // y compris lorsque le modèle les renvoie au début de la ligne suivante.
+    .replace(/(\*\*[^*\n]+\*\*)[ \t]*(?:\n[ \t]*)*:[ \t]*/g, "$1 ")
+    .replace(/(\*\*[^*\n]+):(?=\*\*)/g, "$1")
+    .replace(/^([ \t]*):[ \t]*/gm, "$1")
     .trim();
 }
 

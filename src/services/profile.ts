@@ -125,9 +125,11 @@ export async function saveUserProfile(
     );
     if (dbErr) {
       console.warn("Erreur upsert table profiles:", dbErr.message);
+      throw new Error("Le profil n’a pas pu être enregistré. Vérifiez votre connexion puis réessayez.");
     }
   } catch (e) {
     console.warn("Exception upsert table profiles:", e);
+    throw new Error("Le profil n’a pas pu être enregistré. Vérifiez votre connexion puis réessayez.");
   }
 
   return updated;

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { AlertTriangle, ChevronRight, X } from "lucide-react";
 import { Sidebar } from "./components/layout/Sidebar";
 import { AuthView } from "./components/views/AuthView";
@@ -50,6 +50,9 @@ const readViewFromUrl = (): AppView => {
 
 const resetUrlToHome = () => {
   const url = new URL(window.location.href);
+  // L'application ne route pas par chemin : /analyse est un ancien chemin
+  // direct et doit aussi disparaître à la déconnexion.
+  url.pathname = "/";
   url.searchParams.delete("view");
   url.searchParams.delete("analysis");
   window.history.replaceState(window.history.state, "", url);
@@ -103,9 +106,20 @@ export const App: React.FC = () => {
   const [isDemoInfoOpen, setIsDemoInfoOpen] = useState(false);
   const [isProfileSetupOpen, setIsProfileSetupOpen] = useState(false);
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(DEFAULT_USER_PREFERENCES);
+  const userNavigationRef = useRef<{ view: AppView; analysisId: string | null } | null>(null);
+  const navigateTo = (view: AppView, analysisId: string | null = null) => {
+    userNavigationRef.current = { view, analysisId };
+    setCurrentView(view);
+  };
 
   useEffect(() => {
     if (authChecking) return;
+    if (!authUser) {
+      resetUrlToHome();
+      if (currentView !== "home") setCurrentView("home");
+      if (activeAnalysis) setActiveAnalysis(null);
+      return;
+    }
     const url = new URL(window.location.href);
     if (currentView === "home") url.searchParams.delete("view");
     else url.searchParams.set("view", currentView);
@@ -116,7 +130,7 @@ export const App: React.FC = () => {
       url.searchParams.delete("analysis");
     }
     window.history.replaceState(window.history.state, "", url);
-  }, [activeAnalysis?.id, authChecking, currentView]);
+  }, [activeAnalysis?.id, authChecking, authUser?.id, currentView]);
 
   const refreshImportantNotificationsCount = async (userId: string) => {
     try {
@@ -132,13 +146,20 @@ export const App: React.FC = () => {
     void refreshImportantNotificationsCount(authUser.id);
   }, [authUser?.id]);
 
-  const loadUserAnalyses = async (userId: string, isInitial = false) => {
+  const loadUserAnalyses = async (
+    userId: string,
+    isInitial = false,
+    navigationOverride?: { view: AppView; analysisId: string | null },
+  ) => {
     // 1. Instatané depuis le cache local (vide pour un nouveau compte réel)
     const cached = getStoredAnalyses(userId);
     setAnalyses(cached);
+    const requestedAnalysisId = navigationOverride
+      ? navigationOverride.analysisId
+      : new URLSearchParams(window.location.search).get("analysis");
+    const requestedView = navigationOverride?.view ?? readViewFromUrl();
     if (isInitial) {
-      const requestedAnalysisId = new URLSearchParams(window.location.search).get("analysis");
-      const blankNewAnalysis = userId !== LOCAL_DEMO_USER_ID && readViewFromUrl() === "new-analysis" && !requestedAnalysisId;
+      const blankNewAnalysis = userId !== LOCAL_DEMO_USER_ID && requestedView === "new-analysis" && !requestedAnalysisId;
       setActiveAnalysis(blankNewAnalysis
         ? null
         : cached.find((analysis) => analysis.id === requestedAnalysisId) ?? cached[0] ?? null);
@@ -150,11 +171,17 @@ export const App: React.FC = () => {
         const fresh = await fetchAnalyses(userId);
         setAnalyses(fresh);
         if (isInitial) {
-          const requestedAnalysisId = new URLSearchParams(window.location.search).get("analysis");
-          const blankNewAnalysis = userId !== LOCAL_DEMO_USER_ID && readViewFromUrl() === "new-analysis" && !requestedAnalysisId;
+          // Une navigation peut avoir lieu pendant le chargement distant.
+          // Elle prévaut sur la vue et l'analyse lues au début de la requête.
+          const latestNavigation = userNavigationRef.current ?? navigationOverride;
+          const latestRequestedAnalysisId = latestNavigation
+            ? latestNavigation.analysisId
+            : requestedAnalysisId;
+          const latestRequestedView = latestNavigation?.view ?? requestedView;
+          const blankNewAnalysis = userId !== LOCAL_DEMO_USER_ID && latestRequestedView === "new-analysis" && !latestRequestedAnalysisId;
           setActiveAnalysis((prev) => blankNewAnalysis
             ? null
-            : fresh.find((analysis) => analysis.id === requestedAnalysisId) ??
+            : fresh.find((analysis) => analysis.id === latestRequestedAnalysisId) ??
               fresh.find((analysis) => analysis.id === prev?.id) ??
               prev ??
               fresh[0] ??
@@ -202,9 +229,11 @@ export const App: React.FC = () => {
           const user = mapSupabaseUser(session.user);
           const preferences = loadUserPreferences(user.id);
           setUserPreferences(preferences);
-          if (!new URLSearchParams(window.location.search).has("view")) setCurrentView(preferences.startView);
+          if (!userNavigationRef.current && !new URLSearchParams(window.location.search).has("view")) {
+            setCurrentView(preferences.startView);
+          }
           setAuthUser(user);
-          void loadUserAnalyses(user.id, true);
+          void loadUserAnalyses(user.id, true, userNavigationRef.current ?? undefined);
           setAuthChecking(false);
 
           void Promise.allSettled([
@@ -245,6 +274,7 @@ export const App: React.FC = () => {
         await loadUserAnalyses(user.id, false);
       } else {
         if (event === "SIGNED_OUT") resetUrlToHome();
+        userNavigationRef.current = null;
         clearReleaseNotesContinueState();
         setAuthUser(null);
         setIsProfileSetupOpen(false);
@@ -291,8 +321,13 @@ export const App: React.FC = () => {
   }, []);
 
   const handleAuthenticated = async (user: AuthUser) => {
-    resetUrlToHome();
-    setCurrentView("home");
+    const userNavigation = userNavigationRef.current;
+    if (userNavigation) {
+      setCurrentView(userNavigation.view);
+    } else {
+      resetUrlToHome();
+      setCurrentView("home");
+    }
     setActiveAnalysis(null);
     if (user.id === LOCAL_DEMO_USER_ID) {
       localStorage.setItem(LOCAL_DEMO_SESSION_KEY, "active");
@@ -301,7 +336,7 @@ export const App: React.FC = () => {
     } else {
       const preferences = loadUserPreferences(user.id);
       setUserPreferences(preferences);
-      setCurrentView(preferences.startView);
+      if (!userNavigation) setCurrentView(preferences.startView);
       const freshUser = await fetchUserProfile(user);
       setAuthUser(freshUser);
       setIsProfileSetupOpen(needsProfileSetup(freshUser));
@@ -309,7 +344,9 @@ export const App: React.FC = () => {
       await registerCurrentDevice(freshUser.id).catch((err) => console.warn("Vérification du nouvel appareil impossible :", err));
       await refreshImportantNotificationsCount(freshUser.id);
     }
-    await loadUserAnalyses(user.id, true);
+    const latestNavigation = userNavigationRef.current ?? userNavigation;
+    await loadUserAnalyses(user.id, true, latestNavigation ?? undefined);
+    if (userNavigationRef.current === latestNavigation) userNavigationRef.current = null;
     // setCurrentView removed to avoid overriding
 
   };
@@ -318,6 +355,7 @@ export const App: React.FC = () => {
     // Nettoyer synchroniquement l'URL avant signOut : une reconnexion rapide
     // ne pourra pas relire la vue privée précédente avant l'effet React.
     resetUrlToHome();
+    userNavigationRef.current = null;
     setCurrentView("home");
     setActiveAnalysis(null);
     if (authUser) clearReleaseNotesContinueState(authUser.id);
@@ -339,22 +377,25 @@ export const App: React.FC = () => {
 
   const handleSelectAnalysis = (analysis: NeighborhoodAnalysis) => {
     setActiveAnalysis(analysis);
-    setCurrentView("report");
+    navigateTo("report", analysis.id);
   };
 
   const handleStartNewAnalysis = () => {
+    let selectedAnalysisId: string | null = null;
     if (authUser?.id === LOCAL_DEMO_USER_ID) {
       const demoExamples = analyses.length ? analyses : getStoredAnalyses(LOCAL_DEMO_USER_ID);
       const currentExample = activeAnalysis && demoExamples.some((item) => item.id === activeAnalysis.id)
         ? activeAnalysis
         : null;
       const defaultExample = demoExamples.find((item) => item.id === "aigle_38000") ?? demoExamples[0] ?? null;
-      setActiveAnalysis(currentExample ?? defaultExample);
+      const selectedExample = currentExample ?? defaultExample;
+      setActiveAnalysis(selectedExample);
+      selectedAnalysisId = selectedExample?.id ?? null;
     } else {
       // A new search must start from a genuinely blank state.
       setActiveAnalysis(null);
     }
-    setCurrentView("new-analysis");
+    navigateTo("new-analysis", selectedAnalysisId);
   };
 
   // Chaque recherche terminée devient immédiatement une entrée d'historique.
@@ -407,7 +448,7 @@ export const App: React.FC = () => {
   };
 
   const handleGoToImpressions = () => {
-    setCurrentView("impressions");
+    navigateTo("impressions", activeAnalysis?.id ?? null);
   };
 
   const handleSaveImpressions = async (impressions: FieldImpressions) => {
@@ -421,7 +462,7 @@ export const App: React.FC = () => {
     setActiveAnalysis(updated);
     await saveAnalysis(updated, authUser.id);
     setAnalyses(getStoredAnalyses(authUser.id));
-    setCurrentView("report");
+    navigateTo("report", updated.id);
   };
 
   const handleToggleFav = async (id: string) => {
@@ -501,12 +542,13 @@ export const App: React.FC = () => {
       <Sidebar
         currentView={currentView}
         displayName={authUser.name}
+        userId={authUser.id}
         onNavigate={(view) => {
           if (view === "new-analysis") {
             handleStartNewAnalysis();
             return;
           }
-          setCurrentView(view);
+          navigateTo(view);
         }}
         favoritesCount={favoritesCount}
         importantNotificationsCount={importantNotificationsCount}
@@ -526,7 +568,7 @@ export const App: React.FC = () => {
               analyses={analyses}
               onSelectAnalysis={handleSelectAnalysis}
               onStartNewAnalysis={handleStartNewAnalysis}
-              onNavigate={setCurrentView}
+              onNavigate={navigateTo}
               userName={authUser.name}
               userId={authUser.id}
             />
@@ -545,7 +587,7 @@ export const App: React.FC = () => {
               onUpdateAnalysis={handleUpdateAnalysis}
               onUpdateRiskAssessment={handleUpdateRiskAssessment}
               onToggleFavorite={handleToggleFav}
-              onGoToReport={() => setCurrentView("report")}
+              onGoToReport={() => navigateTo("report", activeAnalysis?.id ?? null)}
               onGoToImpressions={handleGoToImpressions}
             />
           )}
@@ -555,7 +597,7 @@ export const App: React.FC = () => {
               isDemo={authUser.id === LOCAL_DEMO_USER_ID}
               analysis={activeAnalysis}
               onSaveImpressions={handleSaveImpressions}
-              onBack={() => setCurrentView("new-analysis")}
+              onBack={() => navigateTo("new-analysis", activeAnalysis?.id ?? null)}
             />
           )}
 
@@ -573,7 +615,7 @@ export const App: React.FC = () => {
                   kind: "report",
                 }).catch((error) => console.warn("Notification de rapport non enregistrée :", error));
               }}
-              onBackToEdit={() => setCurrentView("new-analysis")}
+              onBackToEdit={() => navigateTo("new-analysis", activeAnalysis?.id ?? null)}
             />
           )}
 

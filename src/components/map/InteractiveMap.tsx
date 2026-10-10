@@ -6,6 +6,14 @@ import type { DistanceUnit } from '../../services/userPreferences';
 import { formatDistance } from '../../services/distanceFormat';
 import { ANALYSIS_RADIUS_METERS } from '../../services/osmApi';
 
+const getDisplayedPOIs = (pois: POI[], focusPoi: POI | null, selectedCategory: string | null) =>
+  pois.filter((poi) =>
+    poi.id === focusPoi?.id || poi.distanceMeters <= ANALYSIS_RADIUS_METERS ||
+    (poi.category === 'transports' &&
+      /gare ferroviaire|arrêt ferroviaire/i.test(poi.subType) &&
+      poi.distanceMeters <= 1200),
+  ).filter((poi) => !selectedCategory || poi.category === selectedCategory);
+
 interface InteractiveMapProps {
   lat: number;
   lon: number;
@@ -38,6 +46,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   zoom = 14,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
+  const initialViewRef = useRef({ lat, lon, zoom });
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
   const poiMarkersRef = useRef<Map<string, L.Marker>>(new Map());
@@ -52,6 +61,11 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     typeof window === 'undefined' ? controlsVisibleByDefault : !window.matchMedia('(max-width: 767px)').matches && controlsVisibleByDefault,
   );
   const isRepositionModeRef = useRef(false);
+  const onSelectLocationRef = useRef(onSelectLocation);
+
+  useEffect(() => {
+    onSelectLocationRef.current = onSelectLocation;
+  }, [onSelectLocation]);
 
   useEffect(() => {
     isRepositionModeRef.current = isRepositionMode;
@@ -89,7 +103,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       const map = L.map(mapContainerRef.current, {
         zoomControl: false,
         attributionControl: false,
-      }).setView([lat, lon], zoom);
+      }).setView([initialViewRef.current.lat, initialViewRef.current.lon], initialViewRef.current.zoom);
 
       const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
       const tileUrl = mapboxToken
@@ -109,9 +123,9 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
       // Déplacement strictement sécurisé : uniquement si le mode repositionnement a été activé par le bouton
       map.on('click', (e) => {
-        if (isRepositionModeRef.current && onSelectLocation) {
+        if (isRepositionModeRef.current && onSelectLocationRef.current) {
           setIsRepositionMode(false);
-          onSelectLocation(e.latlng.lat, e.latlng.lng);
+          onSelectLocationRef.current(e.latlng.lat, e.latlng.lng);
         }
       });
 
@@ -192,12 +206,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     markersGroup.clearLayers();
     poiMarkersRef.current.clear();
 
-    const filteredPOIs = pois.filter((poi) =>
-      poi.id === focusPoi?.id || poi.distanceMeters <= ANALYSIS_RADIUS_METERS ||
-      (poi.category === 'transports' &&
-        /gare ferroviaire|arrêt ferroviaire/i.test(poi.subType) &&
-        poi.distanceMeters <= 1200),
-    ).filter((poi) => !selectedCategory || poi.category === selectedCategory);
+    const filteredPOIs = getDisplayedPOIs(pois, focusPoi, selectedCategory);
 
     const categoryColors: Record<string, string> = {
       transports: '#1d4ed8',
@@ -433,7 +442,9 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       {/* Badge indicateur de filtre actif pour transparence totale */}
       {mapControlsVisible && selectedCategory && (
         <div className="map-filter-active-pill">
-          <span>Filtre carte : <b>{selectedCategory}</b> ({pois.filter(p => p.category === selectedCategory).length} affichés)</span>
+          <span>
+            Filtre carte : <b>{selectedCategory}</b> · {getDisplayedPOIs(pois, focusPoi, selectedCategory).length} sur la carte
+          </span>
           {onSelectCategory && (
             <button
               className="map-filter-reset-btn"

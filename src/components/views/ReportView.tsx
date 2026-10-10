@@ -10,8 +10,6 @@ import {
   Eye,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
 import { DEFAULT_REPORT_CUSTOMIZATION, fetchReportCustomization, loadDefaultReportCustomization, saveReportCustomization, type ReportCustomization } from '../../services/reportCustomization';
 import { LOCAL_DEMO_USER_ID, type AuthUser, type NeighborhoodAnalysis } from '../../types';
 import type { DistanceUnit } from '../../services/userPreferences';
@@ -143,6 +141,11 @@ export const ReportView: React.FC<ReportViewProps> = ({
   const generatePdfInstance = async () => {
     const element = reportRef.current;
     if (!element) return null;
+
+    const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+      import('html2canvas'),
+      import('jspdf'),
+    ]);
 
     if (document.fonts) {
       await document.fonts.ready;
@@ -301,6 +304,8 @@ export const ReportView: React.FC<ReportViewProps> = ({
   const appraisal = getScoreGrade(analysis.globalScore);
   const hasRightSections = includedSections.sources || includedSections.impressions;
   const positiveRiskFindings = (analysis.riskAssessment?.findings ?? []).filter((finding) => !/pas de risque connu|information indisponible|non concern|aucun signalement|aucun risque|absence de risque|non expose|non exposé/i.test(finding.addressStatus));
+  const georisquesReportUrl = analysis.riskAssessment?.reportUrl
+    || `https://georisques.gouv.fr/api/v1/rapport_pdf?latlon=${encodeURIComponent(`${analysis.lon},${analysis.lat}`)}`;
 
   const getAgentName = () => [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.name || "Agent Immobilier";
 
@@ -500,6 +505,10 @@ export const ReportView: React.FC<ReportViewProps> = ({
                 {analysis.riskAssessment?.status === 'available' && positiveRiskFindings.length === 0 && <p>Aucun signal positif n’a été renvoyé à cette adresse. Cela ne signifie pas qu’il n’existe aucun risque : consultez les informations officielles à jour.</p>}
                 {positiveRiskFindings.length > 0 && <ul>{positiveRiskFindings.map((finding) => <li key={finding.id}><span>{finding.label}</span><b>{finding.addressStatus}</b></li>)}</ul>}
                 {!analysis.riskAssessment && <p>Aucune donnée Géorisques n’est enregistrée pour cette analyse.</p>}
+                <div className="report-risk-official">
+                  <a className="report-risk-download" href={georisquesReportUrl} target="_blank" rel="noreferrer">Télécharger</a>
+                  <small>Rapport officiel Géorisques (PDF). S’il s’affiche dans le lecteur PDF, utilisez son icône Télécharger pour l’enregistrer.</small>
+                </div>
                 <small>Source : Géorisques · données indicatives à vérifier dans les documents réglementaires.</small>
               </article>
               <article className="report-risk-card">
@@ -968,7 +977,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
           grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 10px;
         }
-        .report-risk-section{grid-column:1/-1;min-width:0;margin-top:8px;break-inside:avoid;page-break-inside:avoid}.report-risk-section>.section-title{margin-bottom:10px}.report-risk-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.report-risk-card{min-width:0;padding:12px 14px;border:1px solid #e5e9e2;border-radius:8px;background:#fafbf9;break-inside:avoid;page-break-inside:avoid}.report-risk-card>strong{display:block;margin-bottom:7px;color:#24443c;font-size:.76rem}.report-risk-card p,.report-risk-card small{display:block;color:#5d6e68;font-size:.69rem;line-height:1.45;overflow-wrap:anywhere}.report-risk-card small{margin-top:7px;font-size:.62rem}.report-risk-card ul{display:grid;gap:5px;margin:0;padding:0;list-style:none}.report-risk-card li{display:flex;justify-content:space-between;gap:10px;padding-top:5px;border-top:1px solid #e9ede8;color:#354841;font-size:.68rem}.report-risk-card li b{flex:0 0 auto;color:#8b5415;text-align:right}
+        .report-risk-section{grid-column:1/-1;min-width:0;margin-top:8px;break-inside:avoid;page-break-inside:avoid}.report-risk-section>.section-title{margin-bottom:10px}.report-risk-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.report-risk-card{min-width:0;padding:12px 14px;border:1px solid #e5e9e2;border-radius:8px;background:#fafbf9;break-inside:avoid;page-break-inside:avoid}.report-risk-card>strong{display:block;margin-bottom:7px;color:#24443c;font-size:.76rem}.report-risk-card p,.report-risk-card small{display:block;color:#5d6e68;font-size:.69rem;line-height:1.45;overflow-wrap:anywhere}.report-risk-card small{margin-top:7px;font-size:.62rem}.report-risk-card ul{display:grid;gap:5px;margin:0;padding:0;list-style:none}.report-risk-card li{display:flex;justify-content:space-between;gap:10px;padding-top:5px;border-top:1px solid #e9ede8;color:#354841;font-size:.68rem}.report-risk-card li b{flex:0 0 auto;color:#8b5415;text-align:right}.report-risk-official{display:grid;justify-items:start;gap:5px;margin-top:9px;padding-top:8px;border-top:1px solid #e9ede8}.report-risk-download{display:inline-flex;align-items:center;justify-content:center;padding:7px 11px;border-radius:7px;background:#426e4d;color:#fff!important;font-size:.7rem;font-weight:700;text-decoration:none!important}.report-risk-download:hover{background:#35593e}.report-risk-download:focus-visible{outline:3px solid #9cb69f;outline-offset:2px}.report-risk-official small{margin-top:0}
 
         .report-cat-row {
           min-width: 0;

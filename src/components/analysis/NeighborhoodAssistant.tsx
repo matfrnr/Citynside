@@ -65,7 +65,13 @@ export function NeighborhoodAssistant({ analysis }: { analysis: NeighborhoodAnal
     setTurns((current) => ([...current, { role: "user", content: trimmed }] as ConversationTurn[]).slice(-20));
     setIsLoading(true);
     try {
-      const result = await askNeighborhoodAssistant(trimmed, analysis, turns.slice(-6));
+      const styleGuidance = "Réponds comme à un client : relie les chiffres à leur sens concret dans des phrases naturelles. Évite d’aligner les indicateurs ou les puces sans explication.";
+      const contextualQuestion = `${trimmed}\n\n${styleGuidance}`;
+      const result = await askNeighborhoodAssistant(
+        contextualQuestion.length <= 600 ? contextualQuestion : trimmed,
+        analysis,
+        turns.slice(-6),
+      );
       setTurns((current) => ([...current, { role: "assistant", content: result.answer }] as ConversationTurn[]).slice(-20));
       setQuotaWarning(result.quotaWarning || "");
     } catch (requestError) {

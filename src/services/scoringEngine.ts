@@ -750,43 +750,126 @@ export function calculateCategoryScores(
   let pmrScore = basePmr;
   const pmrPositive: ScoreFactor[] = [];
   const pmrNegative: ScoreFactor[] = [];
+  const addPmrPositive = (label: string, points: number, detail: string) => {
+    if (points <= 0) return;
+    pmrScore += points;
+    pmrPositive.push({ label, points, impact: "positive", detail });
+  };
+  const nearestPOI = (items: POI[]) =>
+    [...items].sort((a, b) => a.distanceMeters - b.distanceMeters)[0];
 
   if (closestLocal) {
-    pmrScore += 1.8;
-    pmrPositive.push({
-      label: `Arrêt de transport accessible à ${closestLocal.distanceMeters}m`,
-      points: 1.8,
-      impact: "positive",
-      detail: "Les stations modernes de tramway/métro offrent un accès de plain-pied garanti.",
-    });
+    const stopPoints = closestLocal.distanceMeters <= 200
+      ? 1.4
+      : closestLocal.distanceMeters <= 450
+        ? 1.0
+        : closestLocal.distanceMeters <= 850
+          ? 0.5
+          : 0;
+    addPmrPositive(
+      `Arrêt de desserte locale recensé à ${closestLocal.distanceMeters}m`,
+      stopPoints,
+      "La distance est une mesure directe entre les points et ne décrit pas l’itinéraire ni l’accessibilité de l’arrêt.",
+    );
+    if (stopPoints === 0) {
+      pmrScore -= 0.8;
+      pmrNegative.push({
+        label: "Arrêt local à plus de 850m",
+        points: -0.8,
+        impact: "negative",
+        detail: "La desserte locale est éloignée selon les arrêts recensés.",
+      });
+    }
   } else {
-    pmrScore -= 1.0;
+    pmrScore -= 0.8;
     pmrNegative.push({
-      label: "Pas de transport accessible de plain-pied à proximité",
-      points: -1.0,
+      label: "Aucun arrêt de desserte locale recensé à proximité",
+      points: -0.8,
       impact: "negative",
-      detail: "Mobilité réduite tributaire de voiries parfois inégales.",
+      detail: "Aucun arrêt local n’a été trouvé dans le périmètre interrogé.",
     });
   }
 
-  if (pharmacy && pharmacy.distanceMeters <= 350) {
-    pmrScore += 1.2;
-    pmrPositive.push({
-      label: `Pharmacie accessible en courte distance (${pharmacy.distanceMeters}m)`,
-      points: 1.2,
-      impact: "positive",
-      detail: "Soins accessibles sans franchissement de longs trajets.",
-    });
+  const nearbyDistinctStops = distinctStops.filter((stop) => stop.distanceMeters <= 450);
+  const stopDensityPoints = nearbyDistinctStops.length >= 4 ? 0.8 : nearbyDistinctStops.length >= 2 ? 0.5 : 0;
+  addPmrPositive(
+    `${nearbyDistinctStops.length} arrêts distincts à moins de 450m`,
+    stopDensityPoints,
+    "La présence de plusieurs arrêts proches offre davantage de choix de desserte, sans renseigner sur les lignes ou leur fréquence.",
+  );
+
+  const sectorSpreadPoints = coveredSectors.size >= 3 ? 0.4 : coveredSectors.size >= 2 ? 0.2 : 0;
+  addPmrPositive(
+    `Arrêts répartis dans ${coveredSectors.size} secteurs autour de la zone`,
+    sectorSpreadPoints,
+    "La répartition des arrêts est prise en compte comme indicateur de desserte locale, pas comme mesure d’accessibilité des cheminements.",
+  );
+
+  const closestPmrPharmacy = nearestPOI(sante.filter((poi) => /pharmacie/i.test(poi.subType)));
+  if (closestPmrPharmacy && closestPmrPharmacy.distanceMeters <= 800) {
+    const points = closestPmrPharmacy.distanceMeters <= 350 ? 0.7 : 0.35;
+    addPmrPositive(
+      `Pharmacie recensée à ${closestPmrPharmacy.distanceMeters}m`,
+      points,
+      "La proximité d’une pharmacie est un repère de service quotidien; elle ne confirme ni l’accès au bâtiment ni celui du trajet.",
+    );
   }
 
-  if (closestLocal && closestLocal.distanceMeters <= 250) {
-    pmrScore += 0.8;
-    pmrPositive.push({
-      label: `Arrêt de desserte locale proche (${closestLocal.distanceMeters}m)`,
-      points: 0.8,
-      impact: "positive",
-      detail: "Réduction des distances de marche à pied.",
-    });
+  const medicalProfessionalPattern = /médecin|medecin|cabinet|clinique|dentiste|professionnel de santé|professionnel de sante|maison médicale|maison medicale|centre de santé|centre de sante|hôpital|hopital/i;
+  const closestPmrMedicalProfessional = nearestPOI(sante.filter((poi) => medicalProfessionalPattern.test(poi.subType)));
+  if (closestPmrMedicalProfessional && closestPmrMedicalProfessional.distanceMeters <= 1000) {
+    const points = closestPmrMedicalProfessional.distanceMeters <= 500 ? 0.7 : 0.35;
+    addPmrPositive(
+      `Service de santé recensé à ${closestPmrMedicalProfessional.distanceMeters}m`,
+      points,
+      "La distance à un service de santé est utilisée comme repère de proximité, sans information sur son accessibilité physique.",
+    );
+  }
+
+  if (
+    closestPmrPharmacy && closestPmrMedicalProfessional &&
+    closestPmrPharmacy.distanceMeters <= 600 && closestPmrMedicalProfessional.distanceMeters <= 600
+  ) {
+    addPmrPositive(
+      "Pharmacie et service de santé à moins de 600m",
+      0.2,
+      "La présence de deux types de services de santé proches augmente les possibilités de proximité.",
+    );
+  }
+
+  const closestBakery = nearestPOI(commerces.filter((poi) => /boulangerie/i.test(poi.subType)));
+  const closestGrocery = nearestPOI(commerces.filter((poi) => /supermarché|supermarche|épicerie|epicerie|supérette|superette|grocery/i.test(poi.subType)));
+  const closestFreshFoodShop = nearestPOI(commerces.filter((poi) => /boucherie|primeur|marché|marche/i.test(poi.subType)));
+  const dailyServices = [
+    { poi: closestBakery, name: "Boulangerie", near: 350, far: 800, nearPoints: 0.35, farPoints: 0.2 },
+    { poi: closestGrocery, name: "Commerce alimentaire", near: 350, far: 800, nearPoints: 0.45, farPoints: 0.25 },
+    { poi: closestFreshFoodShop, name: "Commerce de produits frais", near: 350, far: 800, nearPoints: 0.25, farPoints: 0.15 },
+  ];
+  const dailyServicesNearby: typeof dailyServices = [];
+  let dailyServicePoints = 0;
+  for (const service of dailyServices) {
+    if (!service.poi || service.poi.distanceMeters > service.far) continue;
+    dailyServicesNearby.push(service);
+    const requestedPoints = service.poi.distanceMeters <= service.near ? service.nearPoints : service.farPoints;
+    const points = Math.min(requestedPoints, 1.0 - dailyServicePoints);
+    if (points <= 0) continue;
+    dailyServicePoints += points;
+    addPmrPositive(
+      `${service.name} recensé à ${service.poi.distanceMeters}m`,
+      points,
+      "La distance directe à un commerce essentiel contribue à l’indicateur de proximité; elle ne mesure pas le confort du cheminement.",
+    );
+  }
+  if (dailyServicesNearby.filter((service) => service.poi !== undefined && service.poi.distanceMeters <= 500).length >= 2) {
+    const points = Math.min(0.25, 1.0 - dailyServicePoints);
+    if (points > 0) {
+      dailyServicePoints += points;
+      addPmrPositive(
+        "Plusieurs types de commerces essentiels à moins de 500m",
+        points,
+        "La diversité des services proches est prise en compte, sans supposer que les lieux ou les itinéraires sont accessibles PMR.",
+      );
+    }
   }
 
   const finalPmrScore = Math.max(
@@ -1046,15 +1129,15 @@ export function calculateCategoryScores(
     },
     {
       category: "pmr",
-      label: "Accessibilité PMR & Trottoirs",
+      label: "Accessibilité PMR",
       score: finalPmrScore,
       maxScore: 10,
       baseScore: basePmr,
       iconName: "Accessibility",
       highlightText:
         finalPmrScore >= 7.0
-          ? "Bonne accessibilité de plain-pied"
-          : "Accessibilité moyenne estimée",
+          ? "Accessibilité des transports et services satisfaisante"
+          : "Accessibilité des transports et services moyenne",
       poisFoundCount: 0,
       positiveFactors: pmrPositive,
       negativeFactors: pmrNegative,
@@ -1063,11 +1146,11 @@ export function calculateCategoryScores(
         ...pmrNegative.map((f) => `${f.points.toFixed(1)} pt : ${f.label}`),
       ],
       calculationExplanation:
-        "Estimation de la praticabilité piétonne et personnes à mobilité réduite basée sur l'existence de quais de transport adaptés et de services essentiels à courte distance.",
+        "Indicateur calculé à partir de la distance directe aux arrêts locaux ainsi que de la proximité des services de santé et commerces essentiels.",
       sources: [
         {
           name: "Mapbox & GTFS/SNCF",
-          description: "Aménagements d'accessibilité des stations et trottoirs",
+          description: "Arrêts de transport, services de santé et commerces recensés; aucune donnée directe sur les aménagements PMR",
           lastUpdated: "2026",
         },
       ],
