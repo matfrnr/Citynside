@@ -1,32 +1,28 @@
 export const CURRENT_RELEASE_NOTES = {
-  version: "2026-10-01-v1",
-  date: "1er octobre 2026",
-  title: "Citynside évolue",
-  introduction: "Les principales nouveautés ajoutées à votre espace ces derniers mois.",
+  version: "2026-10-10-v2",
+  date: "10 octobre 2026",
+  title: "Citynside se réinvente",
+  introduction: "Depuis la V1, l’application a été repensée pour vous aider à analyser, comparer et présenter les quartiers plus simplement.",
   items: [
     {
-      title: "Comparer et retrouver vos analyses",
-      description: "Comparez deux quartiers côte à côte. Vos recherches sont conservées dans l’historique (20 dernières) et vous pouvez ajouter les adresses utiles à vos favoris.",
+      title: "Une application entièrement repensée",
+      description: "Une nouvelle interface et une navigation plus claire réunissent vos analyses, votre carte et vos rapports dans un espace plus simple à parcourir.",
     },
     {
-      title: "Des analyses plus complètes",
-      description: "De nouveaux indicateurs enrichissent les scores. Les risques et nuisances peuvent être ajoutés au rapport à la demande.",
+      title: "Comparez les quartiers côte à côte",
+      description: "Mettez deux analyses en regard pour repérer plus facilement leurs différences, leurs atouts et leurs points de vigilance.",
     },
     {
-      title: "Rapports personnalisables et synchronisés",
-      description: "Choisissez les sections du rapport, enregistrez vos points forts et réserves sur votre compte, puis consultez un aperçu et un PDF mieux mis en page.",
+      title: "Personnalisez votre expérience",
+      description: "Choisissez vos préférences d’affichage et d’analyse, comme la page d’accueil, les réglages de la carte, le profil de score ou les unités de distance.",
     },
     {
-      title: "Notifications utiles",
-      description: "Retrouvez les événements importants du compte et de vos rapports, avec des niveaux de priorité, un badge et la possibilité de supprimer les notifications.",
+      title: "Posez vos questions au chatbot Citynside",
+      description: "Échangez en langage naturel sur un quartier : le chatbot s’appuie sur les indicateurs de l’analyse pour vous apporter des explications plus concrètes.",
     },
     {
-      title: "Accès rapides personnalisables",
-      description: "Choisissez les raccourcis qui vous conviennent et retrouvez vos analyses enregistrées plus facilement.",
-    },
-    {
-      title: "Une expérience adaptée à chaque écran",
-      description: "La navigation, la recherche, la carte et les rapports s’adaptent aux mobiles et aux tablettes.",
+      title: "Et plusieurs améliorations au quotidien",
+      description: "Avatars prédéfinis, résultats PMR plus lisibles, accès direct au rapport officiel Géorisques et reconnexion plus fluide complètent cette évolution.",
     },
   ],
 } as const;

@@ -246,12 +246,12 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
                 </>
               )}
             </button>
-
+{/* 
             <div className="auth-divider">
               <span>ou</span>
-            </div>
+            </div> */}
 
-            <button
+            {/* <button
               className="auth-demo-btn"
               type="button"
               onClick={enterDemoMode}
@@ -264,7 +264,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
                 <span className="auth-demo-hint">Accès instantané sans identifiants</span>
               </div>
               <ArrowRight size={15} className="auth-demo-chevron" />
-            </button>
+            </button> */}
           </form>
 
           {/* Carte d'accès sur invitation */}

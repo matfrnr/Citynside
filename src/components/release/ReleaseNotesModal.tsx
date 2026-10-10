@@ -105,14 +105,14 @@ export const ReleaseNotesModal: React.FC<ReleaseNotesModalProps> = ({ userId }) 
 
       <style>{`
         .release-modal-backdrop { position: fixed; inset: 0; z-index: 3000; display: grid; place-items: center; padding: 24px; background: rgba(15, 30, 25, .52); backdrop-filter: blur(4px); }
-        .release-modal { position: relative; width: min(100%, 560px); max-height: min(90vh, 760px); overflow-y: auto; padding: 34px; border: 1px solid rgba(25, 56, 50, .1); border-radius: 22px; background: #fff; box-shadow: 0 24px 80px rgba(9, 27, 22, .24); color: var(--color-text-main, #243630); }
+        .release-modal { position: relative; width: min(100%, 600px); max-height: min(90vh, 760px); overflow-y: auto; padding: 34px; border: 1px solid rgba(25, 56, 50, .1); border-radius: 24px; background: radial-gradient(ellipse at 100% 0, rgba(218, 237, 220, .72), transparent 38%), linear-gradient(180deg, #f8fbf7 0, #fff 210px); box-shadow: 0 24px 80px rgba(9, 27, 22, .24); color: var(--color-text-main, #243630); }
         .release-modal-close { position: absolute; top: 18px; right: 18px; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--color-border, #e1e9e2); border-radius: 50%; background: #fff; color: #52665b; cursor: pointer; }
-        .release-modal-icon { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 15px; background: #eef5ef; color: #285c43; }
-        .release-modal-eyebrow { margin: 20px 0 7px; color: #548162; font-size: .75rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+        .release-modal-icon { width: 50px; height: 50px; display: grid; place-items: center; border: 1px solid rgba(53, 108, 75, .12); border-radius: 16px; background: linear-gradient(145deg, #e2f1e3, #f1f7ee); color: #285c43; box-shadow: 0 5px 14px rgba(40, 92, 67, .08); }
+        .release-modal-eyebrow { display: flex; align-items: center; gap: 8px; margin: 20px 0 8px; color: #548162; font-size: .72rem; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; }
         .release-modal h2 { margin: 0; color: #193832; font-size: 1.65rem; line-height: 1.2; }
         .release-modal-intro { margin: 10px 0 22px; color: #64736b; font-size: .92rem; line-height: 1.5; }
-        .release-modal-list { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
-        .release-modal-list li { display: grid; grid-template-columns: 26px 1fr; gap: 11px; align-items: start; }
+        .release-modal-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+        .release-modal-list li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 11px; align-items: start; padding: 12px 13px; border: 1px solid #e8eee8; border-radius: 14px; background: rgba(255, 255, 255, .82); box-shadow: 0 2px 7px rgba(27, 57, 43, .025); }
         .release-modal-bullet { display: grid; place-items: center; width: 25px; height: 25px; margin-top: 1px; border-radius: 50%; background: #edf5ee; color: #356c4b; }
         .release-modal-list strong { color: #263b32; font-size: .9rem; }
         .release-modal-list p { margin: 3px 0 0; color: #68776f; font-size: .83rem; line-height: 1.45; }
@@ -127,8 +127,8 @@ export const ReleaseNotesModal: React.FC<ReleaseNotesModalProps> = ({ userId }) 
           .release-modal-eyebrow { margin: 14px 0 5px; font-size: .65rem; }
           .release-modal h2 { padding-right: 24px; font-size: 1.16rem; line-height: 1.25; }
           .release-modal-intro { margin: 8px 0 16px; font-size: .78rem; line-height: 1.45; }
-          .release-modal-list { gap: 11px; }
-          .release-modal-list li { grid-template-columns: 22px minmax(0, 1fr); gap: 8px; }
+          .release-modal-list { gap: 8px; }
+          .release-modal-list li { grid-template-columns: 22px minmax(0, 1fr); gap: 8px; padding: 10px; border-radius: 11px; }
           .release-modal-bullet { width: 21px; height: 21px; }
           .release-modal-bullet svg { width: 12px; height: 12px; }
           .release-modal-list strong { font-size: .78rem; line-height: 1.3; }
