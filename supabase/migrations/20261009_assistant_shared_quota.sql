@@ -60,11 +60,11 @@ begin
   from public.assistant_usage_events
   where user_id = v_user_id and created_at >= v_now - interval '10 minutes';
 
-  allowed := v_global_used < 50 and v_hour_used < 20 and v_ten_minute_used < 5;
+  allowed := v_global_used < 100 and v_hour_used < 40 and v_ten_minute_used < 10;
   limit_code := case
-    when v_global_used >= 50 then 'global_daily'
-    when v_hour_used >= 20 then 'account_hourly'
-    when v_ten_minute_used >= 5 then 'account_ten_minutes'
+    when v_global_used >= 100 then 'global_daily'
+    when v_hour_used >= 40 then 'account_hourly'
+    when v_ten_minute_used >= 10 then 'account_ten_minutes'
     else null
   end;
 
@@ -78,15 +78,15 @@ begin
   global_used := v_global_used;
   hour_used := v_hour_used;
   ten_minute_used := v_ten_minute_used;
-  global_remaining := greatest(0, 50 - v_global_used);
-  hour_remaining := greatest(0, 20 - v_hour_used);
-  ten_minute_remaining := greatest(0, 5 - v_ten_minute_used);
+  global_remaining := greatest(0, 100 - v_global_used);
+  hour_remaining := greatest(0, 40 - v_hour_used);
+  ten_minute_remaining := greatest(0, 10 - v_ten_minute_used);
   warning := null;
 
-  if allowed and v_global_used >= 40 then
+  if allowed and v_global_used >= 80 then
     warning := 'Il ne reste que ' || global_remaining || ' requêtes aujourd’hui pour toute l’équipe.';
   end if;
-  if allowed and (v_hour_used >= 16 or v_ten_minute_used >= 4) then
+  if allowed and (v_hour_used >= 32 or v_ten_minute_used >= 8) then
     warning := concat_ws(' ', warning, 'Vous approchez de votre limite personnelle (' || hour_remaining || ' par heure, ' || ten_minute_remaining || ' sur 10 minutes).');
   end if;
 

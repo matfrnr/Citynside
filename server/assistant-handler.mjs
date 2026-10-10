@@ -123,9 +123,9 @@ export async function handleAssistantRequest(request) {
   if (!quota || typeof quota.allowed !== "boolean") return json({ error: "Réponse de quota invalide. Réessayez plus tard." }, 503);
   if (!quota.allowed) {
     const errors = {
-      global_daily: "Le quota partagé de 50 questions pour aujourd’hui est atteint. Il sera réinitialisé demain.",
-      account_hourly: "Vous avez atteint votre limite de 20 questions sur une heure. Réessayez un peu plus tard.",
-      account_ten_minutes: "Vous avez atteint votre limite de 5 questions sur 10 minutes. Réessayez un peu plus tard.",
+      global_daily: "Le quota partagé de 100 questions pour aujourd’hui est atteint. Il sera réinitialisé demain.",
+      account_hourly: "Vous avez atteint votre limite de 40 questions sur une heure. Réessayez un peu plus tard.",
+      account_ten_minutes: "Vous avez atteint votre limite de 10 questions sur 10 minutes. Réessayez un peu plus tard.",
     };
     const message = errors[quota.limit_code] || "Une limite de questions est atteinte. Réessayez plus tard.";
     return json({ error: message, quotaWarning: message }, 429);
@@ -150,7 +150,12 @@ export async function handleAssistantRequest(request) {
       body: JSON.stringify({
         model: process.env.GROQ_MODEL || "openai/gpt-oss-20b",
         temperature: 0.35,
-        max_completion_tokens: 560,
+        // GPT-OSS uses part of its completion budget for reasoning. 560 tokens
+        // can be exhausted before it emits user-facing content, especially for
+        // analyses with many indicators. Keep reasoning light and reserve
+        // enough output budget for a concise answer.
+        reasoning_effort: "low",
+        max_completion_tokens: 2048,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "system", content: `Données de référence pour répondre (analyse anonymisée) :\n${JSON.stringify(analysis)}` },
@@ -166,11 +171,23 @@ export async function handleAssistantRequest(request) {
       return json({ error: "L’assistant ne peut pas répondre pour le moment. Réessayez plus tard." }, 502);
     }
     const result = await response.json();
-    const rawAnswer = result?.choices?.[0]?.message?.content;
-    const answer = typeof rawAnswer === "string"
-      ? rawAnswer.replace(/\r\n?/g, "\n").replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, "").trim().slice(0, 3000)
-      : "";
-    if (!answer) return json({ error: "L’assistant n’a pas produit de réponse. Réessayez." }, 502);
+    const choice = result?.choices?.[0];
+    const rawContent = choice?.message?.content;
+    const rawAnswer = typeof rawContent === "string"
+      ? rawContent
+      : Array.isArray(rawContent)
+        ? rawContent.map((part) => typeof part === "string" ? part : typeof part?.text === "string" ? part.text : "").join("\n")
+        : "";
+    const answer = rawAnswer.replace(/\r\n?/g, "\n").replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, "").trim().slice(0, 3000);
+    if (!answer) {
+      console.error("Groq assistant returned no user-facing content:", JSON.stringify({
+        finishReason: choice?.finish_reason || null,
+        completionTokens: result?.usage?.completion_tokens ?? null,
+        reasoningTokens: result?.usage?.completion_tokens_details?.reasoning_tokens ?? null,
+        reasoningPresent: Boolean(choice?.message?.reasoning),
+      }));
+      return json({ error: "Le modèle n’a pas terminé sa réponse. Réessayez." }, 502);
+    }
     return json({ answer, quotaWarning: typeof quota.warning === "string" ? quota.warning : null });
   } catch (error) {
     console.error("Groq assistant request failed:", error);

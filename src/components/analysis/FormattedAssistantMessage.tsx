@@ -13,7 +13,13 @@ function inlineContent(text: string, prefix: string): ReactNode[] {
 }
 
 function cleanMarkdown(text: string): string {
-  return text.replace(/\\([*_`|])/g, "$1").replace(/\r/g, "").trim();
+  return text
+    .replace(/\\([*_`|])/g, "$1")
+    .replace(/\r/g, "")
+    // Recolle le deux-points au libellé même quand celui-ci est un élément
+    // de liste et que le modèle insère une ligne vide avant le deux-points.
+    .replace(/^([ \t]*(?:(?:[-*]|\d+[.)])[ \t]+)?\*\*[^*\n]+\*\*)[ \t]*\n[ \t]*\n?[ \t]*:[ \t]*/gm, "$1: ")
+    .trim();
 }
 
 function parseFlatTable(text: string): { prefix: string; headers: string[]; rows: string[][] } | null {

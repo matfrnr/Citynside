@@ -34,21 +34,34 @@ export const ANALYSIS_RADIUS_METERS = 850;
 export const EXTENDED_TRANSIT_RADIUS_METERS = 1200;
 
 function getCacheKey(lat: number, lon: number, radius: number): string {
-  const roundedLat = Math.round(lat * 10000) / 10000;
-  const roundedLon = Math.round(lon * 10000) / 10000;
-  return `cyt_mapbox_v73_${roundedLat}_${roundedLon}_${radius}`;
+  // Une clé à 4 décimales regroupait des adresses espacées de plusieurs mètres.
+  // La précision fine évite qu'un arrêt proche du bord du rayon disparaisse.
+  return `cyt_mapbox_v74_${lat.toFixed(6)}_${lon.toFixed(6)}_${radius}`;
 }
 
-function getCachedPOIs(key: string): POI[] | null {
+function recalculateCachedPOIs(pois: POI[], lat: number, lon: number, radius: number): POI[] {
+  return pois.map((poi) => ({
+    ...poi,
+    distanceMeters: calculateDistanceMeters(lat, lon, poi.lat, poi.lon),
+  })).filter((poi) => {
+    const isRailStation = poi.category === "transports" && /gare ferroviaire|arrêt ferroviaire/i.test(poi.subType);
+    const allowedRadius = isRailStation ? Math.max(radius, EXTENDED_TRANSIT_RADIUS_METERS) : radius;
+    return poi.distanceMeters <= allowedRadius;
+  }).sort((a, b) => a.distanceMeters - b.distanceMeters);
+}
+
+function getCachedPOIs(key: string, lat: number, lon: number, radius: number): POI[] | null {
   const memEntry = poisMemoryCache.get(key);
-  if (memEntry && Date.now() - memEntry.timestamp < CACHE_TTL_MS) return memEntry.pois;
+  if (memEntry && Date.now() - memEntry.timestamp < CACHE_TTL_MS) {
+    return recalculateCachedPOIs(memEntry.pois, lat, lon, radius);
+  }
   try {
     const raw = sessionStorage.getItem(key);
     if (raw) {
       const parsed: CacheEntry = JSON.parse(raw);
       if (Date.now() - parsed.timestamp < CACHE_TTL_MS) {
         poisMemoryCache.set(key, parsed);
-        return parsed.pois;
+        return recalculateCachedPOIs(parsed.pois, lat, lon, radius);
       }
       sessionStorage.removeItem(key);
     }
@@ -63,15 +76,21 @@ function setCachedPOIs(key: string, pois: POI[]): void {
 }
 
 function getCategoryCacheKey(id: string, lat: number, lon: number, radius: number): string {
-  return `cyt_category_v15_${id}_${Math.round(lat * 1000)}_${Math.round(lon * 1000)}_${radius}`;
+  return `cyt_category_v16_${id}_${lat.toFixed(6)}_${lon.toFixed(6)}_${radius}`;
 }
 
-function readCategoryCache(key: string): POI[] {
+function readCategoryCache(key: string, lat: number, lon: number, queryRadius: number, localRadius: number): POI[] {
   try {
     const raw = sessionStorage.getItem(key);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed as POI[];
+      if (Array.isArray(parsed)) {
+        return recalculateCachedPOIs(parsed as POI[], lat, lon, queryRadius).filter((poi) =>
+          poi.category !== "transports" ||
+          poi.distanceMeters <= localRadius ||
+          /gare ferroviaire|arrêt ferroviaire/i.test(poi.subType)
+        );
+      }
     }
   } catch {}
   return [];
@@ -124,6 +143,87 @@ const MAPBOX_CATEGORIES: { id: string; baseCategory: POICategory }[] = [
   { id: "post_office,city_hall,courthouse,government", baseCategory: "services_publics" },
 ];
 
+// Search Box est plafonné à 10 requêtes/s par jeton. Garder une marge et
+// partager le même ordonnanceur entre catégories et recherches textuelles.
+const SEARCHBOX_MIN_INTERVAL_MS = 125; // 8 requêtes/s max dans cet onglet
+let nextSearchBoxStartAt = 0;
+let searchBoxCooldownUntil = 0;
+let searchBoxReservationQueue: Promise<void> = Promise.resolve();
+
+function abortError(): Error {
+  const error = new Error("Aborted");
+  error.name = "AbortError";
+  return error;
+}
+
+function getSearchBoxRetryDelay(response: Response, attempt: number): number {
+  const retryAfter = response.headers.get("retry-after");
+  const seconds = retryAfter ? Number(retryAfter) : NaN;
+  const retryAt = retryAfter && !Number.isFinite(seconds) ? Date.parse(retryAfter) : NaN;
+  const serverDelay = Number.isFinite(seconds)
+    ? seconds * 1000
+    : Number.isFinite(retryAt)
+      ? retryAt - Date.now()
+      : NaN;
+  const backoff = Math.min(8000, 1000 * (2 ** attempt));
+  return Math.min(10_000, Math.max(500, Number.isFinite(serverDelay) ? serverDelay : backoff));
+}
+
+function waitForSearchBoxSlot(signal?: AbortSignal): Promise<void> {
+  const reservation = searchBoxReservationQueue.then(async () => {
+    while (true) {
+      if (signal?.aborted) throw abortError();
+      const startAt = Math.max(nextSearchBoxStartAt, searchBoxCooldownUntil);
+      const waitMs = startAt - Date.now();
+      if (waitMs <= 0) break;
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          signal?.removeEventListener("abort", onAbort);
+          resolve();
+        }, waitMs);
+        const onAbort = () => {
+          clearTimeout(timer);
+          reject(abortError());
+        };
+        signal?.addEventListener("abort", onAbort, { once: true });
+      });
+    }
+    if (signal?.aborted) throw abortError();
+    nextSearchBoxStartAt = Date.now() + SEARCHBOX_MIN_INTERVAL_MS;
+  });
+  searchBoxReservationQueue = reservation.then(() => undefined, () => undefined);
+  return reservation;
+}
+
+async function fetchSearchBox(url: string, signal?: AbortSignal): Promise<Response> {
+  await waitForSearchBoxSlot(signal);
+  const response = await fetch(url, { signal });
+  if (response.status === 429) {
+    // Ralentir également les requêtes déjà en file après un throttling partagé.
+    searchBoxCooldownUntil = Math.max(searchBoxCooldownUntil, Date.now() + getSearchBoxRetryDelay(response, 0));
+    nextSearchBoxStartAt = Math.max(nextSearchBoxStartAt, searchBoxCooldownUntil);
+  }
+  return response;
+}
+
+/** Exécute plusieurs lectures en parallèle tout en conservant leur ordre. */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, items.length);
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      results[index] = await worker(items[index]);
+    }
+  }));
+  return results;
+}
+
 export async function fetchPOIsInRadius(
   lat: number,
   lon: number,
@@ -131,7 +231,7 @@ export async function fetchPOIsInRadius(
   signal?: AbortSignal,
 ): Promise<POI[]> {
   const cacheKey = getCacheKey(lat, lon, radiusMeters);
-  const cached = getCachedPOIs(cacheKey);
+  const cached = getCachedPOIs(cacheKey, lat, lon, radiusMeters);
   if (cached) return cached;
 
   if (!MAPBOX_TOKEN) {
@@ -142,66 +242,26 @@ export async function fetchPOIsInRadius(
   try {
     const allPois: POI[] = [];
     let hasErrors = false;
-    const BATCH_SIZE = 1;
-
-    for (let i = 0; i < MAPBOX_CATEGORIES.length; i += BATCH_SIZE) {
-      if (signal?.aborted) { const e = new Error("Aborted"); e.name = "AbortError"; throw e; }
-      const batch = MAPBOX_CATEGORIES.slice(i, i + BATCH_SIZE);
-
-      const batchPromises = batch.map(async (queryConfig) => {
-        const queryRadius = queryConfig.baseCategory === "transports"
-          ? Math.max(radiusMeters, EXTENDED_TRANSIT_RADIUS_METERS)
-          : radiusMeters;
-        const categoryCacheKey = getCategoryCacheKey(queryConfig.id, lat, lon, queryRadius);
-        const url = `https://api.mapbox.com/search/searchbox/v1/category/${queryConfig.id}?access_token=${MAPBOX_TOKEN}&proximity=${lon},${lat}&limit=25`;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          try {
-            const response = await fetch(url, { signal });
-            if (response.status === 429 && attempt < 2) {
-              await new Promise(resolve => setTimeout(resolve, 700 * (attempt + 1)));
-              continue;
-            }
-            if (!response.ok) {
-              hasErrors = true;
-              return [];
-            }
-            const data = await response.json();
-            if (!data.features) return [];
-            const parsed = parseMapboxFeatures(data.features, queryConfig.baseCategory, lat, lon, queryRadius);
-            // Les transports sont interrogés sur un rayon élargi pour trouver
-            // les gares, mais les arrêts ordinaires restent dans le cercle.
-            const filtered = parsed.filter((poi) =>
-              poi.category !== "transports" ||
-              poi.distanceMeters <= radiusMeters ||
-              /gare ferroviaire|arrêt ferroviaire/i.test(poi.subType)
-            );
-            writeCategoryCache(categoryCacheKey, filtered);
-            return filtered;
-          } catch (e: any) {
-            if (e?.name === "AbortError") throw e;
-            if (attempt === 2) {
-              hasErrors = true;
-              return readCategoryCache(categoryCacheKey);
-            }
+    // Ce complément utilise l'API Tilequery (quota distinct) : on le lance
+    // pendant les recherches Search Box au lieu de l'attendre à la fin.
+    const tileQueryPromise = (async () => {
+      const tileUrl = `https://api.mapbox.com/v4/mapbox.mapbox-streets-v8/tilequery/${lon},${lat}.json?radius=${Math.min(radiusMeters, 1000)}&layers=poi_label,landuse&limit=50&access_token=${MAPBOX_TOKEN}`;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (signal?.aborted) return null;
+        try {
+          const response = await fetch(tileUrl, { signal });
+          if (response.ok) return await response.json();
+          if (response.status === 429 && attempt < 2) {
+            await new Promise(resolve => setTimeout(resolve, 800 * (attempt + 1)));
           }
+        } catch (error: any) {
+          if (error?.name === "AbortError") return null;
+          if (attempt === 2) return null;
         }
-        hasErrors = true;
-        return readCategoryCache(categoryCacheKey);
-      });
-
-      const batchResults = await Promise.all(batchPromises);
-      allPois.push(...batchResults.flat());
-
-      // Petite pause entre chaque lot pour laisser respirer l'API Mapbox
-      if (i + BATCH_SIZE < MAPBOX_CATEGORIES.length) {
-      await new Promise(resolve => setTimeout(resolve, 350));
       }
-    }
+      return null;
+    })();
 
-    // Les grands parcs nommés apparaissent parfois comme lieux/POI textuels
-    // dans Mapbox, sans appartenir à la catégorie `park` (ex. « Parc des
-    // Bains »). Deux recherches ciblées complètent donc la recherche de
-    // catégorie sans dépendre des libellés visibles du fond de carte.
     const forwardSearches = [
       { term: "parc", category: "espaces_verts" as POICategory },
       { term: "jardin", category: "espaces_verts" as POICategory },
@@ -209,8 +269,8 @@ export async function fetchPOIsInRadius(
       { term: "police", category: "tranquillite" as POICategory },
       { term: "gendarmerie", category: "tranquillite" as POICategory },
       { term: "maternelle", category: "ecoles" as POICategory },
-      { term: "crèche", category: "ecoles" as POICategory }
-      ,{ term: "fromagerie", category: "commerces" as POICategory },
+      { term: "crèche", category: "ecoles" as POICategory },
+      { term: "fromagerie", category: "commerces" as POICategory },
       { term: "université", category: "ecoles" as POICategory },
       { term: "IUT", category: "ecoles" as POICategory },
       { term: "faculté", category: "ecoles" as POICategory },
@@ -219,15 +279,65 @@ export async function fetchPOIsInRadius(
       { term: "gymnase", category: "loisirs" as POICategory },
       { term: "stade", category: "loisirs" as POICategory },
       { term: "complexe sportif", category: "loisirs" as POICategory },
-      { term: "salle de sport", category: "loisirs" as POICategory }
+      { term: "salle de sport", category: "loisirs" as POICategory },
     ];
 
-    for (const search of forwardSearches) {
+    const categoryResultsPromise = mapWithConcurrency(MAPBOX_CATEGORIES, 8, async (queryConfig) => {
+      const queryRadius = queryConfig.baseCategory === "transports"
+        ? Math.max(radiusMeters, EXTENDED_TRANSIT_RADIUS_METERS)
+        : radiusMeters;
+      const categoryCacheKey = getCategoryCacheKey(queryConfig.id, lat, lon, queryRadius);
+      const url = `https://api.mapbox.com/search/searchbox/v1/category/${queryConfig.id}?access_token=${MAPBOX_TOKEN}&proximity=${lon},${lat}&limit=25`;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+          const response = await fetchSearchBox(url, signal);
+          if (response.status === 429 && attempt < 4) {
+            await new Promise(resolve => setTimeout(resolve, getSearchBoxRetryDelay(response, attempt)));
+            continue;
+          }
+          if (!response.ok) {
+            hasErrors = true;
+            return [] as POI[];
+          }
+          const data = await response.json();
+          if (!data.features) return [] as POI[];
+          const parsed = parseMapboxFeatures(data.features, queryConfig.baseCategory, lat, lon, queryRadius);
+          // Les transports sont interrogés sur un rayon élargi pour trouver
+          // les gares, mais les arrêts ordinaires restent dans le cercle.
+          const filtered = parsed.filter((poi) =>
+            poi.category !== "transports" ||
+            poi.distanceMeters <= radiusMeters ||
+            /gare ferroviaire|arrêt ferroviaire/i.test(poi.subType)
+          );
+          writeCategoryCache(categoryCacheKey, filtered);
+          return filtered;
+        } catch (e: any) {
+          if (e?.name === "AbortError") throw e;
+          if (attempt === 2) {
+            hasErrors = true;
+            return readCategoryCache(categoryCacheKey, lat, lon, queryRadius, radiusMeters);
+          }
+        }
+      }
+      hasErrors = true;
+      return readCategoryCache(categoryCacheKey, lat, lon, queryRadius, radiusMeters);
+    });
+    // Les grands parcs nommés apparaissent parfois comme lieux/POI textuels
+    // dans Mapbox, sans appartenir à la catégorie `park` (ex. « Parc des
+    // Bains »). Deux recherches ciblées complètent donc la recherche de
+    // catégorie sans dépendre des libellés visibles du fond de carte.
+    const forwardResultsPromise = mapWithConcurrency(forwardSearches, 8, async (search) => {
       if (signal?.aborted) { const e = new Error("Aborted"); e.name = "AbortError"; throw e; }
       const url = `https://api.mapbox.com/search/searchbox/v1/forward?q=${encodeURIComponent(search.term)}&access_token=${MAPBOX_TOKEN}&proximity=${lon},${lat}&types=poi&limit=10`;
       try {
-        const response = await fetch(url, { signal });
-        if (response.ok) {
+        let response: Response | null = null;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          response = await fetchSearchBox(url, signal);
+          if (response.status !== 429 || attempt === 4) break;
+          const rateLimitedResponse = response;
+          await new Promise(resolve => setTimeout(resolve, getSearchBoxRetryDelay(rateLimitedResponse, attempt)));
+        }
+        if (response?.ok) {
           const data = await response.json();
           if (Array.isArray(data.features)) {
             let features = data.features;
@@ -258,7 +368,7 @@ export async function fetchPOIsInRadius(
                 return termPattern.test(text) && !/caisse d['’]?epargne|caisse d['’]?épargne|banque|cabinet infirmier|parking|tacos|restaurant|centre laser|laser|hôtel|hotel/i.test(text);
               });
             }
-            allPois.push(...parseMapboxFeatures(features, search.category, lat, lon, radiusMeters));
+            return parseMapboxFeatures(features, search.category, lat, lon, radiusMeters);
           }
         } else {
           hasErrors = true;
@@ -267,23 +377,17 @@ export async function fetchPOIsInRadius(
         if (e?.name === "AbortError") throw e;
         hasErrors = true;
       }
-      await new Promise(resolve => setTimeout(resolve, 350));
-    }
+      return [] as POI[];
+    });
+    const [categoryResults, forwardResults] = await Promise.all([categoryResultsPromise, forwardResultsPromise]);
+    allPois.push(...categoryResults.flat(), ...forwardResults.flat());
 
     // Les parcs polygonaux sont parfois absents de Searchbox mais présents
     // dans la couche vectorielle `poi_label`/`landuse` du fond Streets.
     try {
       if (signal?.aborted) { const e = new Error("Aborted"); e.name = "AbortError"; throw e; }
-      const tileUrl = `https://api.mapbox.com/v4/mapbox.mapbox-streets-v8/tilequery/${lon},${lat}.json?radius=${Math.min(radiusMeters, 1000)}&layers=poi_label,landuse&limit=50&access_token=${MAPBOX_TOKEN}`;
-      let data: any = null;
-      for (let attempt = 0; attempt < 3 && !data; attempt++) {
-        const response = await fetch(tileUrl, { signal });
-        if (response.ok) {
-          data = await response.json();
-        } else if (response.status === 429 && attempt < 2) {
-          await new Promise(resolve => setTimeout(resolve, 800 * (attempt + 1)));
-        }
-      }
+      const data: any = await tileQueryPromise;
+      if (!data) hasErrors = true;
       if (data) {
         const parkFeatures = (Array.isArray(data.features) ? data.features : []).filter((feature: any) => {
           const p = feature.properties || {};

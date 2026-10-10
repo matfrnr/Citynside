@@ -1,4 +1,4 @@
-import { ArrowRight, FileText, Star, Search } from "lucide-react";
+import { ArrowRight, FileText, Star, Search, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { fetchAirQuality } from "../../services/airQualityApi";
 import type { AirQualityData } from "../../services/airQualityApi";
@@ -22,6 +22,56 @@ import { NeighborhoodAssistant } from "../analysis/NeighborhoodAssistant";
 import type { DefaultCategoryFilter, DefaultScoreProfile, DistanceUnit } from "../../services/userPreferences";
 
 const demoAnalysisRequests = new Map<string, Promise<{ pois: POI[]; categories: NeighborhoodAnalysis["categories"]; avg: number; airQuality: AirQualityData | null }>>();
+type AnalysisData = { pois: POI[]; categories: NeighborhoodAnalysis["categories"]; avg: number; airQuality: AirQualityData | null };
+const RECENT_ANALYSIS_TTL_MS = 3 * 60 * 1000;
+const recentAnalysisData = new Map<string, { data: AnalysisData; savedAt: number }>();
+
+function getRecentAnalysisKey(lat: number, lon: number): string {
+  return `${lat.toFixed(6)}:${lon.toFixed(6)}`;
+}
+
+function readRecentAnalysis(lat: number, lon: number): AnalysisData | null {
+  const key = getRecentAnalysisKey(lat, lon);
+  const entry = recentAnalysisData.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.savedAt >= RECENT_ANALYSIS_TTL_MS) {
+    recentAnalysisData.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function saveRecentAnalysis(lat: number, lon: number, data: AnalysisData): void {
+  const key = getRecentAnalysisKey(lat, lon);
+  recentAnalysisData.delete(key);
+  recentAnalysisData.set(key, { data, savedAt: Date.now() });
+  while (recentAnalysisData.size > 20) {
+    const oldestKey = recentAnalysisData.keys().next().value;
+    if (!oldestKey) break;
+    recentAnalysisData.delete(oldestKey);
+  }
+}
+
+function mergeRefreshedAnalysis(previous: AnalysisData, refreshed: AnalysisData, lat: number, lon: number): AnalysisData {
+  const merged = [...previous.pois];
+  const normalizeName = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  for (const poi of refreshed.pois) {
+    const matchIndex = merged.findIndex((existing) => {
+      if (existing.id === poi.id) return true;
+      if (existing.category !== poi.category || existing.subType !== poi.subType) return false;
+      const namesMatch = normalizeName(existing.name) === normalizeName(poi.name);
+      const maxDistance = poi.category === "ecoles" ? 45 : 25;
+      return namesMatch && calculateDistanceMeters(existing.lat, existing.lon, poi.lat, poi.lon) <= maxDistance;
+    });
+    if (matchIndex >= 0) merged[matchIndex] = poi;
+    else merged.push(poi);
+  }
+  merged.sort((a, b) => a.distanceMeters - b.distanceMeters);
+  const airQuality = refreshed.airQuality ?? previous.airQuality;
+  const categories = calculateCategoryScores(merged, airQuality, { lat, lon });
+  const sum = categories.reduce((total, category) => total + category.score, 0);
+  return { pois: merged, categories, avg: Math.round((sum / categories.length) * 10) / 10, airQuality };
+}
 
 interface NewAnalysisViewProps {
   isDemo: boolean;
@@ -57,17 +107,33 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string | null>(defaultCategoryFilter);
   const [poiToLocate, setPoiToLocate] = useState<POI | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [previewAnalysis, setPreviewAnalysis] = useState<NeighborhoodAnalysis | null>(null);
+  const [previewIsCached, setPreviewIsCached] = useState(false);
   const [lastAirQuality, setLastAirQuality] = useState<AirQualityData | null>(null);
   const latestSearchId = useRef(0);
   const activeOsmRequest = useRef<AbortController | null>(null);
 
   // Fonction résiliente et accélérée d'agrégation multi-API
-  const runParallelAnalysis = async (lat: number, lon: number, osmSignal?: AbortSignal) => {
+  const runParallelAnalysis = async (
+    lat: number,
+    lon: number,
+    osmSignal?: AbortSignal,
+    onMapboxReady?: (data: AnalysisData) => void,
+  ) => {
+    const osmRequest = fetchPOIsInRadius(lat, lon, ANALYSIS_RADIUS_METERS, osmSignal);
+    const osmPreviewRequest = osmRequest.then((pois) => {
+      if (onMapboxReady && !osmSignal?.aborted) {
+        const categories = calculateCategoryScores(pois, null, { lat, lon });
+        const sum = categories.reduce((acc, curr) => acc + curr.score, 0);
+        onMapboxReady({ pois, categories, avg: Math.round((sum / categories.length) * 10) / 10, airQuality: null });
+      }
+      return pois;
+    });
     const [osmRes, eduRes, sncfRes, gtfsRes, airRes, ignParkingRes] = await Promise.allSettled([
-      fetchPOIsInRadius(lat, lon, ANALYSIS_RADIUS_METERS, osmSignal),
+      osmPreviewRequest,
       fetchEducationPOIsInRadius(lat, lon, ANALYSIS_RADIUS_METERS),
       fetchSNCFStationsInRadius(lat, lon, EXTENDED_TRANSIT_RADIUS_METERS),
-      fetchNationalTransitStops(lat, lon, EXTENDED_TRANSIT_RADIUS_METERS),
+      fetchNationalTransitStops(lat, lon, EXTENDED_TRANSIT_RADIUS_METERS, osmSignal),
       fetchAirQuality(lat, lon),
       fetchIGNParkingPOIs(lat, lon, ANALYSIS_RADIUS_METERS),
     ]);
@@ -247,41 +313,71 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
     if (isDemo) return;
     setSelectedCategory(defaultCategoryFilter);
     setPoiToLocate(null);
+    setPreviewAnalysis(null);
+    setPreviewIsCached(false);
     const searchId = ++latestSearchId.current;
     activeOsmRequest.current?.abort();
     const osmController = new AbortController();
     activeOsmRequest.current = osmController;
     setIsLoading(true);
+    const analysisId = `analysis_${Date.now()}`;
+    const cachedData = readRecentAnalysis(addr.lat, addr.lon);
+    setPreviewIsCached(Boolean(cachedData));
+    setLastAirQuality(cachedData?.airQuality ?? null);
+    const makeUpdatedAnalysis = (data: AnalysisData): NeighborhoodAnalysis => ({
+      id: analysisId,
+      createdAt: new Date().toISOString(),
+      address: addr.name || addr.label,
+      city: addr.city,
+      postcode: addr.postcode,
+      neighborhoodName: "",
+      lat: addr.lat,
+      lon: addr.lon,
+      globalScore: data.avg,
+      categories: data.categories,
+      pois: data.pois,
+      airQuality: data.airQuality,
+      impressions: currentAnalysis?.impressions,
+      riskAssessment: { status: "loading", findings: [], reportUrl: `https://georisques.gouv.fr/api/v1/rapport_pdf?latlon=${encodeURIComponent(`${addr.lon},${addr.lat}`)}` },
+    });
+    const initialPreview = cachedData ?? (() => {
+      const categories = calculateCategoryScores([], null, { lat: addr.lat, lon: addr.lon });
+      const sum = categories.reduce((total, category) => total + category.score, 0);
+      return { pois: [], categories, avg: Math.round((sum / categories.length) * 10) / 10, airQuality: null };
+    })();
+    setPreviewAnalysis(makeUpdatedAnalysis(initialPreview));
     try {
       const { pois, categories, avg, airQuality } = await runParallelAnalysis(
         addr.lat,
         addr.lon,
         osmController.signal,
+        cachedData ? undefined : (previewData) => {
+          if (searchId === latestSearchId.current) {
+            setPreviewIsCached(false);
+            setPreviewAnalysis(makeUpdatedAnalysis(previewData));
+          }
+        },
       );
       if (searchId !== latestSearchId.current) return;
 
-      const updated: NeighborhoodAnalysis = {
-        id: `analysis_${Date.now()}`,
-        createdAt: new Date().toISOString(),
-        address: addr.name || addr.label,
-        city: addr.city,
-        postcode: addr.postcode,
-        neighborhoodName: "", // sera défini par l'utilisateur à l'enregistrement
-        lat: addr.lat,
-        lon: addr.lon,
-        globalScore: avg,
-        categories,
-        pois,
-        airQuality,
-        impressions: currentAnalysis?.impressions,
-        riskAssessment: { status: "loading", findings: [], reportUrl: `https://georisques.gouv.fr/api/v1/rapport_pdf?latlon=${encodeURIComponent(`${addr.lon},${addr.lat}`)}` },
-      };
+      const refreshedData = { pois, categories, avg, airQuality };
+      const resultData = cachedData
+        ? mergeRefreshedAnalysis(cachedData, refreshedData, addr.lat, addr.lon)
+        : refreshedData;
+      const updated = makeUpdatedAnalysis(resultData);
 
+      saveRecentAnalysis(addr.lat, addr.lon, resultData);
       setLastAirQuality(airQuality);
+      setPreviewIsCached(false);
+      setPreviewAnalysis(null);
       onUpdateAnalysis(updated);
       void fetchRiskAssessment(addr.lat, addr.lon).then((assessment) => onUpdateRiskAssessment(updated.id, assessment, updated.airQuality, updated));
     } catch (e) {
       console.error("Erreur analyse:", e);
+      if (searchId === latestSearchId.current) {
+        setPreviewIsCached(false);
+        setPreviewAnalysis(null);
+      }
     } finally {
       if (searchId === latestSearchId.current) setIsLoading(false);
     }
@@ -290,6 +386,8 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
   // When user clicks anywhere on map
   const handleMapLocationSelect = async (lat: number, lon: number) => {
     if (isDemo) return;
+    setPreviewAnalysis(null);
+    setPreviewIsCached(false);
     const searchId = ++latestSearchId.current;
     activeOsmRequest.current?.abort();
     const osmController = new AbortController();
@@ -323,6 +421,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
         riskAssessment: { status: "loading", findings: [], reportUrl: `https://georisques.gouv.fr/api/v1/rapport_pdf?latlon=${encodeURIComponent(`${lon},${lat}`)}` },
       };
 
+      saveRecentAnalysis(lat, lon, analysisData);
       setLastAirQuality(airQuality);
       onUpdateAnalysis(updated);
       void fetchRiskAssessment(lat, lon).then((assessment) => onUpdateRiskAssessment(updated.id, assessment, updated.airQuality, updated));
@@ -345,6 +444,8 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
     setSelectedCategory(category);
     setPoiToLocate(null);
   };
+
+  const displayedAnalysis = previewAnalysis ?? currentAnalysis;
 
   return (
     <div className="new-analysis-container">
@@ -372,15 +473,21 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
         />
       </div>
 
-      {currentAnalysis ? (
+      {isLoading && displayedAnalysis && !isDemo && (
+        <div className="analysis-update-status" role="status" aria-live="polite">
+          Analyse en cours : la carte est centrée immédiatement, puis les équipements et les scores se complètent.
+        </div>
+      )}
+
+      {displayedAnalysis ? (
         <div className="analysis-results-content">
           <section className="analysis-map-section">
             <div className="map-card-wrapper cyt-card">
               <InteractiveMap
-                lat={currentAnalysis.lat}
-                lon={currentAnalysis.lon}
-                neighborhoodName={currentAnalysis.address}
-                pois={currentAnalysis.pois}
+                lat={displayedAnalysis.lat}
+                lon={displayedAnalysis.lon}
+                neighborhoodName={displayedAnalysis.address}
+                pois={displayedAnalysis.pois}
                 selectedCategory={selectedCategory}
                 focusPoi={poiToLocate}
                 controlsVisibleByDefault={!mapControlsHiddenByDefault}
@@ -394,28 +501,37 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
             </div>
           </section>
 
-          <section className="analysis-scores-section">
+          {isLoading && !previewIsCached ? (
+            <section className="analysis-scores-section analysis-pending-section" role="status" aria-live="polite">
+              <Loader2 size={18} className="analysis-pending-spinner" />
+              <span>Calcul de la note définitive avec l’ensemble des sources…</span>
+            </section>
+          ) : <section className="analysis-scores-section">
             <ScoresList
-              categories={currentAnalysis.categories}
+              categories={displayedAnalysis.categories}
               selectedCategory={selectedCategory}
               onSelectCategory={handleSelectCategory}
-              addressName={`${currentAnalysis.address}, ${currentAnalysis.city}`}
-              globalScore={currentAnalysis.globalScore}
-              pois={currentAnalysis.pois}
+              addressName={`${displayedAnalysis.address}, ${displayedAnalysis.city}`}
+              globalScore={displayedAnalysis.globalScore}
+              pois={displayedAnalysis.pois}
               onLocatePoi={handleLocatePoi}
               defaultScoreProfile={defaultScoreProfile}
               distanceUnit={distanceUnit}
             />
-          </section>
+          </section>}
 
-          <section className="analysis-risk-section">
+          {isLoading && !previewIsCached ? (
+            <section className="analysis-risk-section analysis-pending-section" role="status">
+              Qualité de l’air et informations sur les risques en cours de chargement…
+            </section>
+          ) : <section className="analysis-risk-section">
             <RiskNuisancePanel
-              assessment={currentAnalysis.riskAssessment}
-              tranquility={currentAnalysis.categories.find((category) => category.category === "tranquillite")}
-              airQuality={currentAnalysis.airQuality ?? lastAirQuality}
+              assessment={displayedAnalysis.riskAssessment}
+              tranquility={displayedAnalysis.categories.find((category) => category.category === "tranquillite")}
+              airQuality={displayedAnalysis.airQuality ?? lastAirQuality}
             />
-          </section>
-          {!isDemo && <NeighborhoodAssistant analysis={currentAnalysis} />}
+          </section>}
+          {!isDemo && !isLoading && <NeighborhoodAssistant analysis={displayedAnalysis} />}
         </div>
       ) : (
         <div className="analysis-empty-state" role="status">
@@ -433,18 +549,18 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
       )}
 
       {/* Bottom CTA Buttons */}
-      {currentAnalysis && (
+      {displayedAnalysis && !isLoading && (
         <div className="analysis-bottom-cta-wrap">
           <button className="btn-view-report" onClick={onGoToReport}>
             <FileText size={18} />
             <span>Voir le rapport</span>
           </button>
           {!isDemo && <button
-            className={`btn-save-analysis ${currentAnalysis.isFavorite ? 'is-favorite' : ''}`}
-            onClick={() => onToggleFavorite(currentAnalysis.id)}
+            className={`btn-save-analysis ${displayedAnalysis.isFavorite ? 'is-favorite' : ''}`}
+            onClick={() => onToggleFavorite(displayedAnalysis.id)}
           >
-            <Star size={18} fill={currentAnalysis.isFavorite ? 'currentColor' : 'none'} />
-            <span>{currentAnalysis.isFavorite ? 'Retirer des favoris' : 'Mettre en favori'}</span>
+            <Star size={18} fill={displayedAnalysis.isFavorite ? 'currentColor' : 'none'} />
+            <span>{displayedAnalysis.isFavorite ? 'Retirer des favoris' : 'Mettre en favori'}</span>
           </button>}
           {!isDemo && <button
             className="btn-primary cta-impressions-btn"
@@ -497,6 +613,44 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
           display: flex;
           flex-direction: column;
           gap: 30px;
+        }
+
+        .analysis-update-status {
+          width: fit-content;
+          max-width: 100%;
+          margin: -12px auto -10px;
+          padding: 8px 14px;
+          border: 1px solid var(--color-border);
+          border-radius: 999px;
+          background: var(--color-bg-soft, #f5f8f6);
+          color: var(--color-text-muted);
+          font-size: .82rem;
+          line-height: 1.4;
+          text-align: center;
+        }
+
+        .analysis-pending-section {
+          min-height: 86px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          padding: 18px;
+          border: 1px solid var(--color-border);
+          border-radius: 16px;
+          background: #fff;
+          color: var(--color-text-muted);
+          font-size: .9rem;
+          text-align: center;
+        }
+
+        .analysis-pending-spinner {
+          flex: 0 0 auto;
+          animation: analysis-pending-spin 1s linear infinite;
+        }
+
+        @keyframes analysis-pending-spin {
+          to { transform: rotate(360deg); }
         }
 
         .analysis-map-section,
