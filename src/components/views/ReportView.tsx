@@ -200,9 +200,9 @@ export const ReportView: React.FC<ReportViewProps> = ({
             pageBreaks.push(pageHeightCss);
           } else {
             let pageStart = 0;
-            const keepTogetherBlocks = [...sheet.querySelectorAll(
+            const keepTogetherBlocks = Array.from(sheet.querySelectorAll(
               '.report-notes-strip, .report-cat-row, .report-risk-section, .impressions-report-card, .methodology-box, .guarantee-badge',
-            )].map((block) => {
+            )).map((block) => {
               const rect = (block as HTMLElement).getBoundingClientRect();
               return { top: rect.top - sheetTop, bottom: rect.bottom - sheetTop };
             }).sort((a, b) => a.top - b.top);

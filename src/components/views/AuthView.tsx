@@ -11,7 +11,6 @@ import {
   Mail,
   MapPin,
   ShieldCheck,
-  Sparkles,
   Train,
   Trees,
   ShoppingBag,
@@ -20,7 +19,7 @@ import {
 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { mapSupabaseUser, supabase } from "../../services/supabase";
-import { type AuthUser, LOCAL_DEMO_USER_ID } from "../../types";
+import { type AuthUser } from "../../types";
 
 interface AuthViewProps {
   onAuthenticated: (user: AuthUser) => void;
@@ -30,12 +29,6 @@ interface AuthFields {
   email: string;
   password: string;
 }
-
-const LOCAL_DEMO_USER: AuthUser = {
-  id: LOCAL_DEMO_USER_ID,
-  name: "Compte de démonstration",
-  email: "demo@citynside.local",
-};
 
 export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
   const [fields, setFields] = useState<AuthFields>({
@@ -128,8 +121,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
       setForgotBusy(false);
     }
   };
-
-  const enterDemoMode = () => onAuthenticated(LOCAL_DEMO_USER);
 
   return (
     <main className="auth-container">
