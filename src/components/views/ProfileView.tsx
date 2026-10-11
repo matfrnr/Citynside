@@ -1,5 +1,6 @@
 import {
   BadgeCheck,
+  Bell,
   Star,
   BriefcaseBusiness,
   Building2,
@@ -22,6 +23,7 @@ import { type AuthUser, LOCAL_DEMO_USER_ID } from "../../types";
 import { PROFILE_AVATARS } from "../../services/profileAvatar";
 import { ProfileAvatar } from "../profile/ProfileAvatar";
 import { useProfileAvatar } from "../profile/useProfileAvatar";
+import type { UserPreferences } from "../../services/userPreferences";
 
 interface ProfileViewProps {
   isDemo: boolean;
@@ -32,6 +34,8 @@ interface ProfileViewProps {
   onUpdateUser?: (updated: AuthUser) => void;
   onProfileSaved?: () => void;
   onPasswordChanged?: () => void;
+  preferences: UserPreferences;
+  onUserPreferencesChange: (preferences: UserPreferences) => void;
 }
 
 const loadProfile = (user: AuthUser): ProfileDetails => {
@@ -57,6 +61,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onUpdateUser,
   onProfileSaved,
   onPasswordChanged,
+  preferences,
+  onUserPreferencesChange,
 }) => {
   const [profileSnapshot, setProfileSnapshot] = useState(() => ({ user, value: loadProfile(user) }));
   const profile = profileSnapshot.user === user ? profileSnapshot.value : loadProfile(user);
@@ -69,7 +75,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       };
     });
   };
-  const { avatarId, selectAvatar } = useProfileAvatar(user.id);
+  const { avatarId, selectAvatar, avatarSyncError } = useProfileAvatar(user.id);
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -199,6 +205,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 ))}
               </div>
             </fieldset>
+            {avatarSyncError && <p className="profile-avatar-sync-error" role="alert">{avatarSyncError}</p>}
           </div>
 
           <div className="profile-stats" aria-label="Votre activité">
@@ -384,6 +391,32 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         <div className="password-footer"><span className={passwordError ? "password-error" : "password-success"} role="status">{passwordError || passwordMessage}</span><button className="save-profile" type="submit" disabled={isChangingPassword}><KeyRound size={16}/>{isChangingPassword ? "Modification…" : "Modifier le mot de passe"}</button></div>
       </form>}
 
+      <section className="profile-notification-settings">
+        <div className="form-heading">
+          <div><h2>Notifications non prioritaires</h2><p>Choisissez les catégories affichées dans le centre de notifications. Les notifications importantes restent toujours visibles.</p></div>
+          <Bell size={21} aria-hidden="true" />
+        </div>
+        <div className="profile-notification-options">
+          {([
+            ["showAnalysisNotifications", "Analyses", "Résultats et mises à jour de vos analyses."],
+            ["showReportNotifications", "Rapports", "Téléchargements et génération de rapports."],
+            ["showTerritoryNotifications", "Veille locale", "Informations locales et évolutions de votre secteur."],
+            ["showSystemNotifications", "Informations du compte", "Messages de fonctionnement non prioritaires."],
+          ] as const).map(([key, label, description]) => (
+            <label className="profile-notification-option" key={key}>
+              <span><strong>{label}</strong><small>{description}</small></span>
+              <input
+                type="checkbox"
+                checked={preferences[key]}
+                disabled={isDemo}
+                onChange={(event) => onUserPreferencesChange({ ...preferences, [key]: event.target.checked })}
+              />
+            </label>
+          ))}
+        </div>
+        {isDemo && <p className="profile-demo-note">Les préférences de notification ne sont pas modifiables dans le compte découverte.</p>}
+      </section>
+
       <style>{`
         .profile-demo-fields{min-width:0;margin:0;padding:0;border:0}.profile-demo-note{margin:12px 0;color:var(--color-text-muted);font-size:.8rem}
         .profile-page {
@@ -498,6 +531,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         .profile-avatar-picker { width: 100%; margin: 20px 0 0; padding: 13px 0 0; border: 0; border-top: 1px solid var(--color-border-subtle); text-align: left; }
         .profile-avatar-picker legend { padding: 0; color: var(--color-primary); font-size: .76rem; font-weight: 700; }
         .profile-avatar-picker > p { margin: 4px 0 10px; color: var(--color-text-muted); font-size: .65rem; line-height: 1.4; text-align: center; }
+        .profile-avatar-sync-error { margin: 10px 0 0; color: #a12d27; font-size: .68rem; line-height: 1.45; }
         .profile-avatar-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
         .profile-avatar-option { position: relative; display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 4px; padding: 6px 2px; border: 1px solid transparent; border-radius: 10px; color: #526b61; font-size: .62rem; cursor: pointer; transition: background .15s ease, border-color .15s ease; }
         .profile-avatar-option > svg { width: 40px; height: 40px; border-radius: 50%; box-shadow: 0 1px 4px #17383018; }
@@ -558,6 +592,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         .profile-form { padding: 24px 26px 20px; }
 
         .password-form { margin-top: 20px; padding: 24px 26px 20px; background: #fff; border: 1px solid var(--color-border); border-radius: 8px; box-shadow: var(--shadow-subtle); }
+        .profile-notification-settings { margin-top: 20px; padding: 24px 26px 20px; background: #fff; border: 1px solid var(--color-border); border-radius: 8px; box-shadow: var(--shadow-subtle); }
+        .profile-notification-options { display: grid; grid-template-columns: 1fr 1fr; gap: 0 22px; padding-top: 8px; }
+        .profile-notification-option { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 64px; border-bottom: 1px solid #eef1ed; cursor: pointer; }
+        .profile-notification-option span { display: grid; gap: 4px; }
+        .profile-notification-option strong { color: #29443a; font-size: .82rem; }
+        .profile-notification-option small { color: #73817a; font-size: .72rem; line-height: 1.4; }
+        .profile-notification-option input { width: 18px; height: 18px; flex: 0 0 auto; accent-color: #376a4d; cursor: pointer; }
+        .profile-notification-option input:disabled { cursor: not-allowed; }
         .password-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 17px 18px; padding: 22px 0; }
         .password-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
         .password-error { color: #a12d27; font-size: .78rem; }
@@ -681,6 +723,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           .profile-form { padding: 20px 16px 16px; }
           .profile-fields { grid-template-columns: 1fr; gap: 14px; padding: 18px 0; }
           .password-fields { grid-template-columns: 1fr; gap: 14px; padding: 18px 0; }
+          .profile-notification-settings { padding: 20px 16px 16px; }
+          .profile-notification-options { grid-template-columns: 1fr; }
           .password-footer { align-items: flex-start; flex-direction: column; }
           .profile-form-footer { align-items: stretch; flex-direction: column; }
           .save-profile { width: 100%; }

@@ -2,12 +2,11 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Bot, LoaderCircle, Send, Sparkles, X } from "lucide-react";
 import type { NeighborhoodAnalysis } from "../../types";
 import { askNeighborhoodAssistant } from "../../services/assistantApi";
+import { fetchAssistantConversation, loadLocalAssistantConversation, saveAssistantConversation, type AssistantConversationTurn } from "../../services/assistantConversation";
 import { FormattedAssistantMessage } from "./FormattedAssistantMessage";
 
-interface ConversationTurn {
-  role: "user" | "assistant";
-  content: string;
-}
+type ConversationTurn = AssistantConversationTurn;
+const EMPTY_CONVERSATION_TURNS: ConversationTurn[] = [];
 
 const starterQuestions = [
   "Quels sont les principaux atouts de ce quartier ?",
@@ -38,10 +37,21 @@ function isNeighborhoodQuestion(question: string, history: ConversationTurn[], a
   return isShortFollowUp && !previousAnswer.startsWith("Je peux vous aider à lire cette analyse");
 }
 
-export function NeighborhoodAssistant({ analysis }: { analysis: NeighborhoodAnalysis }) {
+export function NeighborhoodAssistant({ analysis, userId }: { analysis: NeighborhoodAnalysis; userId: string }) {
   const [isOpen, setIsOpen] = useState(false);
   const [question, setQuestion] = useState("");
-  const [turns, setTurns] = useState<ConversationTurn[]>([]);
+  const conversationKey = `${userId}:${analysis.id}`;
+  const [conversationSnapshot, setConversationSnapshot] = useState(() => ({
+    key: conversationKey,
+    turns: [] as ConversationTurn[],
+    loaded: false,
+    syncError: "",
+  }));
+  const conversationMatches = conversationSnapshot.key === conversationKey;
+  const turns = conversationMatches ? conversationSnapshot.turns : EMPTY_CONVERSATION_TURNS;
+  const conversationLoaded = conversationMatches && conversationSnapshot.loaded;
+  const syncError = conversationMatches ? conversationSnapshot.syncError : "";
+  const turnsRef = useRef<ConversationTurn[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [quotaWarning, setQuotaWarning] = useState("");
@@ -52,17 +62,55 @@ export function NeighborhoodAssistant({ analysis }: { analysis: NeighborhoodAnal
     if (conversation) conversation.scrollTop = conversation.scrollHeight;
   }, [turns, isLoading]);
 
+  useEffect(() => {
+    let cancelled = false;
+    turnsRef.current = [];
+    void fetchAssistantConversation(userId, analysis.id).then((savedTurns) => {
+      if (cancelled) return;
+      turnsRef.current = savedTurns;
+      setConversationSnapshot({ key: conversationKey, turns: savedTurns, loaded: true, syncError: "" });
+    }).catch((loadError) => {
+      console.warn("Chargement de la conversation de l’assistant impossible :", loadError);
+      if (cancelled) return;
+      const localTurns = loadLocalAssistantConversation(userId, analysis.id);
+      turnsRef.current = localTurns;
+      setConversationSnapshot({
+        key: conversationKey,
+        turns: localTurns,
+        loaded: true,
+        syncError: "L’historique de cette conversation n’a pas pu être synchronisé avec Supabase. Vérifiez la connexion et appliquez la migration de l’historique IA.",
+      });
+    });
+    return () => { cancelled = true; };
+  }, [analysis.id, conversationKey, userId]);
+
+  const commitTurns = (nextTurns: ConversationTurn[]) => {
+    turnsRef.current = nextTurns;
+    setConversationSnapshot((current) => current.key === conversationKey
+      ? { ...current, turns: nextTurns }
+      : { key: conversationKey, turns: nextTurns, loaded: true, syncError: "" });
+    void saveAssistantConversation(userId, analysis.id, nextTurns).then(() => {
+      setConversationSnapshot((current) => current.key === conversationKey ? { ...current, syncError: "" } : current);
+    }).catch((saveError) => {
+      console.warn("Enregistrement de la conversation de l’assistant impossible :", saveError);
+      setConversationSnapshot((current) => current.key === conversationKey ? {
+        ...current,
+        syncError: "La conversation reste disponible sur cet appareil, mais n’a pas été synchronisée avec Supabase. Vérifiez la connexion et appliquez la migration de l’historique IA.",
+      } : current);
+    });
+  };
+
   const ask = async (value: string) => {
     const trimmed = value.trim();
-    if (!trimmed || isLoading) return;
+    if (!trimmed || isLoading || !conversationLoaded) return;
     setQuestion("");
     setError("");
     setQuotaWarning("");
     if (!isNeighborhoodQuestion(trimmed, turns, analysis)) {
-      setTurns((current) => ([...current, { role: "user", content: trimmed }, { role: "assistant", content: offTopicReply }] as ConversationTurn[]).slice(-20));
+      commitTurns([...turnsRef.current, { role: "user", content: trimmed }, { role: "assistant", content: offTopicReply }]);
       return;
     }
-    setTurns((current) => ([...current, { role: "user", content: trimmed }] as ConversationTurn[]).slice(-20));
+    commitTurns([...turnsRef.current, { role: "user", content: trimmed }]);
     setIsLoading(true);
     try {
       const styleGuidance = "Réponds comme à un client : relie les chiffres à leur sens concret dans des phrases naturelles. Évite d’aligner les indicateurs ou les puces sans explication.";
@@ -70,9 +118,9 @@ export function NeighborhoodAssistant({ analysis }: { analysis: NeighborhoodAnal
       const result = await askNeighborhoodAssistant(
         contextualQuestion.length <= 600 ? contextualQuestion : trimmed,
         analysis,
-        turns.slice(-6),
+        turnsRef.current.slice(-7, -1),
       );
-      setTurns((current) => ([...current, { role: "assistant", content: result.answer }] as ConversationTurn[]).slice(-20));
+      commitTurns([...turnsRef.current, { role: "assistant", content: result.answer }]);
       setQuotaWarning(result.quotaWarning || "");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Une erreur est survenue.");
@@ -95,7 +143,9 @@ export function NeighborhoodAssistant({ analysis }: { analysis: NeighborhoodAnal
     </button>
     {isOpen && <div className="neighborhood-assistant-body">
       <p className="neighborhood-assistant-notice">L’IA reçoit les indicateurs et leurs résumés, sans adresse précise ni coordonnées. Vérifiez les réponses avant de les reprendre auprès d’un client.</p>
-      {turns.length === 0 && <div className="neighborhood-assistant-welcome"><div><span className="neighborhood-assistant-welcome-icon"><Bot size={20} /></span><span><strong>Que souhaitez-vous éclaircir ?</strong><small>Je réponds uniquement à propos de cette analyse.</small></span></div><div className="neighborhood-assistant-starters">
+      {syncError && <p className="neighborhood-assistant-sync-error" role="status">{syncError}</p>}
+      {!conversationLoaded && <div className="neighborhood-assistant-pending"><LoaderCircle size={16} className="neighborhood-assistant-spinner" /> Chargement de votre conversation…</div>}
+      {turns.length === 0 && conversationLoaded && <div className="neighborhood-assistant-welcome"><div><span className="neighborhood-assistant-welcome-icon"><Bot size={20} /></span><span><strong>Que souhaitez-vous éclaircir ?</strong><small>Je réponds uniquement à propos de cette analyse.</small></span></div><div className="neighborhood-assistant-starters">
         {starterQuestions.map((starter) => <button type="button" key={starter} disabled={isLoading} onClick={() => void ask(starter)}>{starter}</button>)}
       </div></div>}
       {turns.length > 0 && <div className="neighborhood-assistant-conversation" ref={conversationRef} aria-live="polite">
@@ -109,8 +159,8 @@ export function NeighborhoodAssistant({ analysis }: { analysis: NeighborhoodAnal
       {quotaWarning && <p className="neighborhood-assistant-quota-warning" role="status">{quotaWarning}</p>}
       <form className="neighborhood-assistant-form" onSubmit={handleSubmit}>
         <label className="neighborhood-assistant-sr-only" htmlFor="neighborhood-assistant-question">Votre question sur cette analyse</label>
-        <input id="neighborhood-assistant-question" type="text" value={question} maxLength={600} placeholder="Votre question sur cette analyse…" onChange={(event) => setQuestion(event.target.value)} disabled={isLoading} />
-        <button type="submit" disabled={isLoading || !question.trim()} aria-label="Envoyer la question">{isLoading ? <LoaderCircle size={17} className="neighborhood-assistant-spinner" /> : <Send size={17} />}</button>
+        <input id="neighborhood-assistant-question" type="text" value={question} maxLength={600} placeholder={conversationLoaded ? "Votre question sur cette analyse…" : "Chargement de la conversation…"} onChange={(event) => setQuestion(event.target.value)} disabled={isLoading || !conversationLoaded} />
+        <button type="submit" disabled={isLoading || !conversationLoaded || !question.trim()} aria-label="Envoyer la question">{isLoading ? <LoaderCircle size={17} className="neighborhood-assistant-spinner" /> : <Send size={17} />}</button>
       </form>
       <small className="neighborhood-assistant-quota">L’utilisation de l’assistant est limitée. Si le quota disponible est atteint, vous pourrez poser de nouvelles questions après son renouvellement.</small>
     </div>}
@@ -162,6 +212,7 @@ export function NeighborhoodAssistant({ analysis }: { analysis: NeighborhoodAnal
       .neighborhood-assistant-form button:not(:disabled):hover { background:#193f2b; }
       .neighborhood-assistant-form button:disabled { background:#aebbb1; cursor:not-allowed; }
       .neighborhood-assistant-error { padding:9px 11px; border-radius:9px; background:#fff4f2; color:#a5352f; font-size:.77rem; line-height:1.45; }
+      .neighborhood-assistant-sync-error { padding:9px 11px; border-radius:9px; background:#fff8e8; color:#77571d; font-size:.75rem; line-height:1.45; }
       .neighborhood-assistant-quota-warning { padding:9px 11px; border:1px solid #f1d69a; border-radius:9px; background:#fff9e9; color:#795711; font-size:.77rem; line-height:1.45; }
       .neighborhood-assistant-pending { display:flex; align-items:center; gap:8px; width:fit-content; padding:9px 12px; border-radius:12px; background:#f1f3f0; color:var(--color-text-muted); font-size:.76rem; }
       .neighborhood-assistant-spinner { animation:neighborhood-assistant-pulse 1.2s ease-in-out infinite; }

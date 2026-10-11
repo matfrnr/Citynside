@@ -74,6 +74,7 @@ function mergeRefreshedAnalysis(previous: AnalysisData, refreshed: AnalysisData,
 }
 
 interface NewAnalysisViewProps {
+  userId: string;
   isDemo: boolean;
   mapControlsHiddenByDefault: boolean;
   mapZoom: number;
@@ -90,6 +91,7 @@ interface NewAnalysisViewProps {
 }
 
 export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
+  userId,
   isDemo,
   mapControlsHiddenByDefault,
   mapZoom,
@@ -455,8 +457,8 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
     if (!displayedAnalysis) return;
     const { lat, lon, citycode } = displayedAnalysis;
     if (lat == null || lon == null) return;
-    const reportUrl = displayedAnalysis.riskAssessment?.reportUrl;
-    onUpdateRiskAssessment(displayedAnalysis.id, { status: "loading", findings: [], ...(reportUrl ? { reportUrl } : {}) }, displayedAnalysis.airQuality ?? null, displayedAnalysis);
+    const reportUrl = displayedAnalysis.riskAssessment?.reportUrl ?? `https://georisques.gouv.fr/api/v1/rapport_pdf?latlon=${encodeURIComponent(`${lon},${lat}`)}`;
+    onUpdateRiskAssessment(displayedAnalysis.id, { status: "loading", findings: [], reportUrl }, displayedAnalysis.airQuality ?? null, displayedAnalysis);
     void fetchRiskAssessment(lat, lon, citycode).then((assessment) => onUpdateRiskAssessment(displayedAnalysis.id, assessment, displayedAnalysis.airQuality ?? null, displayedAnalysis));
   };
 
@@ -562,7 +564,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
               onRetry={handleRetryRisk}
             />
           </section>}
-          {!isDemo && !isLoading && <NeighborhoodAssistant analysis={displayedAnalysis} />}
+          {!isDemo && !isLoading && <NeighborhoodAssistant analysis={displayedAnalysis} userId={userId} />}
         </div>
       ) : (
         <div className="analysis-empty-state" role="status">

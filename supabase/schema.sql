@@ -79,11 +79,20 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   agency TEXT DEFAULT 'Agence immobilière',
   agency_city TEXT DEFAULT '',
   known_device_ids TEXT[] NOT NULL DEFAULT '{}',
-  home_quick_access TEXT[] NOT NULL DEFAULT ARRAY['new-analysis', 'history', 'favorites', 'comparison']::TEXT[],
+  home_quick_access TEXT[] NOT NULL DEFAULT ARRAY['new-analysis', 'comparison', 'client-dossiers', 'favorites']::TEXT[],
+  avatar_id TEXT,
+  user_preferences JSONB NOT NULL DEFAULT '{"startView":"home","sidebarCollapsed":false,"hideMapControlsByDefault":true,"mapZoom":13,"reduceMotion":false,"defaultScoreProfile":"none","defaultCategoryFilter":null,"distanceUnit":"meters"}'::jsonb,
+  default_report_customization JSONB NOT NULL DEFAULT '{"includedSections":{"scores":true,"sources":true,"impressions":true,"risks":false},"strengths":"","reservations":""}'::jsonb,
   activation_notification_sent BOOLEAN NOT NULL DEFAULT false,
   role TEXT DEFAULT 'Agent immobilier',
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_id TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS user_preferences JSONB NOT NULL DEFAULT '{"startView":"home","sidebarCollapsed":false,"hideMapControlsByDefault":true,"mapZoom":13,"reduceMotion":false,"defaultScoreProfile":"none","defaultCategoryFilter":null,"distanceUnit":"meters"}'::jsonb;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS default_report_customization JSONB NOT NULL DEFAULT '{"includedSections":{"scores":true,"sources":true,"impressions":true,"risks":false},"strengths":"","reservations":""}'::jsonb;
+ALTER TABLE public.profiles ALTER COLUMN home_quick_access
+  SET DEFAULT ARRAY['new-analysis', 'comparison', 'client-dossiers', 'favorites']::TEXT[];
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
@@ -135,6 +144,36 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Historique de l'assistant, conservé par analyse et par utilisateur.
+CREATE TABLE IF NOT EXISTS public.assistant_conversations (
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  analysis_id TEXT NOT NULL REFERENCES public.analyses(id) ON DELETE CASCADE,
+  turns JSONB NOT NULL DEFAULT '[]'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, analysis_id)
+);
+CREATE INDEX IF NOT EXISTS assistant_conversations_updated_idx ON public.assistant_conversations(user_id, updated_at DESC);
+ALTER TABLE public.assistant_conversations ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view own assistant conversations" ON public.assistant_conversations;
+CREATE POLICY "Users can view own assistant conversations" ON public.assistant_conversations FOR SELECT TO authenticated USING (
+  auth.uid() = user_id AND EXISTS (SELECT 1 FROM public.analyses a WHERE a.id = analysis_id AND a.user_id = auth.uid())
+);
+DROP POLICY IF EXISTS "Users can insert own assistant conversations" ON public.assistant_conversations;
+CREATE POLICY "Users can insert own assistant conversations" ON public.assistant_conversations FOR INSERT TO authenticated WITH CHECK (
+  auth.uid() = user_id AND EXISTS (SELECT 1 FROM public.analyses a WHERE a.id = analysis_id AND a.user_id = auth.uid())
+);
+DROP POLICY IF EXISTS "Users can update own assistant conversations" ON public.assistant_conversations;
+CREATE POLICY "Users can update own assistant conversations" ON public.assistant_conversations FOR UPDATE TO authenticated USING (
+  auth.uid() = user_id AND EXISTS (SELECT 1 FROM public.analyses a WHERE a.id = analysis_id AND a.user_id = auth.uid())
+) WITH CHECK (
+  auth.uid() = user_id AND EXISTS (SELECT 1 FROM public.analyses a WHERE a.id = analysis_id AND a.user_id = auth.uid())
+);
+DROP POLICY IF EXISTS "Users can delete own assistant conversations" ON public.assistant_conversations;
+CREATE POLICY "Users can delete own assistant conversations" ON public.assistant_conversations FOR DELETE TO authenticated USING (
+  auth.uid() = user_id AND EXISTS (SELECT 1 FROM public.analyses a WHERE a.id = analysis_id AND a.user_id = auth.uid())
+);
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.assistant_conversations TO authenticated;
+
 -- Personnalisation des rapports, persistée par utilisateur et par analyse
 CREATE TABLE IF NOT EXISTS public.report_customizations (
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -156,3 +195,63 @@ CREATE POLICY "Users can update own report customizations" ON public.report_cust
 DROP POLICY IF EXISTS "Users can delete own report customizations" ON public.report_customizations;
 CREATE POLICY "Users can delete own report customizations" ON public.report_customizations FOR DELETE TO authenticated USING (auth.uid() = user_id);
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.report_customizations TO authenticated;
+
+-- Une seule session applicative active par compte
+CREATE TABLE IF NOT EXISTS public.citynside_active_sessions (
+  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  session_id UUID NOT NULL,
+  heartbeat_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.citynside_active_sessions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view own active session" ON public.citynside_active_sessions;
+CREATE POLICY "Users can view own active session" ON public.citynside_active_sessions FOR SELECT TO authenticated USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can insert own active session" ON public.citynside_active_sessions;
+CREATE POLICY "Users can insert own active session" ON public.citynside_active_sessions FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id AND session_id = (auth.jwt() ->> 'session_id')::uuid);
+DROP POLICY IF EXISTS "Users can update own active session" ON public.citynside_active_sessions;
+CREATE POLICY "Users can update own active session" ON public.citynside_active_sessions FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id AND session_id = (auth.jwt() ->> 'session_id')::uuid);
+DROP POLICY IF EXISTS "Users can delete own active session" ON public.citynside_active_sessions;
+CREATE POLICY "Users can delete own active session" ON public.citynside_active_sessions FOR DELETE TO authenticated USING (auth.uid() = user_id AND session_id = (auth.jwt() ->> 'session_id')::uuid);
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.citynside_active_sessions TO authenticated;
+REVOKE ALL ON TABLE public.citynside_active_sessions FROM anon;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'citynside_active_sessions') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.citynside_active_sessions;
+  END IF;
+END $$;
+
+-- Dossiers clients avec coordonnées, critères et analyses associées
+CREATE TABLE IF NOT EXISTS public.client_dossiers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  client_name TEXT NOT NULL,
+  email TEXT NOT NULL DEFAULT '',
+  phone TEXT NOT NULL DEFAULT '',
+  project TEXT NOT NULL DEFAULT '',
+  priorities TEXT NOT NULL DEFAULT '',
+  notes TEXT NOT NULL DEFAULT '',
+  analysis_ids TEXT[] NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS client_dossiers_user_updated_idx ON public.client_dossiers(user_id, updated_at DESC);
+ALTER TABLE public.client_dossiers ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view own client dossiers" ON public.client_dossiers;
+CREATE POLICY "Users can view own client dossiers" ON public.client_dossiers FOR SELECT TO authenticated USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can insert own client dossiers" ON public.client_dossiers;
+CREATE POLICY "Users can insert own client dossiers" ON public.client_dossiers FOR INSERT TO authenticated WITH CHECK (
+  auth.uid() = user_id AND NOT EXISTS (
+    SELECT 1 FROM unnest(client_dossiers.analysis_ids) AS linked(analysis_id)
+    WHERE NOT EXISTS (SELECT 1 FROM public.analyses AS a WHERE a.id = linked.analysis_id AND a.user_id = auth.uid())
+  )
+);
+DROP POLICY IF EXISTS "Users can update own client dossiers" ON public.client_dossiers;
+CREATE POLICY "Users can update own client dossiers" ON public.client_dossiers FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (
+  auth.uid() = user_id AND NOT EXISTS (
+    SELECT 1 FROM unnest(client_dossiers.analysis_ids) AS linked(analysis_id)
+    WHERE NOT EXISTS (SELECT 1 FROM public.analyses AS a WHERE a.id = linked.analysis_id AND a.user_id = auth.uid())
+  )
+);
+DROP POLICY IF EXISTS "Users can delete own client dossiers" ON public.client_dossiers;
+CREATE POLICY "Users can delete own client dossiers" ON public.client_dossiers FOR DELETE TO authenticated USING (auth.uid() = user_id);
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.client_dossiers TO authenticated;
+REVOKE ALL ON TABLE public.client_dossiers FROM anon;

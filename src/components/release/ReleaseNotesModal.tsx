@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, Megaphone, X } from "lucide-react";
 import { CURRENT_RELEASE_NOTES, releaseNotesContinueKey } from "../../config/releaseNotes";
 import { supabase } from "../../services/supabase";
+import { LOCAL_DEMO_USER_ID } from "../../types";
 
 interface ReleaseNotesModalProps {
   userId: string;
@@ -9,6 +10,9 @@ interface ReleaseNotesModalProps {
 
 export const ReleaseNotesModal: React.FC<ReleaseNotesModalProps> = ({ userId }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isSavingDismissal, setIsSavingDismissal] = useState(false);
+  const [dismissalError, setDismissalError] = useState("");
+  const isDemo = userId === LOCAL_DEMO_USER_ID;
   const dismissedVersionKey = `citynside_release_notes_dismissed_version_${userId}`;
   const continueKey = releaseNotesContinueKey(userId);
   const releaseItems = CURRENT_RELEASE_NOTES.items.filter((item) => item.title.trim() && item.description.trim());
@@ -22,32 +26,64 @@ export const ReleaseNotesModal: React.FC<ReleaseNotesModalProps> = ({ userId }) 
       try {
         const localDismissed = localStorage.getItem(dismissedVersionKey) === CURRENT_RELEASE_NOTES.version;
         const temporaryDismissed = sessionStorage.getItem(continueKey) === CURRENT_RELEASE_NOTES.version;
-        const { data } = await supabase.auth.getUser();
-        const accountDismissed = data.user?.id === userId &&
-          data.user.user_metadata?.citynside_release_notes_dismissed_version === CURRENT_RELEASE_NOTES.version;
-        if (localDismissed || temporaryDismissed || accountDismissed) {
+        if (temporaryDismissed) {
+          setIsOpen(false);
+          return;
+        }
+        if (isDemo) {
+          setIsOpen(!localDismissed);
+          return;
+        }
+
+        const { data, error } = await supabase.auth.getUser();
+        if (error) throw error;
+        if (data.user?.id !== userId) throw new Error("Session utilisateur indisponible.");
+        const accountDismissed = data.user.user_metadata?.citynside_release_notes_dismissed_version === CURRENT_RELEASE_NOTES.version;
+        if (accountDismissed) {
+          try { localStorage.setItem(dismissedVersionKey, CURRENT_RELEASE_NOTES.version); } catch { /* La valeur distante suffit. */ }
+          setIsOpen(false);
+          return;
+        }
+
+        // Synchroniser l’acquittement local historique vers le compte, une fois.
+        if (localDismissed) {
+          const { data: updated, error: updateError } = await supabase.auth.updateUser({
+            data: { citynside_release_notes_dismissed_version: CURRENT_RELEASE_NOTES.version },
+          });
+          if (updateError || updated.user?.user_metadata?.citynside_release_notes_dismissed_version !== CURRENT_RELEASE_NOTES.version) {
+            throw updateError ?? new Error("La confirmation des notes de version n’a pas été enregistrée.");
+          }
           setIsOpen(false);
           return;
         }
       } catch {
-        // L'annonce reste affichable si le navigateur ou Supabase bloque le stockage.
+        setDismissalError("La préférence d’affichage n’a pas pu être vérifiée avec votre compte. Vérifiez la connexion puis réessayez.");
       }
       setIsOpen(true);
     };
     void checkDismissed();
-  }, [continueKey, dismissedVersionKey, hasReleaseNotes, userId]);
+  }, [continueKey, dismissedVersionKey, hasReleaseNotes, isDemo, userId]);
 
-  const dismissVersion = () => {
-    try {
-      localStorage.setItem(dismissedVersionKey, CURRENT_RELEASE_NOTES.version);
-    } catch {
-      // La fenêtre reste fermée pour cette session si le stockage est indisponible.
+  const dismissVersion = async () => {
+    setDismissalError("");
+    if (!isDemo) {
+      setIsSavingDismissal(true);
+      try {
+        const { data, error } = await supabase.auth.updateUser({
+          data: { citynside_release_notes_dismissed_version: CURRENT_RELEASE_NOTES.version },
+        });
+        if (error || data.user?.user_metadata?.citynside_release_notes_dismissed_version !== CURRENT_RELEASE_NOTES.version) {
+          throw error ?? new Error("La confirmation des notes de version n’a pas été enregistrée.");
+        }
+      } catch (error) {
+        console.error("Synchronisation de l’acquittement des notes de version impossible :", error);
+        setDismissalError("Impossible d’enregistrer ce choix sur votre compte. Vérifiez la connexion puis réessayez.");
+        setIsSavingDismissal(false);
+        return;
+      }
+      setIsSavingDismissal(false);
     }
-    void supabase.auth.updateUser({
-      data: { citynside_release_notes_dismissed_version: CURRENT_RELEASE_NOTES.version },
-    }).catch(() => {
-      // Le stockage local reste disponible si la synchronisation du compte échoue.
-    });
+    try { localStorage.setItem(dismissedVersionKey, CURRENT_RELEASE_NOTES.version); } catch { /* Le compte conserve la valeur distante. */ }
     setIsOpen(false);
   };
 
@@ -94,13 +130,14 @@ export const ReleaseNotesModal: React.FC<ReleaseNotesModalProps> = ({ userId }) 
         </ul>
 
         <div className="release-modal-actions">
-          <button className="release-dismiss-button" type="button" onClick={dismissVersion}>
-            Ne plus afficher cette version
+          <button className="release-dismiss-button" type="button" onClick={() => void dismissVersion()} disabled={isSavingDismissal}>
+            {isSavingDismissal ? "Enregistrement…" : "Ne plus afficher cette version"}
           </button>
-          <button className="release-later-button" type="button" onClick={continueUntilNextLogin}>
+          <button className="release-later-button" type="button" onClick={continueUntilNextLogin} disabled={isSavingDismissal}>
             Continuer
           </button>
         </div>
+        {dismissalError && <p className="release-dismiss-error" role="alert">{dismissalError}</p>}
       </section>
 
       <style>{`
@@ -120,6 +157,8 @@ export const ReleaseNotesModal: React.FC<ReleaseNotesModalProps> = ({ userId }) 
         .release-dismiss-button, .release-later-button { min-height: 42px; padding: 0 17px; border-radius: 999px; font: inherit; font-size: .85rem; font-weight: 650; cursor: pointer; }
         .release-dismiss-button { border: 1px solid #dce5dd; background: #fff; color: #53655a; }
         .release-later-button { display: inline-flex; align-items: center; justify-content: center; border: 1px solid #193832; background: #193832; color: #fff; }
+        .release-dismiss-button:disabled, .release-later-button:disabled { opacity: .65; cursor: wait; }
+        .release-dismiss-error { margin: 12px 0 0; color: #a12d27; font-size: .78rem; line-height: 1.45; }
         @media (max-width: 520px) {
           .release-modal-backdrop { padding: 12px; }
           .release-modal { padding: 20px 16px 16px; border-radius: 16px; max-height: calc(100dvh - 24px); }

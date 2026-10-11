@@ -1,19 +1,23 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Check, FileText, Home, Map, RotateCcw, SlidersHorizontal } from "lucide-react";
 import {
   DEFAULT_REPORT_CUSTOMIZATION,
+  cacheDefaultReportCustomization,
+  fetchDefaultReportCustomization,
   loadDefaultReportCustomization,
   saveDefaultReportCustomization,
   type ReportCustomization,
 } from "../../services/reportCustomization";
 import {
   DEFAULT_USER_PREFERENCES,
+  fetchUserPreferences,
   loadUserPreferences,
   saveUserPreferences,
   type DefaultCategoryFilter,
   type DefaultScoreProfile,
   type UserPreferences,
 } from "../../services/userPreferences";
+import { LOCAL_DEMO_USER_ID } from "../../types";
 
 interface PersonalisationViewProps {
   userId: string;
@@ -43,24 +47,97 @@ export const PersonalisationView: React.FC<PersonalisationViewProps> = ({ userId
     ? preferencesSnapshot.value
     : loadUserPreferences(userId);
   const [interfaceResetNotice, setInterfaceResetNotice] = useState(false);
+  const [preferencesSyncError, setPreferencesSyncError] = useState("");
+  const [reportSyncError, setReportSyncError] = useState("");
+  const [reportSavePending, setReportSavePending] = useState(false);
+  const preferencesRevision = useRef(0);
+  const customizationRevision = useRef(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const preferencesAtLoad = preferencesRevision.current;
+    const customizationAtLoad = customizationRevision.current;
+
+    void fetchUserPreferences(userId).then((remotePreferences) => {
+      if (cancelled || preferencesRevision.current !== preferencesAtLoad) return;
+      setPreferencesSnapshot({ userId, value: remotePreferences });
+      onUserPreferencesChange(remotePreferences);
+      setPreferencesSyncError("");
+    }).catch((error) => {
+      console.warn("Chargement des préférences synchronisées impossible :", error);
+      if (!cancelled && preferencesRevision.current === preferencesAtLoad) {
+        setPreferencesSyncError("Les réglages n’ont pas pu être synchronisés avec Supabase. Vérifiez la connexion et appliquez la migration des préférences.");
+      }
+    });
+
+    void fetchDefaultReportCustomization(userId).then((remoteCustomization) => {
+      if (cancelled || customizationRevision.current !== customizationAtLoad) return;
+      setCustomizationSnapshot({ userId, value: remoteCustomization });
+      setReportSyncError("");
+    }).catch((error) => {
+      console.warn("Chargement des modèles de rapport synchronisés impossible :", error);
+      if (!cancelled && customizationRevision.current === customizationAtLoad) {
+        setReportSyncError("Le modèle de rapport n’a pas pu être synchronisé avec Supabase. Vérifiez la connexion et appliquez la migration des préférences.");
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [onUserPreferencesChange, userId]);
+
+  useEffect(() => {
+    if (!reportSavePending || customizationSnapshot.userId !== userId) return;
+    const revision = customizationRevision.current;
+    const timer = window.setTimeout(() => {
+      void saveDefaultReportCustomization(userId, customizationSnapshot.value).then(() => {
+        if (customizationRevision.current === revision) {
+          setReportSavePending(false);
+          setReportSyncError("");
+        }
+      }).catch((error) => {
+        console.error("Enregistrement du modèle de rapport dans Supabase impossible :", error);
+        if (customizationRevision.current === revision) {
+          setReportSavePending(false);
+          setReportSyncError("Le modèle reste disponible sur cet appareil, mais n’a pas été synchronisé avec Supabase. Vérifiez la connexion et appliquez la migration des préférences.");
+        }
+      });
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [customizationSnapshot, reportSavePending, userId]);
 
   const updatePreferences = (update: Partial<UserPreferences>) => {
+    const revision = ++preferencesRevision.current;
     const next = { ...preferences, ...update };
     setPreferencesSnapshot({ userId, value: next });
     setInterfaceResetNotice(false);
-    saveUserPreferences(userId, next);
+    setPreferencesSyncError("");
     onUserPreferencesChange(next);
+    void saveUserPreferences(userId, next).then(() => {
+      if (preferencesRevision.current === revision) setPreferencesSyncError("");
+    }).catch((error) => {
+      console.error("Enregistrement des préférences dans Supabase impossible :", error);
+      if (preferencesRevision.current === revision) {
+        setPreferencesSyncError("Les réglages restent visibles sur cet appareil, mais n’ont pas été synchronisés avec Supabase. Vérifiez la connexion et appliquez la migration des préférences.");
+      }
+    });
   };
 
   const resetPreferences = () => {
-    saveUserPreferences(userId, DEFAULT_USER_PREFERENCES);
+    const revision = ++preferencesRevision.current;
     const defaults = { ...DEFAULT_USER_PREFERENCES };
     setPreferencesSnapshot({ userId, value: defaults });
     onUserPreferencesChange(defaults);
     setInterfaceResetNotice(true);
+    setPreferencesSyncError("");
+    void saveUserPreferences(userId, defaults).then(() => {
+      if (preferencesRevision.current === revision) setPreferencesSyncError("");
+    }).catch((error) => {
+      console.error("Réinitialisation des préférences dans Supabase impossible :", error);
+      if (preferencesRevision.current === revision) setPreferencesSyncError("Les réglages réinitialisés restent sur cet appareil, mais n’ont pas été synchronisés avec Supabase.");
+    });
   };
 
   const updateCustomization = (update: Partial<ReportCustomization>) => {
+    customizationRevision.current += 1;
     const next = {
       ...customization,
       ...update,
@@ -69,12 +146,17 @@ export const PersonalisationView: React.FC<PersonalisationViewProps> = ({ userId
         : customization.includedSections,
     };
     setCustomizationSnapshot({ userId, value: next });
-    saveDefaultReportCustomization(userId, next);
+    cacheDefaultReportCustomization(userId, next);
+    setReportSavePending(true);
+    setReportSyncError("");
   };
 
   const resetDefaults = () => {
-    saveDefaultReportCustomization(userId, DEFAULT_REPORT_CUSTOMIZATION);
+    customizationRevision.current += 1;
     setCustomizationSnapshot({ userId, value: DEFAULT_REPORT_CUSTOMIZATION });
+    cacheDefaultReportCustomization(userId, DEFAULT_REPORT_CUSTOMIZATION);
+    setReportSavePending(true);
+    setReportSyncError("");
   };
 
   return (
@@ -88,10 +170,13 @@ export const PersonalisationView: React.FC<PersonalisationViewProps> = ({ userId
         <span className="personalisation-heading-icon"><SlidersHorizontal size={22} /></span>
       </header>
 
+      {preferencesSyncError && <p className="personalisation-sync-error" role="alert">{preferencesSyncError}</p>}
+      {reportSyncError && <p className="personalisation-sync-error" role="alert">{reportSyncError}</p>}
+
       <section className="personalisation-card">
         <div className="personalisation-card-heading">
           <span className="personalisation-section-icon"><Map size={18} /></span>
-          <div><h2>Carte et interface</h2><p>Ces réglages s’appliquent à votre espace sur cet appareil.</p></div>
+          <div><h2>Carte et interface</h2><p>Ces réglages sont synchronisés avec votre compte.</p></div>
         </div>
         <div className="personalisation-options">
           <label className="personalisation-option">
@@ -101,6 +186,14 @@ export const PersonalisationView: React.FC<PersonalisationViewProps> = ({ userId
           <label className="personalisation-option">
             <span><strong>Réduire les animations</strong><small>Limite les mouvements et transitions de l’interface.</small></span>
             <input type="checkbox" checked={preferences.reduceMotion} onChange={(event) => updatePreferences({ reduceMotion: event.target.checked })} />
+          </label>
+          <label className="personalisation-option">
+            <span><strong>Afficher le nombre de notifications</strong><small>Affiche le compteur sur la cloche du menu quand des notifications importantes sont non lues.</small></span>
+            <input type="checkbox" checked={preferences.showNotificationCount} onChange={(event) => updatePreferences({ showNotificationCount: event.target.checked })} />
+          </label>
+          <label className="personalisation-option">
+            <span><strong>Menu replié par défaut</strong><small>Réduit le menu latéral sur ordinateur et tablette. Sur mobile, la barre de navigation reste affichée.</small></span>
+            <input type="checkbox" checked={preferences.sidebarCollapsed} onChange={(event) => updatePreferences({ sidebarCollapsed: event.target.checked })} />
           </label>
           <label className="personalisation-select-option">
             <span><strong>Page affichée à l’ouverture</strong><small>Choisissez votre point de départ après connexion.</small></span>
@@ -179,7 +272,7 @@ export const PersonalisationView: React.FC<PersonalisationViewProps> = ({ userId
         </div>
 
         <footer className="personalisation-footer">
-          <span aria-live="polite"><Check size={15} /> Préférences enregistrées sur cet appareil</span>
+          <span aria-live="polite"><Check size={15} /> {reportSavePending ? "Synchronisation…" : userId === LOCAL_DEMO_USER_ID ? "Préférences enregistrées sur cet appareil" : "Préférences synchronisées avec votre compte"}</span>
           <button type="button" onClick={resetDefaults}><RotateCcw size={15} /> Réinitialiser les réglages de rapport</button>
         </footer>
       </section>
@@ -218,6 +311,7 @@ export const PersonalisationView: React.FC<PersonalisationViewProps> = ({ userId
         .personalisation-footer span,.personalisation-footer button { display: inline-flex; align-items: center; gap: 6px; color: #63806a; font-size: .74rem; }
         .personalisation-footer button { padding: 7px 9px; border: 1px solid #d8e2d8; border-radius: 7px; background: #fff; cursor: pointer; }
         .personalisation-footer button:hover { background: #f1f6f0; }
+        .personalisation-sync-error { margin: 0; padding: 10px 13px; border-radius: 8px; background: #fff1ef; color: #9f2d26; font-size: .78rem; line-height: 1.45; }
         @media (max-width: 700px) { .personalisation-heading h1 { font-size: 1.6rem; } .personalisation-options,.personalisation-notes { grid-template-columns: 1fr; } .personalisation-card-heading,.personalisation-options,.personalisation-notes { padding-left: 15px; padding-right: 15px; } .personalisation-settings-note { align-items: flex-start; flex-direction: column; padding-left: 15px; padding-right: 15px; } .personalisation-footer { align-items: flex-start; flex-direction: column; padding-left: 15px; padding-right: 15px; } }
       `}</style>
     </div>

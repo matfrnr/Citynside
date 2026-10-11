@@ -1,14 +1,19 @@
 import { LOCAL_DEMO_USER_ID } from "../types";
 import { supabase } from "./supabase";
 
-export type QuickAccessId = "new-analysis" | "history" | "favorites" | "comparison" | "notifications" | "profile";
+export type QuickAccessId = "new-analysis" | "history" | "favorites" | "comparison" | "notifications" | "profile" | "client-dossiers" | "personalisation";
 
-export const DEFAULT_QUICK_ACCESS: QuickAccessId[] = ["new-analysis", "history", "favorites", "comparison"];
+export const DEFAULT_QUICK_ACCESS: QuickAccessId[] = ["new-analysis", "comparison", "client-dossiers", "favorites"];
+const LEGACY_DEFAULT_QUICK_ACCESS: QuickAccessId[] = ["new-analysis", "history", "favorites", "comparison"];
 const STORAGE_KEY = "citynside_home_quick_access";
-const VALID_IDS = new Set<QuickAccessId>(["new-analysis", "history", "favorites", "comparison", "notifications", "profile"]);
+const VALID_IDS = new Set<QuickAccessId>(["new-analysis", "history", "favorites", "comparison", "notifications", "profile", "client-dossiers", "personalisation"]);
 
 export function isQuickAccessList(value: unknown): value is QuickAccessId[] {
   return Array.isArray(value) && value.length === 4 && new Set(value).size === 4 && value.every((id) => typeof id === "string" && VALID_IDS.has(id as QuickAccessId));
+}
+
+function matchesQuickAccess(left: readonly QuickAccessId[], right: readonly QuickAccessId[]): boolean {
+  return left.length === right.length && left.every((id, index) => id === right[index]);
 }
 
 export function getLocalHomeQuickAccess(userId: string): QuickAccessId[] | null {
@@ -16,7 +21,12 @@ export function getLocalHomeQuickAccess(userId: string): QuickAccessId[] | null 
     const raw = localStorage.getItem(`${STORAGE_KEY}_${encodeURIComponent(userId)}`);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
-    return isQuickAccessList(parsed) ? parsed : null;
+    if (!isQuickAccessList(parsed)) return null;
+    if (matchesQuickAccess(parsed, LEGACY_DEFAULT_QUICK_ACCESS)) {
+      cacheHomeQuickAccess(userId, DEFAULT_QUICK_ACCESS);
+      return DEFAULT_QUICK_ACCESS;
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -42,12 +52,15 @@ export async function fetchHomeQuickAccess(userId: string): Promise<QuickAccessI
 
   const stored = data?.home_quick_access;
   const localChoices = getLocalHomeQuickAccess(userId);
+  if (isQuickAccessList(stored) && matchesQuickAccess(stored, LEGACY_DEFAULT_QUICK_ACCESS)) {
+    const localIsCustomized = localChoices && !matchesQuickAccess(localChoices, DEFAULT_QUICK_ACCESS);
+    const migratedChoices = localIsCustomized ? localChoices : DEFAULT_QUICK_ACCESS;
+    await saveHomeQuickAccess(userId, migratedChoices);
+    return migratedChoices;
+  }
+
   const choices = isQuickAccessList(stored) ? stored : localChoices ?? DEFAULT_QUICK_ACCESS;
   cacheHomeQuickAccess(userId, choices);
-  if (isQuickAccessList(stored) && localChoices && stored.every((id, index) => id === DEFAULT_QUICK_ACCESS[index]) && localChoices.some((id, index) => id !== DEFAULT_QUICK_ACCESS[index])) {
-    await saveHomeQuickAccess(userId, localChoices);
-    return localChoices;
-  }
   return choices;
 }
 

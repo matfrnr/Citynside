@@ -311,6 +311,19 @@ export async function saveAnalysis(
 ): Promise<void> {
   const isDemo = userId === LOCAL_DEMO_USER_ID;
   if (isDemo && !DEMO_EXAMPLE_ANALYSIS_IDS.has(analysis.id)) return;
+  if (!isDemo) {
+    const row = mapAnalysisToRow(analysis, userId);
+    const { error } = await supabase.from("analyses").upsert(row, { onConflict: "id" });
+    if (error) throw error;
+    // L'élagage est une opération d'entretien : il ne doit pas faire échouer
+    // une analyse déjà enregistrée dans la base.
+    try {
+      await pruneRemoteAnalyses(userId);
+    } catch (pruneError) {
+      console.warn("Nettoyage de l’historique Supabase impossible:", pruneError);
+    }
+  }
+
   try {
     const list = getStoredAnalyses(userId);
     const existingIndex = list.findIndex((a) => a.id === analysis.id);
@@ -323,78 +336,56 @@ export async function saveAnalysis(
   } catch (e) {
     console.error("Erreur sauvegarde analyse locale:", e);
   }
-
-  if (!isDemo) {
-    try {
-      const row = mapAnalysisToRow(analysis, userId);
-      const { error } = await supabase.from("analyses").upsert(row, { onConflict: "id" });
-      if (error) {
-        console.error("Erreur sauvegarde Supabase:", error);
-      } else {
-        await pruneRemoteAnalyses(userId);
-      }
-    } catch (e) {
-      console.error("Erreur requête Supabase saveAnalysis:", e);
-    }
-  }
 }
 
 export async function toggleFavorite(analysisId: string, userId: string): Promise<void> {
   const isDemo = userId === LOCAL_DEMO_USER_ID;
   if (isDemo) return;
-  let newFavState = false;
+  const { data: current, error: readError } = await supabase
+    .from("analyses")
+    .select("is_favorite")
+    .eq("id", analysisId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (readError) throw readError;
+  if (!current) throw new Error("Cette analyse n’est plus disponible sur votre compte.");
+
+  const isFavorite = !current.is_favorite;
+  const { error } = await supabase
+    .from("analyses")
+    .update({ is_favorite: isFavorite, updated_at: new Date().toISOString() })
+    .eq("id", analysisId)
+    .eq("user_id", userId);
+  if (error) throw error;
+
   try {
     const list = getStoredAnalyses(userId);
-    const item = list.find((a) => a.id === analysisId);
+    const item = list.find((analysis) => analysis.id === analysisId);
     if (item) {
-      item.isFavorite = !item.isFavorite;
-      newFavState = item.isFavorite;
+      item.isFavorite = isFavorite;
       localStorage.setItem(getStorageKey(userId), JSON.stringify(list));
     }
-  } catch (e) {
-    console.error("Erreur toggle favorite local:", e);
-  }
-
-  if (!isDemo) {
-    try {
-      const { error } = await supabase
-        .from("analyses")
-        .update({ is_favorite: newFavState, updated_at: new Date().toISOString() })
-        .eq("id", analysisId)
-        .eq("user_id", userId);
-      if (error) {
-        console.error("Erreur toggle favorite Supabase:", error);
-      }
-    } catch (e) {
-      console.error("Erreur requête Supabase toggleFavorite:", e);
-    }
+  } catch (cacheError) {
+    console.warn("Cache local des favoris indisponible; la modification est enregistrée dans Supabase:", cacheError);
   }
 }
 
 export async function deleteAnalysis(analysisId: string, userId: string): Promise<void> {
   const isDemo = userId === LOCAL_DEMO_USER_ID;
   if (isDemo) return;
+  const { error } = await supabase
+    .from("analyses")
+    .delete()
+    .eq("id", analysisId)
+    .eq("user_id", userId);
+  if (error) throw error;
+
   try {
     const list = getStoredAnalyses(userId);
     const filtered = list.filter((a) => a.id !== analysisId);
     localStorage.setItem(getStorageKey(userId), JSON.stringify(filtered));
-  } catch (e) {
-    console.error("Erreur suppression analyse locale:", e);
-  }
-
-  if (!isDemo) {
-    try {
-      const { error } = await supabase
-        .from("analyses")
-        .delete()
-        .eq("id", analysisId)
-        .eq("user_id", userId);
-      if (error) {
-        console.error("Erreur suppression Supabase:", error);
-      }
-    } catch (e) {
-      console.error("Erreur requête Supabase deleteAnalysis:", e);
-    }
+  } catch (cacheError) {
+    console.warn("Cache local des analyses indisponible après une suppression Supabase:", cacheError);
   }
 }
 
@@ -405,6 +396,16 @@ export async function renameAnalysis(
 ): Promise<void> {
   const isDemo = userId === LOCAL_DEMO_USER_ID;
   if (isDemo) return;
+  const { data, error } = await supabase
+    .from("analyses")
+    .update({ neighborhood_name: newName, updated_at: new Date().toISOString() })
+    .eq("id", analysisId)
+    .eq("user_id", userId)
+    .select("id")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("Cette analyse n’est plus disponible sur votre compte.");
+
   try {
     const list = getStoredAnalyses(userId);
     const item = list.find((a) => a.id === analysisId);
@@ -413,21 +414,6 @@ export async function renameAnalysis(
       localStorage.setItem(getStorageKey(userId), JSON.stringify(list));
     }
   } catch (e) {
-    console.error("Erreur renommage analyse locale:", e);
-  }
-
-  if (!isDemo) {
-    try {
-      const { error } = await supabase
-        .from("analyses")
-        .update({ neighborhood_name: newName, updated_at: new Date().toISOString() })
-        .eq("id", analysisId)
-        .eq("user_id", userId);
-      if (error) {
-        console.error("Erreur renommage Supabase:", error);
-      }
-    } catch (e) {
-      console.error("Erreur requête Supabase renameAnalysis:", e);
-    }
+    console.warn("Cache local des analyses indisponible après le renommage Supabase:", e);
   }
 }

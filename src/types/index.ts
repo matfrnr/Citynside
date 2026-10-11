@@ -125,6 +125,7 @@ export interface AuthUser {
 export type AppView =
   | "home"
   | "new-analysis"
+  | "client-dossiers"
   | "impressions"
   | "report"
   | "enregistrements"

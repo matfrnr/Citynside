@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Building2, ArrowRight, Map, Bell, FileText, Calendar, MapPin, History, Star, GitCompareArrows, Pencil, X, Check, CircleHelp } from 'lucide-react';
+import { Building2, ArrowRight, Map, Bell, FileText, Calendar, MapPin, History, Star, GitCompareArrows, Pencil, X, Check, CircleHelp, BriefcaseBusiness, SlidersHorizontal } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { LOCAL_DEMO_USER_ID, type AppView, type NeighborhoodAnalysis } from '../../types';
 import { DEFAULT_QUICK_ACCESS, fetchHomeQuickAccess, getLocalHomeQuickAccess, saveHomeQuickAccess, type QuickAccessId } from '../../services/homeQuickAccess';
@@ -13,6 +13,8 @@ const QUICK_ACCESS_OPTIONS: { id: QuickAccessId; label: string; description: str
   { id: 'comparison', label: 'Comparer', description: 'Mettre deux quartiers côte à côte', icon: GitCompareArrows, iconClass: 'quick-icon--map', view: 'comparison' },
   { id: 'notifications', label: 'Notifications', description: 'Voir les dernières notifications', icon: Bell, iconClass: 'quick-icon--notif', view: 'notifications' },
   { id: 'profile', label: 'Mon profil', description: 'Gérer vos informations personnelles', icon: FileText, iconClass: 'quick-icon--profile', view: 'profile' },
+  { id: 'client-dossiers', label: 'Dossiers clients', description: 'Retrouver les projets et besoins de vos clients', icon: BriefcaseBusiness, iconClass: 'quick-icon--profile', view: 'client-dossiers' },
+  { id: 'personalisation', label: 'Personnalisation', description: 'Adapter les préférences de votre espace', icon: SlidersHorizontal, iconClass: 'quick-icon--map', view: 'personalisation' },
 ];
 
 interface HomeViewProps {

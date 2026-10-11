@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, ChevronRight, X } from "lucide-react";
 import { Sidebar } from "./components/layout/Sidebar";
 import { AuthView } from "./components/views/AuthView";
+import { ClientDossiersView } from "./components/views/ClientDossiersView";
 import { EnregistrementsView } from "./components/views/EnregistrementsView";
 import { ComparisonView } from "./components/views/ComparisonView";
 import { HomeView } from "./components/views/HomeView";
@@ -16,9 +17,16 @@ import { ReportView } from "./components/views/ReportView";
 import { ReleaseNotesModal } from "./components/release/ReleaseNotesModal";
 import { clearReleaseNotesContinueState } from "./config/releaseNotes";
 import { fetchUserProfile } from "./services/profile";
-import { DEFAULT_USER_PREFERENCES, loadUserPreferences, type UserPreferences } from "./services/userPreferences";
+import { DEFAULT_USER_PREFERENCES, fetchUserPreferences, loadUserPreferences, saveUserPreferences, type UserPreferences } from "./services/userPreferences";
 import { createNotification, fetchNotifications } from "./services/notifications";
 import { registerCurrentDevice } from "./services/deviceSession";
+import {
+  claimNewAppSession,
+  releaseAppSession,
+  restoreAppSession,
+  watchAppSession,
+  type ExclusiveSession,
+} from "./services/exclusiveSession";
 import {
   deleteAnalysis,
   fetchAnalyses,
@@ -40,7 +48,7 @@ import {
 
 const LOCAL_DEMO_SESSION_KEY = "citynside_demo_session";
 const APP_VIEWS: AppView[] = [
-  "home", "new-analysis", "impressions", "report", "enregistrements",
+  "home", "new-analysis", "client-dossiers", "impressions", "report", "enregistrements",
   "favoris", "comparison", "notifications", "personalisation", "profile",
 ];
 
@@ -103,12 +111,22 @@ export const App: React.FC = () => {
     useState<NeighborhoodAnalysis | null>(null);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [authChecking, setAuthChecking] = useState(true);
+  const [authNotice, setAuthNotice] = useState("");
+  const [dataSyncError, setDataSyncError] = useState("");
   const [importantNotificationsSnapshot, setImportantNotificationsSnapshot] = useState({ userId: null as string | null, count: 0 });
   const [isDemoInfoOpen, setIsDemoInfoOpen] = useState(false);
   const [isProfileSetupOpen, setIsProfileSetupOpen] = useState(false);
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(DEFAULT_USER_PREFERENCES);
+  const userPreferencesRevisionRef = useRef(0);
   const userNavigationRef = useRef<{ view: AppView; analysisId: string | null } | null>(null);
+  const authUserRef = useRef<AuthUser | null>(null);
+  const exclusiveSessionRef = useRef<ExclusiveSession | null>(null);
+  const stopSessionWatchRef = useRef<(() => void) | null>(null);
   const authUserId = authUser?.id ?? null;
+  const handleUserPreferencesChange = useCallback((preferences: UserPreferences) => {
+    userPreferencesRevisionRef.current += 1;
+    setUserPreferences(preferences);
+  }, []);
   const activeAnalysisId = activeAnalysis?.id ?? null;
   const importantNotificationsCount = authUserId === importantNotificationsSnapshot.userId
     ? importantNotificationsSnapshot.count
@@ -117,6 +135,48 @@ export const App: React.FC = () => {
     userNavigationRef.current = { view, analysisId };
     setCurrentView(view);
   };
+
+  const reportDataSyncError = (error: unknown) => {
+    console.error("Enregistrement des données du compte impossible :", error);
+    setDataSyncError("Une modification n’a pas pu être enregistrée sur votre compte. Vérifiez votre connexion puis réessayez.");
+  };
+
+  const handleSidebarCollapsedChange = (sidebarCollapsed: boolean) => {
+    const nextPreferences = { ...userPreferences, sidebarCollapsed };
+    handleUserPreferencesChange(nextPreferences);
+    if (!authUser) return;
+    void saveUserPreferences(authUser.id, nextPreferences).then(() => setDataSyncError("")).catch(reportDataSyncError);
+  };
+
+  useEffect(() => { authUserRef.current = authUser; }, [authUser]);
+
+  const stopSessionWatch = useCallback(() => {
+    stopSessionWatchRef.current?.();
+    stopSessionWatchRef.current = null;
+    exclusiveSessionRef.current = null;
+  }, []);
+
+  const watchExclusiveSession = useCallback((lock: ExclusiveSession) => {
+    const startWatching = (currentLock: ExclusiveSession) => {
+      if (exclusiveSessionRef.current?.sessionId === currentLock.sessionId) return;
+      stopSessionWatch();
+      exclusiveSessionRef.current = currentLock;
+      stopSessionWatchRef.current = watchAppSession(currentLock, (replacement) => {
+        if (replacement) {
+          startWatching(replacement);
+          return;
+        }
+        setAuthNotice("Votre compte a été connecté sur un autre appareil. Cette session a été fermée.");
+        resetUrlToHome();
+        userNavigationRef.current = null;
+        void supabase.auth.signOut({ scope: "local" }).catch(() => {
+          setAuthUser(null);
+          setAuthChecking(false);
+        });
+      });
+    };
+    startWatching(lock);
+  }, [stopSessionWatch]);
 
   useEffect(() => {
     if (authChecking) return;
@@ -159,6 +219,22 @@ export const App: React.FC = () => {
       });
     }).catch((error) => {
       if (!cancelled) console.warn("Compteur de notifications indisponible :", error);
+    });
+    return () => { cancelled = true; };
+  }, [authUserId]);
+
+  useEffect(() => {
+    if (!authUserId || authUserId === LOCAL_DEMO_USER_ID) return;
+    let cancelled = false;
+    const revisionAtLoad = userPreferencesRevisionRef.current;
+    void fetchUserPreferences(authUserId).then((preferences) => {
+      if (cancelled || userPreferencesRevisionRef.current !== revisionAtLoad) return;
+      setUserPreferences(preferences);
+      if (!userNavigationRef.current && !new URLSearchParams(window.location.search).has("view")) {
+        setCurrentView(preferences.startView);
+      }
+    }).catch((error) => {
+      if (!cancelled) console.warn("Chargement des préférences Supabase impossible :", error);
     });
     return () => { cancelled = true; };
   }, [authUserId]);
@@ -240,6 +316,29 @@ export const App: React.FC = () => {
       .then(async ({ data: { session }, error }) => {
         if (cancelled) return;
         if (session?.user && !error) {
+          let lock: ExclusiveSession | null;
+          try {
+            lock = await restoreAppSession(session.user.id, session.access_token);
+          } catch (lockError) {
+            if (cancelled) return;
+            console.error("Impossible de vérifier la session active :", lockError);
+            setAuthNotice("La vérification de session est indisponible. Appliquez la migration Supabase avant de vous reconnecter.");
+            resetUrlToHome();
+            await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+            setAuthChecking(false);
+            return;
+          }
+          if (cancelled) return;
+          if (!lock) {
+            setAuthNotice("Votre compte a été connecté sur un autre appareil. Connectez-vous à nouveau pour reprendre la session.");
+            resetUrlToHome();
+            await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+            setAuthChecking(false);
+            return;
+          }
+          setAuthNotice("");
+          watchExclusiveSession(lock);
+
           // Afficher tout de suite l'application avec les informations déjà
           // disponibles dans la session. Les appels Supabase secondaires ne
           // doivent pas bloquer le premier affichage après un rechargement.
@@ -272,41 +371,95 @@ export const App: React.FC = () => {
         setCurrentView("home");
         setAuthChecking(false);
       })
-      .catch(() => {
-        if (!cancelled) setAuthChecking(false);
+      .catch((sessionError) => {
+        if (!cancelled) {
+          console.error("Impossible de restaurer la session :", sessionError);
+          setAuthNotice("La vérification de session est indisponible. Réessayez après avoir vérifié votre connexion.");
+          setAuthChecking(false);
+        }
       });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (cancelled) return;
-      if (localStorage.getItem(LOCAL_DEMO_SESSION_KEY) === "active") return;
+      // Laisser le verrou interne d’authentification Supabase se libérer avant
+      // d’effectuer des requêtes depuis ses événements.
+      window.setTimeout(() => {
+        if (cancelled) return;
+        void (async () => {
+          if (localStorage.getItem(LOCAL_DEMO_SESSION_KEY) === "active") return;
 
-      // Ne jamais écraser l'écran ou l'analyse en cours lors d'un simple rafraîchissement de token (ex: Alt+Tab)
-      if (event === "TOKEN_REFRESHED") return;
-      // La restauration initiale est gérée par getSession ci-dessus, sans
-      // bloquer l'affichage sur les appels de profil et d'historique.
-      if (event === "INITIAL_SESSION") return;
+          // Ne jamais écraser l'écran ou l'analyse en cours lors d'un simple rafraîchissement de token (ex: Alt+Tab)
+          if (event === "TOKEN_REFRESHED") return;
+          // La restauration initiale est gérée par getSession ci-dessus, sans
+          // bloquer l'affichage sur les appels de profil et d'historique.
+          if (event === "INITIAL_SESSION") return;
+          if (event === "SIGNED_IN" && session?.user) {
+            try {
+              const lock = await claimNewAppSession(session.user.id, session.access_token);
+              watchExclusiveSession(lock);
+              try {
+                await supabase.auth.signOut({ scope: "others" });
+              } catch (revokeError) {
+                console.warn("La révocation des autres sessions a échoué :", revokeError);
+              }
 
-      if (session?.user) {
-        // Un événement SIGNED_IN peut aussi accompagner la reprise d'un onglet :
-        // ne pas réappliquer ici la page de départ et interrompre une recherche.
-        const user = await fetchUserProfile(session.user);
-        setAuthUser(user);
-        await loadUserAnalyses(user.id, false);
-      } else {
-        if (event === "SIGNED_OUT") {
-          resetUrlToHome();
-          setCurrentView("home");
-        }
-        userNavigationRef.current = null;
-        clearReleaseNotesContinueState();
-        setAuthUser(null);
-        setIsProfileSetupOpen(false);
-        setUserPreferences(DEFAULT_USER_PREFERENCES);
-        setAnalyses([]);
-        setActiveAnalysis(null);
-      }
+              const user = await fetchUserProfile(session.user);
+              const accountChanged = authUserRef.current?.id !== user.id;
+              authUserRef.current = user;
+              if (accountChanged) {
+                resetUrlToHome();
+                userNavigationRef.current = null;
+                setActiveAnalysis(null);
+                const preferences = loadUserPreferences(user.id);
+                setUserPreferences(preferences);
+                setCurrentView(preferences.startView);
+              }
+              setAuthUser(user);
+              setIsProfileSetupOpen(needsProfileSetup(user));
+              await loadUserAnalyses(user.id, accountChanged);
+            } catch (sessionError) {
+              console.error("Impossible d’activer la session après connexion :", sessionError);
+              setAuthNotice("La vérification de session est indisponible. Vérifiez la configuration Supabase avant de vous reconnecter.");
+              await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+            }
+            return;
+          }
+
+          if (session?.user) {
+            try {
+              const lock = await restoreAppSession(session.user.id, session.access_token);
+              if (!lock) {
+                setAuthNotice("Votre compte a été connecté sur un autre appareil. Cette session a été fermée.");
+                await supabase.auth.signOut({ scope: "local" });
+                return;
+              }
+              watchExclusiveSession(lock);
+              const user = await fetchUserProfile(session.user);
+              setAuthUser(user);
+              await loadUserAnalyses(user.id, false);
+            } catch (sessionError) {
+              console.error("Impossible de maintenir la session active :", sessionError);
+              setAuthNotice("La vérification de session est indisponible. Connectez-vous à nouveau après vérification de la configuration Supabase.");
+              await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+            }
+          } else {
+            stopSessionWatch();
+            if (event === "SIGNED_OUT") {
+              resetUrlToHome();
+              setCurrentView("home");
+            }
+            userNavigationRef.current = null;
+            clearReleaseNotesContinueState();
+            setAuthUser(null);
+            setIsProfileSetupOpen(false);
+            setUserPreferences(DEFAULT_USER_PREFERENCES);
+            setAnalyses([]);
+            setActiveAnalysis(null);
+          }
+        })();
+      }, 0);
     });
 
     // 3. Synchronisation Realtime : répercute les créations/modifications faites sur d'autres appareils
@@ -342,10 +495,13 @@ export const App: React.FC = () => {
       cancelled = true;
       subscription.unsubscribe();
       supabase.removeChannel(realtimeChannel);
+      stopSessionWatch();
     };
-  }, []);
+  }, [stopSessionWatch, watchExclusiveSession]);
 
-  const handleAuthenticated = async (user: AuthUser) => {
+  const handleAuthenticated = async (user: AuthUser, lock?: ExclusiveSession) => {
+    setAuthNotice("");
+    if (lock) watchExclusiveSession(lock);
     const userNavigation = userNavigationRef.current;
     if (userNavigation) {
       setCurrentView(userNavigation.view);
@@ -388,9 +544,12 @@ export const App: React.FC = () => {
       localStorage.removeItem(LOCAL_DEMO_SESSION_KEY);
     } else {
       try {
-        await supabase.auth.signOut();
+        if (exclusiveSessionRef.current) await releaseAppSession(exclusiveSessionRef.current);
       } catch {
         // La session locale est fermée même si Supabase est indisponible.
+      } finally {
+        stopSessionWatch();
+        await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
       }
     }
     setAuthUser(null);
@@ -436,7 +595,8 @@ export const App: React.FC = () => {
     if (authUser) {
       void saveAnalysis(updated, authUser.id).then(() => {
         setAnalyses(getStoredAnalyses(authUser.id));
-      });
+        setDataSyncError("");
+      }).catch(reportDataSyncError);
     }
     if (authUser) {
       void createNotification(authUser.id, {
@@ -475,19 +635,29 @@ export const App: React.FC = () => {
 
     if (base && base.id === analysisId) {
       const updated = { ...base, riskAssessment, airQuality: airQuality ?? base.airQuality };
-      await saveAnalysis(updated, authUser.id);
-      setAnalyses(getStoredAnalyses(authUser.id));
+      try {
+        await saveAnalysis(updated, authUser.id);
+        setAnalyses(getStoredAnalyses(authUser.id));
+        setDataSyncError("");
+      } catch (error) {
+        reportDataSyncError(error);
+      }
     }
   };
 
   // Renommer une analyse existante
   const handleRenameAnalysis = async (id: string, newName: string) => {
     if (!authUser || authUser.id === LOCAL_DEMO_USER_ID) return;
-    await renameAnalysis(id, newName, authUser.id);
-    const updatedList = getStoredAnalyses(authUser.id);
-    setAnalyses(updatedList);
-    if (activeAnalysis?.id === id) {
-      setActiveAnalysis({ ...activeAnalysis, neighborhoodName: newName });
+    try {
+      await renameAnalysis(id, newName, authUser.id);
+      const updatedList = getStoredAnalyses(authUser.id);
+      setAnalyses(updatedList);
+      if (activeAnalysis?.id === id) {
+        setActiveAnalysis({ ...activeAnalysis, neighborhoodName: newName });
+      }
+      setDataSyncError("");
+    } catch (error) {
+      reportDataSyncError(error);
     }
   };
 
@@ -504,46 +674,61 @@ export const App: React.FC = () => {
     };
 
     setActiveAnalysis(updated);
-    await saveAnalysis(updated, authUser.id);
-    setAnalyses(getStoredAnalyses(authUser.id));
-    navigateTo("report", updated.id);
+    try {
+      await saveAnalysis(updated, authUser.id);
+      setAnalyses(getStoredAnalyses(authUser.id));
+      setDataSyncError("");
+      navigateTo("report", updated.id);
+    } catch (error) {
+      reportDataSyncError(error);
+    }
   };
 
   const handleToggleFav = async (id: string) => {
     if (!authUser || authUser.id === LOCAL_DEMO_USER_ID) return;
-    await toggleFavorite(id, authUser.id);
-    const updatedList = getStoredAnalyses(authUser.id);
-    setAnalyses(updatedList);
-    if (activeAnalysis && activeAnalysis.id === id) {
-      setActiveAnalysis({
-        ...activeAnalysis,
-        isFavorite: !activeAnalysis.isFavorite,
-      });
+    try {
+      await toggleFavorite(id, authUser.id);
+      const updatedList = getStoredAnalyses(authUser.id);
+      setAnalyses(updatedList);
+      const updatedActive = updatedList.find((analysis) => analysis.id === id);
+      if (activeAnalysis?.id === id && updatedActive) setActiveAnalysis(updatedActive);
+      setDataSyncError("");
+    } catch (error) {
+      reportDataSyncError(error);
     }
   };
 
   const handleDeleteAnalysis = async (id: string) => {
     if (!authUser || authUser.id === LOCAL_DEMO_USER_ID) return;
-    await deleteAnalysis(id, authUser.id);
-    const updatedList = getStoredAnalyses(authUser.id);
-    setAnalyses(updatedList);
-    if (activeAnalysis?.id === id) {
-      setActiveAnalysis(null);
+    try {
+      await deleteAnalysis(id, authUser.id);
+      const updatedList = getStoredAnalyses(authUser.id);
+      setAnalyses(updatedList);
+      if (activeAnalysis?.id === id) setActiveAnalysis(null);
+      setDataSyncError("");
+    } catch (error) {
+      reportDataSyncError(error);
     }
   };
 
   const handleClearSavedTab = async (ids: string[], tab: "history" | "favorites") => {
     if (!authUser || authUser.id === LOCAL_DEMO_USER_ID) return;
-    if (tab === "history") {
-      await Promise.all(ids.map((id) => deleteAnalysis(id, authUser.id)));
-      if (activeAnalysis && ids.includes(activeAnalysis.id)) setActiveAnalysis(null);
-    } else {
-      await Promise.all(ids.map((id) => toggleFavorite(id, authUser.id)));
-      if (activeAnalysis && ids.includes(activeAnalysis.id)) {
-        setActiveAnalysis({ ...activeAnalysis, isFavorite: false });
+    try {
+      if (tab === "history") {
+        await Promise.all(ids.map((id) => deleteAnalysis(id, authUser.id)));
+        if (activeAnalysis && ids.includes(activeAnalysis.id)) setActiveAnalysis(null);
+      } else {
+        await Promise.all(ids.map((id) => toggleFavorite(id, authUser.id)));
+        if (activeAnalysis && ids.includes(activeAnalysis.id)) {
+          setActiveAnalysis({ ...activeAnalysis, isFavorite: false });
+        }
       }
+      setAnalyses(getStoredAnalyses(authUser.id));
+      setDataSyncError("");
+    } catch (error) {
+      setAnalyses(getStoredAnalyses(authUser.id));
+      reportDataSyncError(error);
     }
-    setAnalyses(getStoredAnalyses(authUser.id));
   };
 
   const favoritesCount = analyses.filter((a) => a.isFavorite).length;
@@ -578,7 +763,7 @@ export const App: React.FC = () => {
     );
   }
 
-  if (!authUser) return <AuthView onAuthenticated={handleAuthenticated} />;
+  if (!authUser) return <AuthView onAuthenticated={handleAuthenticated} notice={authNotice} />;
 
   return (
     <div className={`cyt-app-layout${userPreferences.reduceMotion ? " reduce-motion" : ""}`}>
@@ -587,6 +772,8 @@ export const App: React.FC = () => {
         currentView={currentView}
         displayName={authUser.name}
         userId={authUser.id}
+        isCollapsed={userPreferences.sidebarCollapsed}
+        onCollapsedChange={handleSidebarCollapsedChange}
         onNavigate={(view) => {
           if (view === "new-analysis") {
             handleStartNewAnalysis();
@@ -596,11 +783,13 @@ export const App: React.FC = () => {
         }}
         favoritesCount={favoritesCount}
         importantNotificationsCount={importantNotificationsCount}
+        showNotificationCount={userPreferences.showNotificationCount}
       />
 
       {/* Main Tablet Content Area */}
       <main className="cyt-main-viewport">
         <div className="main-scroll-inner">
+          {dataSyncError && <div className="data-sync-error" role="alert"><span>{dataSyncError}</span><button type="button" onClick={() => setDataSyncError("")} aria-label="Fermer le message"><X size={17} /></button></div>}
           {authUser.id === LOCAL_DEMO_USER_ID && <button className="demo-warning-banner" type="button" onClick={() => setIsDemoInfoOpen(true)}>
             <AlertTriangle size={19} aria-hidden="true" />
             <span><strong>Compte démo</strong><small>Fonctionnalités limitées · Cliquez pour en savoir plus</small></span>
@@ -620,6 +809,7 @@ export const App: React.FC = () => {
 
           {currentView === "new-analysis" && (
             <NewAnalysisView
+              userId={authUser.id}
               isDemo={authUser.id === LOCAL_DEMO_USER_ID}
               mapControlsHiddenByDefault={userPreferences.hideMapControlsByDefault}
               mapZoom={userPreferences.mapZoom}
@@ -633,6 +823,15 @@ export const App: React.FC = () => {
               onToggleFavorite={handleToggleFav}
               onGoToReport={() => navigateTo("report", activeAnalysis?.id ?? null)}
               onGoToImpressions={handleGoToImpressions}
+            />
+          )}
+
+          {currentView === "client-dossiers" && (
+            <ClientDossiersView
+              key={authUser.id}
+              userId={authUser.id}
+              isDemo={authUser.id === LOCAL_DEMO_USER_ID}
+              analyses={analyses}
             />
           )}
 
@@ -678,9 +877,9 @@ export const App: React.FC = () => {
 
           {currentView === "comparison" && <ComparisonView analyses={analyses} />}
 
-          {currentView === "notifications" && <NotificationsView isDemo={authUser.id === LOCAL_DEMO_USER_ID} user={authUser} onImportantUnreadChange={(count) => setImportantNotificationsSnapshot({ userId: authUser.id, count })} />}
+          {currentView === "notifications" && <NotificationsView isDemo={authUser.id === LOCAL_DEMO_USER_ID} user={authUser} preferences={userPreferences} onImportantUnreadChange={(count) => setImportantNotificationsSnapshot({ userId: authUser.id, count })} />}
 
-          {currentView === "personalisation" && <PersonalisationView userId={authUser.id} onUserPreferencesChange={setUserPreferences} />}
+          {currentView === "personalisation" && <PersonalisationView userId={authUser.id} onUserPreferencesChange={handleUserPreferencesChange} />}
 
           {currentView === "profile" && (
             <ProfileView
@@ -688,6 +887,11 @@ export const App: React.FC = () => {
               analysesCount={analyses.length}
               favoritesCount={favoritesCount}
               user={authUser}
+              preferences={userPreferences}
+              onUserPreferencesChange={(preferences) => {
+                handleUserPreferencesChange(preferences);
+                void saveUserPreferences(authUser.id, preferences).catch(reportDataSyncError);
+              }}
               onLogout={handleLogout}
               onUpdateUser={(updated) => setAuthUser(updated)}
               onProfileSaved={() => {
@@ -765,6 +969,11 @@ export const App: React.FC = () => {
           padding: 32px 36px 48px;
           min-height: 100%;
         }
+
+        .data-sync-error{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin:0 0 18px;padding:11px 14px;border:1px solid #f0c8c3;border-radius:9px;background:#fff3f1;color:#922c25;font-size:.82rem;line-height:1.45}
+        .data-sync-error span{min-width:0;overflow-wrap:anywhere}
+        .data-sync-error button{display:grid;place-items:center;flex:0 0 auto;width:28px;height:28px;margin:-4px -5px 0 0;border:0;border-radius:50%;background:transparent;color:inherit;cursor:pointer}
+        .data-sync-error button:hover{background:rgba(146,44,37,.08)}
 
         .demo-warning-banner{width:100%;display:flex;align-items:center;gap:12px;padding:11px 16px;margin:0 0 22px;border:1px solid #f3b1ad;border-radius:12px;background:#fff0ef;color:#a62b26;text-align:left;cursor:pointer;box-shadow:0 4px 16px rgba(130,35,30,.08)}
         .demo-warning-banner>span{display:flex;flex:1;flex-direction:column;gap:2px}.demo-warning-banner strong{font-size:.84rem}.demo-warning-banner small{font-size:.76rem;color:#9c514a}.demo-warning-banner:hover{background:#ffe8e6;border-color:#e98c86}

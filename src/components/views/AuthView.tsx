@@ -19,10 +19,12 @@ import {
 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { mapSupabaseUser, supabase } from "../../services/supabase";
+import { claimNewAppSession, type ExclusiveSession } from "../../services/exclusiveSession";
 import { type AuthUser } from "../../types";
 
 interface AuthViewProps {
-  onAuthenticated: (user: AuthUser) => void;
+  onAuthenticated: (user: AuthUser, lock?: ExclusiveSession) => void;
+  notice?: string;
 }
 
 interface AuthFields {
@@ -30,13 +32,13 @@ interface AuthFields {
   password: string;
 }
 
-export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
+export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated, notice = "" }) => {
   const [fields, setFields] = useState<AuthFields>({
     email: "",
     password: "",
   });
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(notice);
   const [busy, setBusy] = useState(false);
 
   // Modal / popover mot de passe oublié
@@ -79,8 +81,26 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated }) => {
         return;
       }
 
-      if (data.user) {
-        onAuthenticated(mapSupabaseUser(data.user));
+      if (data.user && data.session) {
+        let lock: ExclusiveSession;
+        try {
+          lock = await claimNewAppSession(data.user.id, data.session.access_token);
+        } catch (sessionError) {
+          await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+          console.error("Impossible d’activer la session exclusive :", sessionError);
+          setError("La connexion est temporairement indisponible : le contrôle de session n’est pas encore configuré sur Supabase.");
+          return;
+        }
+
+        try {
+          const { error: otherSessionsError } = await supabase.auth.signOut({ scope: "others" });
+          if (otherSessionsError) {
+            console.warn("La révocation des autres sessions a échoué ; le contrôle Citynside reste actif :", otherSessionsError);
+          }
+        } catch (revokeError) {
+          console.warn("La révocation des autres sessions a échoué ; le contrôle Citynside reste actif :", revokeError);
+        }
+        onAuthenticated(mapSupabaseUser(data.user), lock);
       }
     } catch {
       setError(

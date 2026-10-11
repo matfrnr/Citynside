@@ -10,7 +10,7 @@ import {
   Eye,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { DEFAULT_REPORT_CUSTOMIZATION, fetchReportCustomization, loadDefaultReportCustomization, saveReportCustomization, type ReportCustomization } from '../../services/reportCustomization';
+import { DEFAULT_REPORT_CUSTOMIZATION, fetchDefaultReportCustomization, fetchReportCustomization, loadDefaultReportCustomization, saveReportCustomization, type ReportCustomization } from '../../services/reportCustomization';
 import { LOCAL_DEMO_USER_ID, type AuthUser, type NeighborhoodAnalysis } from '../../types';
 import type { DistanceUnit } from '../../services/userPreferences';
 import { formatDistanceText } from '../../services/distanceFormat';
@@ -79,14 +79,18 @@ export const ReportView: React.FC<ReportViewProps> = ({
     }
 
     setCustomizationSyncState('loading');
-    void fetchReportCustomization(user.id, analysis.id).then((saved) => {
+    void Promise.all([
+      fetchDefaultReportCustomization(user.id),
+      fetchReportCustomization(user.id, analysis.id),
+    ]).then(([remoteDefaults, saved]) => {
       if (cancelled) return;
-      const localValue = loadReportCustomization(customizationKey, defaultCustomization);
-      setCustomization({ key: customizationKey, value: saved || localValue });
+      const hasLocalAnalysisCustomization = Boolean(localStorage.getItem(customizationKey));
+      const localValue = loadReportCustomization(customizationKey, remoteDefaults);
+      setCustomization({ key: customizationKey, value: saved || (hasLocalAnalysisCustomization ? localValue : remoteDefaults) });
       setCustomizationLoaded(true);
       if (saved) {
         setCustomizationSyncState('saved');
-      } else if (localStorage.getItem(customizationKey)) {
+      } else if (hasLocalAnalysisCustomization) {
         // Reprise des préférences locales précédentes et migration automatique vers Supabase.
         setCustomizationDirty(true);
         setCustomizationSyncState('saving');

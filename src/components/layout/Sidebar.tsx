@@ -1,5 +1,6 @@
 import {
   Bell,
+  BriefcaseBusiness,
   Star,
   Home,
   Map,
@@ -14,34 +15,30 @@ import type { AppView } from "../../types";
 import { ProfileAvatar } from "../profile/ProfileAvatar";
 import { useProfileAvatar } from "../profile/useProfileAvatar";
 
-const SIDEBAR_COLLAPSED_KEY = "citynside_sidebar_collapsed";
-
 interface SidebarProps {
   currentView: AppView;
   displayName: string;
   userId: string;
+  isCollapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
   onNavigate: (view: AppView) => void;
   favoritesCount: number;
   importantNotificationsCount: number;
+  showNotificationCount: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   currentView,
   displayName,
   userId,
+  isCollapsed,
+  onCollapsedChange,
   onNavigate,
   favoritesCount,
   importantNotificationsCount,
+  showNotificationCount,
 }) => {
   const { avatarId } = useProfileAvatar(userId);
-  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true";
-    } catch {
-      return false;
-    }
-  });
-
   const [isHovered, setIsHovered] = useState(false);
   const [isMobileLayout, setIsMobileLayout] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches,
@@ -79,18 +76,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-  const toggleCollapsed = () => {
+  const toggleCollapsed = React.useCallback(() => {
     setIsHovered(false);
-    setIsCollapsed((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
-      } catch {
-        // ignore
-      }
-      return next;
-    });
-  };
+    onCollapsedChange(!isCollapsed);
+  }, [isCollapsed, onCollapsedChange]);
 
   // Fermer l'infobulle au scroll ou resize
   useEffect(() => {
@@ -113,7 +102,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [toggleCollapsed]);
 
   const initials = displayName
     .split(/\s+/)
@@ -125,6 +114,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const navItems = [
     { id: "home" as AppView, label: "Home", icon: Home },
     { id: "new-analysis" as AppView, label: "Carte", icon: Map },
+    { id: "client-dossiers" as AppView, label: "Dossiers clients", icon: BriefcaseBusiness },
     {
       id: "enregistrements" as AppView,
       label: "Historique",
@@ -133,7 +123,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: "favoris" as AppView, label: "Favoris", icon: Star, badge: favoritesCount },
     { id: "comparison" as AppView, label: "Comparer", icon: GitCompareArrows },
     { id: "personalisation" as AppView, label: "Personnalisation", icon: SlidersHorizontal },
-    { id: "notifications" as AppView, label: "Notifications", icon: Bell, badge: importantNotificationsCount },
   ];
 
   return (
@@ -271,6 +260,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {displayName}
               </span>
             </div>
+          )}
+        </button>
+        <button
+          type="button"
+          className={`sidebar-notifications ${currentView === "notifications" ? "active" : ""}`}
+          onClick={() => onNavigate("notifications")}
+          aria-label={`Notifications${showNotificationCount && importantNotificationsCount > 0 ? ` (${importantNotificationsCount} importantes)` : ""}`}
+          aria-current={currentView === "notifications" ? "page" : undefined}
+          title="Notifications"
+        >
+          <Bell size={20} strokeWidth={currentView === "notifications" ? 2.3 : 1.8} />
+          {showNotificationCount && importantNotificationsCount > 0 && currentView !== "notifications" && (
+            <span className="notifications-badge">
+              {importantNotificationsCount > 99 ? "99+" : importantNotificationsCount}
+            </span>
           )}
         </button>
       </div>
@@ -634,6 +638,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           margin-top: auto;
           padding-top: 14px;
           border-top: 1px solid var(--color-border-subtle);
+          display: flex;
+          align-items: center;
+          gap: 6px;
         }
 
         .agent-profile {
@@ -653,7 +660,53 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         .cyt-sidebar.is-collapsed .agent-profile {
           justify-content: center;
-          padding: 8px 0;
+          flex: 0 0 40px;
+          width: 40px;
+          padding: 2px 0;
+        }
+
+        .cyt-sidebar.is-collapsed .sidebar-footer {
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .sidebar-notifications {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex: 0 0 40px;
+          width: 40px;
+          height: 40px;
+          padding: 0;
+          border: 0;
+          border-radius: var(--radius-sm);
+          background: transparent;
+          color: var(--color-text-muted);
+          cursor: pointer;
+          transition: background 0.15s ease, color 0.15s ease;
+        }
+
+        .sidebar-notifications:hover { background: var(--color-green-subtle); color: var(--color-primary); }
+        .sidebar-notifications.active { background: var(--color-primary); color: #fff; }
+
+        .notifications-badge {
+          position: absolute;
+          top: 0;
+          right: 0;
+          min-width: 16px;
+          height: 16px;
+          padding: 0 3px;
+          border-radius: 99px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: var(--color-green);
+          color: var(--color-primary-dark);
+          font-size: .58rem;
+          font-weight: 700;
+          line-height: 1;
+          box-sizing: border-box;
         }
 
         .agent-profile:hover {
@@ -721,8 +774,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           .nav-icon-wrapper { margin-top: 0; }
           .sidebar-nav-btn .nav-badge { position: absolute; top: 3px; right: 5px; margin: 0; min-width: 16px; height: 16px; padding: 0 3px; display: flex; align-items: center; justify-content: center; font-size: .58rem; }
           .sidebar-nav-btn .badge-dot-compact { top: -2px; right: -6px; }
-          .sidebar-footer { padding-top: 10px; }
-          .agent-profile, .cyt-sidebar.is-collapsed .agent-profile { justify-content: center; padding: 8px 0; }
+          .sidebar-footer { flex-direction: column; justify-content: center; padding-top: 10px; gap: 4px; }
+          .agent-profile, .cyt-sidebar.is-collapsed .agent-profile { flex: 0 0 38px; width: 38px; justify-content: center; padding: 2px 0; }
+          .sidebar-notifications { flex-basis: 38px; width: 38px; height: 38px; }
         }
 
         @media (max-width: 768px) {
@@ -746,8 +800,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           .nav-label { display: block !important; max-width: 58px; font-size: .58rem; line-height: 1.1; text-align: center; }
           .nav-icon-wrapper { margin: 0; }
           .nav-badge, .badge-dot-compact { position: absolute; top: 1px; right: 5px; margin: 0; min-width: 15px; height: 15px; padding: 0 3px; display: flex; align-items: center; justify-content: center; line-height: 1; text-align: center; font-size: .55rem; box-sizing: border-box; }
-          .sidebar-footer { flex: 0 0 50px; width: 50px; margin: 0; padding: 0; border: 0; display: flex; align-items: center; }
-          .agent-profile, .cyt-sidebar.is-collapsed .agent-profile { width: 50px; justify-content: center; padding: 5px 0; }
+          .sidebar-footer { flex: 0 0 90px; width: 90px; margin: 0; padding: 0; border: 0; display: flex; align-items: center; justify-content: center; gap: 2px; }
+          .agent-profile, .cyt-sidebar.is-collapsed .agent-profile { flex: 0 0 42px; width: 42px; justify-content: center; padding: 5px 0; }
+          .sidebar-notifications { flex: 0 0 42px; width: 42px; height: 42px; }
           .agent-info-text, .brand-title { display: none !important; }
           .avatar-img-wrap { width: 32px; height: 32px; }
         }

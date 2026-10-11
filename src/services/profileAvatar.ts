@@ -1,3 +1,6 @@
+import { LOCAL_DEMO_USER_ID } from "../types";
+import { supabase } from "./supabase";
+
 export const PROFILE_AVATARS = [
   { id: "sage", label: "Titouan", background: "#e1eee2", skin: "#d49a78", hair: "#3d302d", shirt: "#4f795e", style: "short" },
   { id: "coral", label: "Paul", background: "#f6e2dc", skin: "#9b6048", hair: "#292322", shirt: "#bb6555", style: "beard" },
@@ -30,11 +33,32 @@ export function getSavedProfileAvatar(userId: string): ProfileAvatarId | null {
   }
 }
 
-export function saveProfileAvatar(userId: string, avatarId: ProfileAvatarId): void {
+export async function fetchProfileAvatar(userId: string): Promise<ProfileAvatarId | null> {
+  if (!userId || userId === LOCAL_DEMO_USER_ID) return getSavedProfileAvatar(userId);
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("avatar_id")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) throw error;
+
+  if (isProfileAvatarId(data?.avatar_id)) {
+    cacheProfileAvatar(userId, data.avatar_id);
+    return data.avatar_id;
+  }
+
+  // Migrate an avatar selected before Supabase persistence was added.
+  const legacyAvatar = getSavedProfileAvatar(userId);
+  if (legacyAvatar) await saveProfileAvatar(userId, legacyAvatar);
+  return legacyAvatar;
+}
+
+function cacheProfileAvatar(userId: string, avatarId: ProfileAvatarId): void {
   try {
     localStorage.setItem(getProfileAvatarStorageKey(userId), avatarId);
   } catch {
-    // Le changement reste visible dans l’interface même si le stockage est désactivé.
+    // Supabase reste la source de vérité pour les comptes réels.
   }
 
   if (typeof window !== "undefined") {
@@ -42,4 +66,15 @@ export function saveProfileAvatar(userId: string, avatarId: ProfileAvatarId): vo
       new CustomEvent(PROFILE_AVATAR_CHANGED_EVENT, { detail: { userId } }),
     );
   }
+}
+
+export async function saveProfileAvatar(userId: string, avatarId: ProfileAvatarId): Promise<void> {
+  cacheProfileAvatar(userId, avatarId);
+  if (!userId || userId === LOCAL_DEMO_USER_ID) return;
+
+  const { error } = await supabase.from("profiles").upsert(
+    { id: userId, avatar_id: avatarId, updated_at: new Date().toISOString() },
+    { onConflict: "id" },
+  );
+  if (error) throw error;
 }
