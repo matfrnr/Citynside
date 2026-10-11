@@ -1,4 +1,4 @@
-import { AlertTriangle, Download, LoaderCircle, ShieldCheck, Volume2 } from "lucide-react";
+import { AlertTriangle, Download, LoaderCircle, RefreshCw, ShieldCheck, Volume2 } from "lucide-react";
 import type { CategoryScore, RiskAssessment } from "../../types";
 import type { AirQualityData } from "../../services/airQualityApi";
 
@@ -6,11 +6,17 @@ interface RiskNuisancePanelProps {
   assessment?: RiskAssessment;
   tranquility?: CategoryScore;
   airQuality?: AirQualityData | null;
+  onRetry?: () => void;
 }
 
 const isPositiveStatus = (status: string) => !/pas de risque connu|information indisponible|non concern|aucun signalement|aucun risque|absence de risque|non expose|non exposé/i.test(status);
-const displayRiskStatus = (status: string) => /non\s+concern[ée]e?/i.test(status) ? "Aucun signalement" : /concern[ée]e?/i.test(status) ? "Zone concernée" : /^risque\s+existant\s*[-–—:]/i.test(status) ? `Risque ${status.replace(/^risque\s+existant\s*[-–—:]+\s*/i, "")}` : status;
-export const RiskNuisancePanel: React.FC<RiskNuisancePanelProps> = ({ assessment, tranquility, airQuality }) => {
+const normCase = (s: string) => s.replace(/\b([A-ZÀ-ÖØ-Þ]{2,})\b/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+const displayRiskStatus = (status: string) => {
+  const base = /non\s+concern[ée]e?/i.test(status) ? "Aucun signalement" : /concern[ée]e?/i.test(status) ? "Zone concernée" : /^risque\s+existant\s*[-–—:]/i.test(status) ? `Risque ${status.replace(/^risque\s+existant\s*[-–—:]+\s*/i, "")}` : status;
+  return normCase(base);
+};
+
+export const RiskNuisancePanel: React.FC<RiskNuisancePanelProps> = ({ assessment, tranquility, airQuality, onRetry }) => {
   // Note lisible sur 10 : AQI 0 = 10/10, AQI 100 = 0/10.
   // La barre est orientée de la meilleure qualité vers la plus dégradée.
   const airScore = airQuality ? Math.max(0, Math.min(10, 10 - airQuality.europeanAqi / 10)) : 0;
@@ -27,15 +33,36 @@ export const RiskNuisancePanel: React.FC<RiskNuisancePanelProps> = ({ assessment
     </header>
     <div className="risk-nuisance-grid">
       <article className="risk-info-card">
-        <div className="risk-card-title"><ShieldCheck size={18}/><h3>Risques recensés</h3></div>
+        <div className="risk-card-title">
+          <ShieldCheck size={18}/>
+          <h3>Risques recensés</h3>
+          {assessment?.scope === "commune" && (
+            <span className="risk-scope-pill" title="Risques officiellement déclarés pour la commune (Base nationale GASPAR)">Relevé communal</span>
+          )}
+        </div>
         {assessment?.status === "loading" && <p className="risk-loading"><LoaderCircle size={16} className="risk-spin"/> Consultation de Géorisques…</p>}
-        {assessment?.status === "unavailable" && <p className="risk-muted">Géorisques n’a pas répondu : aucun résultat officiel n’est disponible pour cette adresse.</p>}
+        {assessment?.status === "unavailable" && (
+          <div className="risk-unavailable-box">
+            <p className="risk-muted">L’API Géorisques est temporairement saturée ou en incident.</p>
+            {onRetry && (
+              <button type="button" className="risk-retry-btn" onClick={onRetry}>
+                <RefreshCw size={13}/>
+                Réessayer la consultation
+              </button>
+            )}
+          </div>
+        )}
+        {assessment?.status === "available" && assessment?.scope === "commune" && (
+          <p className="risk-scope-description">
+            Risques officiellement déclarés sur la commune. Le détail est accessible dans le rapport officiel PDF.
+          </p>
+        )}
         {assessment?.status === "available" && positiveFindings.length === 0 && <p className="risk-muted">Aucun risque positif n’a été renvoyé à cette adresse. Cela ne remplace pas la consultation du rapport réglementaire.</p>}
         {naturalFindings.length > 0 && <div className="risk-group"><strong>Risques naturels</strong>{naturalFindings.map((finding) => <div className="risk-finding" key={finding.id}><span>{finding.label}</span><b>{displayRiskStatus(finding.addressStatus)}</b></div>)}</div>}
         {technologicalFindings.length > 0 && <div className="risk-group"><strong>Risques technologiques</strong>{technologicalFindings.map((finding) => <div className="risk-finding" key={finding.id}><span>{finding.label}</span><b>{displayRiskStatus(finding.addressStatus)}</b></div>)}</div>}
         {!assessment && <p className="risk-muted">Cette ancienne analyse ne contient pas de relevé Géorisques. Relancez-la pour obtenir les données à jour.</p>}
         {assessment?.reportUrl && <div className="risk-report-actions">
-          <a className="risk-download-button" href={assessment.reportUrl} target="_blank" rel="noreferrer"><Download size={15}/>Télécharger</a>
+          <a className="risk-download-button" href={assessment.reportUrl} target="_blank" rel="noreferrer"><Download size={15}/>Télécharger le rapport PDF officiel</a>
         </div>}
       </article>
       <article className="risk-info-card nuisance-card">
@@ -51,6 +78,6 @@ export const RiskNuisancePanel: React.FC<RiskNuisancePanelProps> = ({ assessment
         </> : <p className="risk-muted">Aucune estimation des nuisances n’est disponible pour cette analyse.</p>}
       </article>
     </div>
-    <style>{`.air-quality-block{padding:12px;border:1px solid #edf0ed;border-radius:10px;background:#fbfcfa}.air-quality-heading,.noise-quality-block{display:flex;justify-content:space-between;gap:10px;align-items:center;font-size:.78rem}.air-quality-heading b{font-size:.75rem}.air-scale-wrap{margin:10px 0 6px}.air-scale{position:relative;height:9px;border-radius:99px;background:linear-gradient(90deg,#2d9b59,#8abf3f,#e0ad35,#df7138,#c84747)}.air-cursor{position:absolute;top:50%;width:16px;height:16px;border:3px solid;border-radius:50%;background:#fff;transform:translate(-50%,-50%);box-shadow:0 1px 4px #52615766}.air-scale-labels{display:flex;justify-content:space-between;margin-top:5px;color:var(--color-text-muted);font-size:.63rem}.air-details{color:var(--color-text-muted);font-size:.69rem}.noise-quality-block{padding-top:2px;color:var(--color-primary)}.noise-quality-block span{color:var(--color-text-muted)}.risk-nuisance-panel{display:flex;flex-direction:column;gap:14px}.risk-nuisance-heading{display:flex;align-items:center;justify-content:space-between;color:#8b5415}.risk-kicker{font-size:.67rem;font-weight:750;letter-spacing:.09em}.risk-nuisance-heading h2{margin-top:4px;color:var(--color-primary);font-family:var(--font-family-heading);font-size:1.2rem}.risk-nuisance-heading p{margin-top:4px;color:var(--color-text-muted);font-size:.8rem}.risk-nuisance-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:14px}.risk-info-card{display:flex;flex-direction:column;gap:12px;padding:18px;background:#fff;border:1px solid var(--color-border);border-radius:12px;box-shadow:var(--shadow-card)}.risk-card-title{display:flex;align-items:center;gap:8px;color:#8b5415}.risk-card-title h3{color:var(--color-primary);font-size:.92rem}.risk-group{display:flex;flex-direction:column;gap:8px}.risk-group>strong{color:var(--color-text-muted);font-size:.73rem;text-transform:uppercase;letter-spacing:.04em}.risk-finding{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding-top:8px;border-top:1px solid #edf0ec;font-size:.78rem;color:var(--color-primary)}.risk-finding b{flex:0 0 auto;color:#9a5a16;font-size:.73rem;text-align:right}.risk-muted,.risk-method-note{color:var(--color-text-muted);font-size:.8rem;line-height:1.5}.risk-method-note{padding:10px;border-radius:8px;background:#f7f8f4;font-size:.72rem}.risk-report-actions{display:grid;gap:7px}.risk-report-help{color:var(--color-text-muted);font-size:.71rem;line-height:1.4}.risk-download-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;align-self:flex-start;padding:8px 12px;border:0;border-radius:8px;background:#426e4d;color:#fff;font-size:.76rem;font-weight:700;text-decoration:none;cursor:pointer;transition:background .15s ease}.risk-download-button:hover{background:#35593e}.risk-download-button:focus-visible{outline:3px solid #9cb69f;outline-offset:2px}.risk-loading{display:flex;align-items:center;gap:8px;color:var(--color-text-muted);font-size:.8rem}.risk-spin{animation:risk-spin 1s linear infinite}@keyframes risk-spin{to{transform:rotate(360deg)}}.nuisance-score{display:flex;align-items:baseline;gap:7px;color:var(--color-primary)}.nuisance-score strong{font-size:1.8rem}.nuisance-score span{font-size:.76rem;color:var(--color-text-muted)}@media(max-width:700px){.risk-nuisance-grid{grid-template-columns:1fr}.risk-finding{flex-direction:column;gap:3px}.risk-finding b{text-align:left}}`}</style>
+    <style>{`.air-quality-block{padding:12px;border:1px solid #edf0ed;border-radius:10px;background:#fbfcfa}.air-quality-heading,.noise-quality-block{display:flex;justify-content:space-between;gap:10px;align-items:center;font-size:.78rem}.air-quality-heading b{font-size:.75rem}.air-scale-wrap{margin:10px 0 6px}.air-scale{position:relative;height:9px;border-radius:99px;background:linear-gradient(90deg,#2d9b59,#8abf3f,#e0ad35,#df7138,#c84747)}.air-cursor{position:absolute;top:50%;width:16px;height:16px;border:3px solid;border-radius:50%;background:#fff;transform:translate(-50%,-50%);box-shadow:0 1px 4px #52615766}.air-scale-labels{display:flex;justify-content:space-between;margin-top:5px;color:var(--color-text-muted);font-size:.63rem}.air-details{color:var(--color-text-muted);font-size:.69rem}.noise-quality-block{padding-top:2px;color:var(--color-primary)}.noise-quality-block span{color:var(--color-text-muted)}.risk-nuisance-panel{display:flex;flex-direction:column;gap:14px}.risk-nuisance-heading{display:flex;align-items:center;justify-content:space-between;color:#8b5415}.risk-kicker{font-size:.67rem;font-weight:750;letter-spacing:.09em}.risk-nuisance-heading h2{margin-top:4px;color:var(--color-primary);font-family:var(--font-family-heading);font-size:1.2rem}.risk-nuisance-heading p{margin-top:4px;color:var(--color-text-muted);font-size:.8rem}.risk-nuisance-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:14px}.risk-info-card{display:flex;flex-direction:column;gap:12px;padding:18px;background:#fff;border:1px solid var(--color-border);border-radius:12px;box-shadow:var(--shadow-card)}.risk-card-title{display:flex;align-items:center;gap:8px;color:#8b5415}.risk-card-title h3{color:var(--color-primary);font-size:.92rem}.risk-scope-pill{display:inline-block;padding:2px 8px;border-radius:12px;background:#fef3c7;color:#92400e;font-size:.68rem;font-weight:600;margin-left:auto}.risk-scope-description{color:#78350f;background:#fffbeb;padding:8px 10px;border-radius:6px;font-size:.73rem;line-height:1.4}.risk-unavailable-box{display:flex;flex-direction:column;gap:8px;padding:10px;background:#fef2f2;border-radius:8px;border:1px solid #fee2e2}.risk-retry-btn{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;padding:6px 10px;border-radius:6px;background:#dc2626;color:#fff;border:none;font-size:.74rem;font-weight:600;cursor:pointer;transition:background .15s ease}.risk-retry-btn:hover{background:#b91c1c}.risk-refresh-link{display:inline-flex;align-items:center;gap:5px;padding:0;background:none;border:none;color:var(--color-text-muted);font-size:.71rem;cursor:pointer;text-decoration:underline;align-self:flex-start}.risk-refresh-link:hover{color:var(--color-primary)}.risk-group{display:flex;flex-direction:column;gap:8px}.risk-group>strong{color:var(--color-text-muted);font-size:.73rem;text-transform:uppercase;letter-spacing:.04em}.risk-finding{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding-top:8px;border-top:1px solid #edf0ec;font-size:.78rem;color:var(--color-primary)}.risk-finding b{flex:0 0 auto;color:#9a5a16;font-size:.73rem;text-align:right}.risk-muted,.risk-method-note{color:var(--color-text-muted);font-size:.8rem;line-height:1.5}.risk-method-note{padding:10px;border-radius:8px;background:#f7f8f4;font-size:.72rem}.risk-report-actions{display:flex;flex-direction:column;gap:8px}.risk-report-help{color:var(--color-text-muted);font-size:.71rem;line-height:1.4}.risk-download-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;align-self:flex-start;padding:8px 12px;border:0;border-radius:8px;background:#426e4d;color:#fff;font-size:.76rem;font-weight:700;text-decoration:none;cursor:pointer;transition:background .15s ease}.risk-download-button:hover{background:#35593e}.risk-download-button:focus-visible{outline:3px solid #9cb69f;outline-offset:2px}.risk-loading{display:flex;align-items:center;gap:8px;color:var(--color-text-muted);font-size:.8rem}.risk-spin{animation:risk-spin 1s linear infinite}@keyframes risk-spin{to{transform:rotate(360deg)}}.nuisance-score{display:flex;align-items:baseline;gap:7px;color:var(--color-primary)}.nuisance-score strong{font-size:1.8rem}.nuisance-score span{font-size:.76rem;color:var(--color-text-muted)}@media(max-width:700px){.risk-nuisance-grid{grid-template-columns:1fr}.risk-finding{flex-direction:column;gap:3px}.risk-finding b{text-align:left}}`}</style>
   </section>;
 };

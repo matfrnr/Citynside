@@ -36,6 +36,7 @@ export interface RiskAssessment {
   findings: RiskFinding[];
   reportUrl: string;
   checkedAt?: string;
+  scope?: "address" | "commune";
 }
 
 export interface POI {
@@ -94,6 +95,7 @@ export interface NeighborhoodAnalysis {
   address: string;
   city: string;
   postcode: string;
+  citycode?: string;
   neighborhoodName: string;
   lat: number;
   lon: number;

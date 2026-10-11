@@ -61,33 +61,149 @@ function parseFindings(payload: unknown): RiskFinding[] {
   return findings;
 }
 
-export async function fetchRiskAssessment(lat: number, lon: number): Promise<RiskAssessment> {
-  const cacheKey = `${lat.toFixed(4)},${lon.toFixed(4)}`;
+/**
+ * Fallback direct vers les données communales officielles GASPAR + Radon + Sismicité
+ * en cas d'indisponibilité ou lenteur excessive du calcul par adresse exacte.
+ */
+async function fetchCommunalFallbackClient(insee: string): Promise<RiskFinding[]> {
+  try {
+    const [gasparRes, radonRes, seismeRes] = await Promise.allSettled([
+      fetch(`https://georisques.gouv.fr/api/v1/gaspar/risques?code_insee=${encodeURIComponent(insee)}`, {
+        signal: AbortSignal.timeout(6000),
+        headers: { accept: "application/json" },
+      }).then((r) => (r.ok ? r.json() : null)),
+      fetch(`https://georisques.gouv.fr/api/v1/radon?code_insee=${encodeURIComponent(insee)}`, {
+        signal: AbortSignal.timeout(4000),
+        headers: { accept: "application/json" },
+      }).then((r) => (r.ok ? r.json() : null)),
+      fetch(`https://georisques.gouv.fr/api/v1/zonage_sismique?code_insee=${encodeURIComponent(insee)}`, {
+        signal: AbortSignal.timeout(4000),
+        headers: { accept: "application/json" },
+      }).then((r) => (r.ok ? r.json() : null)),
+    ]);
+
+    const findings: RiskFinding[] = [];
+    const gasparData = gasparRes.status === "fulfilled" ? gasparRes.value as Record<string, unknown> | null : null;
+    const details = Array.isArray((gasparData as any)?.data?.[0]?.risques_detail)
+      ? (gasparData as any).data[0].risques_detail
+      : [];
+    const mainRisks = details.filter((r: any) => typeof r.num_risque === "string" && r.num_risque.length <= 2);
+
+    for (const r of mainRisks) {
+      const sub = details
+        .filter((s: any) => typeof s.num_risque === "string" && s.num_risque.startsWith(r.num_risque) && s.num_risque !== r.num_risque)
+        .map((s: any) => s.libelle_risque_long)
+        .filter(Boolean);
+      const isTech = /industri|canalis|pollut|barrage|marchandis|nucl|seveso/i.test(r.libelle_risque_long);
+      findings.push({
+        id: (isTech ? "technological:" : "natural:") + r.num_risque,
+        label: r.libelle_risque_long,
+        group: isTech ? "technological" : "natural",
+        addressStatus: "Zone communale concernée",
+        communeStatus: sub.length > 0 ? sub.slice(0, 2).join(", ") : "Arrêté préfectoral en vigueur",
+      });
+    }
+
+    const radonData = radonRes.status === "fulfilled" ? radonRes.value as Record<string, unknown> | null : null;
+    const classeRadon = (radonData as any)?.data?.[0]?.classe_potentiel;
+    if (classeRadon === "3" || classeRadon === "2") {
+      findings.push({
+        id: "natural:radon",
+        label: "Radon",
+        group: "natural",
+        addressStatus: classeRadon === "3" ? "Potentiel significatif (zone 3)" : "Potentiel modéré (zone 2)",
+        communeStatus: "Zone à potentiel radon réglementée",
+      });
+    }
+
+    const seismeData = seismeRes.status === "fulfilled" ? seismeRes.value as Record<string, unknown> | null : null;
+    const zoneSeisme = (seismeData as any)?.data?.[0]?.zone_sismicite;
+    if (zoneSeisme) {
+      const existing = findings.find((f) => f.label.toLowerCase().includes("séisme"));
+      if (existing) {
+        existing.addressStatus = `Zone de sismicité ${zoneSeisme}`;
+      } else if (zoneSeisme !== "1") {
+        findings.push({
+          id: "natural:seisme",
+          label: "Séisme",
+          group: "natural",
+          addressStatus: `Zone de sismicité ${zoneSeisme}`,
+          communeStatus: "Zonage réglementaire national",
+        });
+      }
+    }
+
+    return findings;
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchRiskAssessment(lat: number, lon: number, insee?: string): Promise<RiskAssessment> {
+  const cacheKey = `${lat.toFixed(4)},${lon.toFixed(4)}${insee ? `_${insee}` : ""}`;
   const cached = cache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) return cached.assessment;
 
   const reportUrl = `https://georisques.gouv.fr/api/v1/rapport_pdf?latlon=${encodeURIComponent(`${lon},${lat}`)}`;
+
   try {
-    // Toujours passer par le proxy same-origin : l'API Géorisques ferme
-    // parfois la connexion HTTP/2 du navigateur et ne gère pas le CORS.
-    const endpoint = `/api/georisques?latlon=${encodeURIComponent(`${lon},${lat}`)}`;
-    const response = await fetch(endpoint, { signal: AbortSignal.timeout(12000) });
-    if (!response.ok) throw new Error(`Géorisques indisponible (${response.status})`);
-    const payload: unknown = await response.json();
-    if (payload && typeof payload === "object" && (payload as { unavailable?: boolean }).unavailable) {
-      return { status: "unavailable", findings: [], reportUrl };
+    // 1. Tenter la requête principale (proxy applicatif avec support latlon + insee)
+    const inseeParam = insee ? `&insee=${encodeURIComponent(insee)}` : "";
+    const endpoint = `/api/georisques?latlon=${encodeURIComponent(`${lon},${lat}`)}${inseeParam}`;
+    const response = await fetch(endpoint, { signal: AbortSignal.timeout(8000) });
+
+    if (response.ok) {
+      const payload: any = await response.json();
+      
+      // Cas 1.1 : Le proxy a renvoyé un fallback communal déjà structuré
+      if (payload && payload.isCommunalFallback && Array.isArray(payload.findings) && payload.findings.length > 0) {
+        const assessment: RiskAssessment = {
+          status: "available",
+          findings: payload.findings,
+          scope: "commune",
+          reportUrl,
+          checkedAt: new Date().toISOString(),
+        };
+        cache.set(cacheKey, { assessment, timestamp: Date.now() });
+        return assessment;
+      }
+
+      // Cas 1.2 : Réponse standard par adresse
+      if (payload && typeof payload === "object" && !payload.unavailable) {
+        const parsedFindings = parseFindings(payload);
+        if (parsedFindings.length > 0 || !insee) {
+          const assessment: RiskAssessment = {
+            status: "available",
+            findings: parsedFindings,
+            scope: "address",
+            reportUrl,
+            checkedAt: new Date().toISOString(),
+          };
+          cache.set(cacheKey, { assessment, timestamp: Date.now() });
+          return assessment;
+        }
+      }
     }
-    const assessment: RiskAssessment = {
-      status: "available",
-      findings: parseFindings(payload),
-      reportUrl,
-      checkedAt: new Date().toISOString(),
-    };
-    cache.set(cacheKey, { assessment, timestamp: Date.now() });
-    return assessment;
-  } catch (error) {
-    // Géorisques peut interrompre ses connexions pendant une maintenance.
-    // Cette consultation reste optionnelle et ne doit pas polluer la console.
-    return { status: "unavailable", findings: [], reportUrl };
+  } catch {
+    // Si l'appel proxy échoue ou timeout, on continue vers le fallback client direct
   }
+
+  // 2. Si le proxy ou l'API d'adresse n'a pas répondu, déclencher le fallback communal direct
+  if (insee) {
+    const fallbackFindings = await fetchCommunalFallbackClient(insee);
+    if (fallbackFindings.length > 0) {
+      const assessment: RiskAssessment = {
+        status: "available",
+        findings: fallbackFindings,
+        scope: "commune",
+        reportUrl,
+        checkedAt: new Date().toISOString(),
+      };
+      cache.set(cacheKey, { assessment, timestamp: Date.now() });
+      return assessment;
+    }
+  }
+
+  // 3. Si aucun résultat n'a pu être obtenu
+  return { status: "unavailable", findings: [], reportUrl };
 }

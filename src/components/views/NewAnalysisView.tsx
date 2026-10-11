@@ -342,6 +342,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
       address: addr.name || addr.label,
       city: addr.city,
       postcode: addr.postcode,
+      citycode: addr.citycode,
       neighborhoodName: "",
       lat: addr.lat,
       lon: addr.lon,
@@ -383,7 +384,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
       setPreviewIsCached(false);
       setPreviewAnalysis(null);
       onUpdateAnalysis(updated);
-      void fetchRiskAssessment(addr.lat, addr.lon).then((assessment) => onUpdateRiskAssessment(updated.id, assessment, updated.airQuality, updated));
+      void fetchRiskAssessment(addr.lat, addr.lon, addr.citycode).then((assessment) => onUpdateRiskAssessment(updated.id, assessment, updated.airQuality, updated));
     } catch (e) {
       console.error("Erreur analyse:", e);
       if (searchId === latestSearchId.current) {
@@ -424,6 +425,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
         address: rev ? rev.name : `${lat.toFixed(4)}, ${lon.toFixed(4)}`,
         city: rev ? rev.city : (currentAnalysis?.city ?? ""),
         postcode: rev ? rev.postcode : (currentAnalysis?.postcode ?? ""),
+        citycode: rev ? rev.citycode : undefined,
         neighborhoodName: "", // sera défini par l'utilisateur à l'enregistrement
         lat,
         lon,
@@ -438,7 +440,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
       saveRecentAnalysis(lat, lon, analysisData);
       setLastAirQuality(airQuality);
       onUpdateAnalysis(updated);
-      void fetchRiskAssessment(lat, lon).then((assessment) => onUpdateRiskAssessment(updated.id, assessment, updated.airQuality, updated));
+      void fetchRiskAssessment(lat, lon, rev?.citycode).then((assessment) => onUpdateRiskAssessment(updated.id, assessment, updated.airQuality, updated));
     } catch (e) {
       console.error("Erreur lors de la sélection de position:", e);
       if (searchId === latestSearchId.current) {
@@ -447,6 +449,15 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
     } finally {
       if (searchId === latestSearchId.current) setIsLoading(false);
     }
+  };
+
+  const handleRetryRisk = () => {
+    if (!displayedAnalysis) return;
+    const { lat, lon, citycode } = displayedAnalysis;
+    if (lat == null || lon == null) return;
+    const reportUrl = displayedAnalysis.riskAssessment?.reportUrl;
+    onUpdateRiskAssessment(displayedAnalysis.id, { status: "loading", findings: [], ...(reportUrl ? { reportUrl } : {}) }, displayedAnalysis.airQuality ?? null, displayedAnalysis);
+    void fetchRiskAssessment(lat, lon, citycode).then((assessment) => onUpdateRiskAssessment(displayedAnalysis.id, assessment, displayedAnalysis.airQuality ?? null, displayedAnalysis));
   };
 
   const handleLocatePoi = (poi: POI) => {
@@ -548,6 +559,7 @@ export const NewAnalysisView: React.FC<NewAnalysisViewProps> = ({
               assessment={displayedAnalysis.riskAssessment}
               tranquility={displayedAnalysis.categories.find((category) => category.category === "tranquillite")}
               airQuality={displayedAnalysis.airQuality ?? lastAirQuality}
+              onRetry={handleRetryRisk}
             />
           </section>}
           {!isDemo && !isLoading && <NeighborhoodAssistant analysis={displayedAnalysis} />}

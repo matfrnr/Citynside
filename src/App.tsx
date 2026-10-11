@@ -448,17 +448,36 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleUpdateRiskAssessment = async (analysisId: string, riskAssessment: RiskAssessment, airQuality?: import("./services/airQualityApi").AirQualityData | null, analysisSnapshot?: NeighborhoodAnalysis) => {
+  const handleUpdateRiskAssessment = async (
+    analysisId: string,
+    riskAssessment: RiskAssessment,
+    airQuality?: import("./services/airQualityApi").AirQualityData | null,
+    analysisSnapshot?: NeighborhoodAnalysis,
+  ) => {
+    setActiveAnalysis((current) => {
+      if (current && current.id === analysisId) {
+        return {
+          ...current,
+          riskAssessment,
+          airQuality: airQuality ?? current.airQuality,
+        };
+      }
+      return current;
+    });
+
     if (!authUser || authUser.id === LOCAL_DEMO_USER_ID) return;
-    const stored = getStoredAnalyses(authUser.id).find((analysis) => analysis.id === analysisId);
-    if (!stored) return;
+
+    const storedList = getStoredAnalyses(authUser.id);
+    const stored = storedList.find((analysis) => analysis.id === analysisId);
     const base = analysisSnapshot?.id === analysisId
       ? analysisSnapshot
-      : (activeAnalysis?.id === analysisId ? activeAnalysis : stored);
-    const updated = { ...base, riskAssessment, airQuality: airQuality ?? base.airQuality };
-    if (activeAnalysis?.id === analysisId) setActiveAnalysis(updated);
-    await saveAnalysis(updated, authUser.id);
-    setAnalyses(getStoredAnalyses(authUser.id));
+      : (stored ?? activeAnalysis);
+
+    if (base && base.id === analysisId) {
+      const updated = { ...base, riskAssessment, airQuality: airQuality ?? base.airQuality };
+      await saveAnalysis(updated, authUser.id);
+      setAnalyses(getStoredAnalyses(authUser.id));
+    }
   };
 
   // Renommer une analyse existante
