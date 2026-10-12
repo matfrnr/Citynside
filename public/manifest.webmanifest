@@ -1,0 +1,16 @@
+{
+  "id": "/",
+  "name": "Citynside — Analyse immobilière",
+  "short_name": "Citynside",
+  "description": "Analysez l’environnement d’un bien immobilier avec Citynside.",
+  "lang": "fr-FR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f8f5",
+  "theme_color": "#193832",
+  "icons": [
+    { "src": "/pwa-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/pwa-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

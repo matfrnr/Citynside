@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#193832" />
+    <title>Citynside — Hors connexion</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; background: #f5f8f5; color: #193832; font: 16px/1.55 system-ui, sans-serif; text-align: center; }
+      main { width: min(100%, 420px); padding: 32px; border: 1px solid #dce8e0; border-radius: 18px; background: #fff; box-shadow: 0 12px 40px #19383212; }
+      img { width: 72px; height: 72px; }
+      h1 { margin: 16px 0 8px; font-size: 1.4rem; }
+      p { margin: 0; color: #61746d; }
+      button { margin-top: 22px; padding: 11px 18px; border: 0; border-radius: 8px; background: #193832; color: #fff; font: inherit; font-weight: 650; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/pwa-192.png" alt="" />
+      <h1>Vous êtes hors connexion</h1>
+      <p>Citynside a besoin d’Internet pour charger vos analyses et synchroniser vos données. Reconnectez-vous, puis réessayez.</p>
+      <button type="button" onclick="location.reload()">Réessayer</button>
+    </main>
+  </body>
+</html>
