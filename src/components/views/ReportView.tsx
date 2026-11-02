@@ -392,26 +392,7 @@ export const ReportView: React.FC<ReportViewProps> = ({
         <header className="sheet-header">
           <div className="header-brand-block">
             <div className="sheet-logo-wrap">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" className="sheet-logo" width="46" height="46">
-                <defs>
-                  <linearGradient id="gradLeft" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#193832"/>
-                    <stop offset="100%" stopColor="#245148"/>
-                  </linearGradient>
-                  <linearGradient id="gradCenter" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#8EA885"/>
-                    <stop offset="100%" stopColor="#76936D"/>
-                  </linearGradient>
-                  <linearGradient id="gradRight" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#1E443C"/>
-                    <stop offset="100%" stopColor="#122A25"/>
-                  </linearGradient>
-                </defs>
-                <path d="M50 8 L88 30 L88 70 L50 92 L12 70 L12 30 Z" stroke="#193832" strokeWidth="4" strokeLinejoin="round" fill="none"/>
-                <path d="M26 42 L38 35 L38 72 L26 65 Z" fill="url(#gradLeft)"/>
-                <path d="M44 26 L56 20 L56 78 L44 72 Z" fill="url(#gradCenter)"/>
-                <path d="M62 38 L74 44 L74 68 L62 62 Z" fill="url(#gradRight)"/>
-              </svg>
+              <img src="/logo.svg" alt="" className="sheet-logo" />
             </div>
             <div>
               <h1 className="sheet-brand-name">Citynside</h1>

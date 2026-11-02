@@ -138,12 +138,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
         >
           <div className="brand-logo-container">
             <img
-              src="/logo-citynside.svg"
+              src="/logo.svg"
               alt="Citynside"
-              className="brand-logo-img"
+              className="brand-logo-img brand-symbol"
+            />
+            <img
+              src="/logo_texte.svg"
+              alt="Citynside"
+              className="brand-logo-img brand-lockup"
             />
           </div>
-          {!isCollapsed && <span className="brand-title">Citynside</span>}
         </div>
 
         {isCollapsed && <div className="collapsed-header-divider" aria-hidden="true" />}
@@ -345,32 +349,40 @@ export const Sidebar: React.FC<SidebarProps> = ({
         }
 
         .brand-logo-container {
-          width: 38px;
-          height: 38px;
+          width: 140px;
+          height: 40px;
           display: flex;
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
-          transition: transform 0.2s ease;
+          transition: width 0.2s ease, height 0.2s ease, transform 0.2s ease;
         }
 
         .sidebar-brand-block:hover .brand-logo-container {
-          transform: scale(1.06);
+          transform: scale(1.02);
         }
 
         .brand-logo-img {
           width: 100%;
           height: 100%;
           object-fit: contain;
+          display: block;
         }
 
-        .brand-title {
-          font-family: var(--font-family-heading);
-          font-size: 1.42rem;
-          font-weight: 700;
-          color: var(--color-primary);
-          letter-spacing: -0.02em;
-          white-space: nowrap;
+        .brand-symbol { display: none; }
+        .brand-lockup { display: block; }
+
+        .cyt-sidebar.is-collapsed .brand-logo-container {
+          width: 36px;
+          height: 36px;
+        }
+
+        .cyt-sidebar.is-collapsed .brand-symbol {
+          display: block;
+        }
+
+        .cyt-sidebar.is-collapsed .brand-lockup {
+          display: none;
         }
 
         /* Bouton toggle replier / déplier */
@@ -768,7 +780,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
         @media (min-width: 769px) and (max-width: 1024px) {
           .cyt-sidebar, .cyt-sidebar.is-collapsed { width: 74px; min-width: 74px; padding: 18px 8px; }
           .sidebar-header-row, .cyt-sidebar.is-collapsed .sidebar-header-row { justify-content: center; margin-bottom: 20px; }
-          .brand-title, .nav-label, .agent-info-text, .sidebar-collapse-toggle { display: none !important; }
+          .brand-logo-container { width: 38px; height: 38px; }
+          .brand-symbol { display: block !important; }
+          .brand-lockup { display: none !important; }
+          .nav-label, .agent-info-text, .sidebar-collapse-toggle { display: none !important; }
           .sidebar-nav-btn, .cyt-sidebar.is-collapsed .sidebar-nav-btn { justify-content: center; padding: 12px 0; }
           .sidebar-nav-btn { position: relative; }
           .nav-icon-wrapper { margin-top: 0; }
@@ -803,7 +818,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           .sidebar-footer { flex: 0 0 90px; width: 90px; margin: 0; padding: 0; border: 0; display: flex; align-items: center; justify-content: center; gap: 2px; }
           .agent-profile, .cyt-sidebar.is-collapsed .agent-profile { flex: 0 0 42px; width: 42px; justify-content: center; padding: 5px 0; }
           .sidebar-notifications { flex: 0 0 42px; width: 42px; height: 42px; }
-          .agent-info-text, .brand-title { display: none !important; }
+          .agent-info-text { display: none !important; }
           .avatar-img-wrap { width: 32px; height: 32px; }
         }
       `}</style>

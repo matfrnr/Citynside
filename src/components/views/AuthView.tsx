@@ -149,7 +149,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onAuthenticated, notice = ""
         <header className="auth-header">
           <a className="auth-brand" href="/" aria-label="Citynside, accueil">
             <div className="auth-brand-logo-wrap">
-              <img src="/logo-citynside.svg" alt="" width={32} height={32} />
+              <img src="/logo.svg" alt="" width={32} height={32} />
             </div>
             <div className="auth-brand-text">
               <span className="auth-brand-name">Citynside</span>

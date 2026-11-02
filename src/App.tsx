@@ -748,7 +748,7 @@ export const App: React.FC = () => {
         }}
       >
         <img
-          src="/logo-citynside.svg"
+          src="/logo.svg"
           alt="Chargement Citynside..."
           style={{ width: "72px", height: "72px", animation: "cyt-auth-pulse 1.5s ease-in-out infinite" }}
         />

@@ -1,14 +1,15 @@
-const SHELL_CACHE = "citynside-pwa-shell-v1";
-const ASSET_CACHE = "citynside-pwa-assets-v1";
+const SHELL_CACHE = "citynside-pwa-shell-v2";
+const ASSET_CACHE = "citynside-pwa-assets-v2";
 const APP_SHELL = [
   "/",
   "/index.html",
   "/offline.html",
   "/manifest.webmanifest",
-  "/logo-citynside.svg",
-  "/apple-touch-icon.png",
-  "/pwa-192.png",
-  "/pwa-512.png",
+  "/logo.svg",
+  "/logo_texte.svg",
+  "/logo-mobile-180.png",
+  "/logo-mobile-192.png",
+  "/logo-mobile-512.png",
 ];
 
 self.addEventListener("install", (event) => {
